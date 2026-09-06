@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a lightweight, mostly-frozen-MLLM pipeline for video anomaly detection that (1) selects discriminative attention heads via a Fisher-style inter-to-intra scatter ratio (RSA) and (2) applies a learned, context-conditioned element-wise gating ('anisotropic manifold scaling') before a logistic-regression scorer, trained on only 1% of data. The method is coherent, the ablations and stability analysis are reasonable, and it reports the best numbers among tuning-free/few-parameter VAD methods. However, gains over the nearest competitor are marginal (+0.4 AUC / +0.9 AP) with no cross-method significance testing, the novelty is moderate (head-probing + learned gating closely resembles inference-time intervention/activation steering repurposed for VAD), the heavy 'manifold/geometric' framing is not substantiated in the main text, and the 'tuning-free' label is misleading given trained gating modules and unclarified supervision.",
+  "strengths": [
+    "Clear, well-motivated pipeline that combines a simple, defensible head-selection criterion (Fisher-like discriminant ratio) with a lightweight learned gating module, achieving strong data efficiency (1% calibration data, single A6000, <1 min).",
+    "Good experimental hygiene for its own method: component ablation (Table 2A), selection-strategy ablation (Table 2B), 10-seed stability of selected heads (Table 3), data-scaling saturation (Table 4), and K/F sweeps (Table 5).",
+    "The stability result — identical LAEs across 10 seeds with σ≈0.04% AUC — is a genuinely useful robustness finding if the calibration subset is truly resampled per seed.",
+    "Practical framing (real-time single-pass inference, optional post-hoc MLLM explanation) is relevant to the VAD subfield."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Marginal empirical gains without significance testing. SteerVAD beats the nearest tuning-free/few-parameter baseline (HiProbeVAD) by only +0.43 AUC (UCF) and +0.87 AP (XD). No error bars or significance tests are reported for the head-to-head comparison in Table 1; the only variance reported (Table 3, σ≈0.04%) is for the authors' own re-runs, so it is impossible to tell whether the SOTA claim is statistically real.",
+      "suggested_fix": "Report mean±std over multiple seeds for SteerVAD AND, where possible, re-run baselines under matched conditions; add paired significance tests. State clearly whether the improvement exceeds run-to-run variance."
+    },
+    {
+      "severity": "major",
+      "issue": "Overclaimed framing and terminology. The abstract calls the method 'tuning-free' and says it works 'without any fine-tuning,' yet the HMC (GSG MLP + K LGM adapters) and the logistic-regression scorer are trained for 1000 epochs on labeled data. The elaborate 'representation manifold / geometric rectification / anisotropic manifold scaling' language is not substantiated in the main text (the 'rigorous topological analysis' is deferred to an appendix), and the core operation is a standard FiLM/gating modulation h'=h(1+s·g).",
+      "suggested_fix": "Scope claims: describe the method as few-parameter / lightweight-calibration rather than tuning-free, and either move enough of the topological analysis into the main text to justify the geometric framing or reframe the method in the plainer terms of conditioned feature gating."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty relative to inference-time intervention / activation steering is not clearly established. RSA is essentially Fisher's linear discriminant ratio for head selection, and probe-based head selection followed by steering is the core of prior representation-engineering work. The paper claims to be 'the first' but does not concretely differentiate its mechanism from these methods beyond the VAD application and the learned (vs fixed) steering vector.",
+      "suggested_fix": "Add explicit conceptual and, if feasible, empirical comparison to inference-time intervention / activation-steering baselines adapted to VAD, and delineate what is genuinely new beyond the domain transfer."
+    },
+    {
+      "severity": "major",
+      "issue": "Supervision type is ambiguous and may make comparisons unfair. The BCE loss uses per-segment y∈{0,1}, implying frame/segment-level labels, but UCF-Crime/XD-Violence weakly-supervised baselines use only video-level labels. If the 1% calibration set carries frame-level supervision, the comparison against weakly-supervised methods is not apples-to-apples.",
+      "suggested_fix": "State precisely what label granularity the 1% calibration set uses and discuss the fairness of comparisons; if frame-level labels are used, acknowledge the stronger supervision signal."
+    },
+    {
+      "severity": "minor",
+      "issue": "Limited generality evidence. Results use a single MLLM backbone (InternVL3) and two datasets, yet the paper claims a broadly 'powerful new direction.' The K-sweep is described as parabolic but is non-monotonic (K=8:85.03 < K=16:86.88), and F=24 (87.23) actually exceeds the chosen F=16 (87.15).",
+      "suggested_fix": "Test at least one additional MLLM backbone and, ideally, a third dataset; correct the 'parabolic' characterization and justify F=16 purely on the efficiency trade-off."
+    },
+    {
+      "severity": "minor",
+      "issue": "The t-SNE 'rectification' visualization (Fig 4) is weak evidence: any supervised classifier trained on 1% labels will separate classes in a learned projection, so the visual is largely tautological rather than demonstrating manifold correction of the frozen representation.",
+      "suggested_fix": "Compare the learned separation against a linear-probe baseline projection to show the gain is attributable to steering rather than to the scorer, and quantify separability rather than relying on t-SNE appearance."
+    }
+  ],
+  "questions_for_authors": [
+    "What label granularity does the 1% calibration set use (frame-level vs video-level), and how does this affect fairness against weakly-supervised baselines?",
+    "In the 10-seed stability study, does the seed resample the 1% subset, or only reinitialize the HMC? Identical head selection across genuinely different subsets is a strong claim that needs this clarification.",
+    "How does SteerVAD compare against a direct inference-time-intervention / activation-steering baseline (fixed steering vectors on the same RSA-selected heads)?",
+    "Are the Table 1 gains over HiProbeVAD/VERA within run-to-run variance? Please provide mean±std and a significance test.",
+    "How sensitive is performance to the choice of MLLM backbone (e.g., a LLaVA/Qwen-VL variant)?"
+  ],
+  "calibration_check": "Several headline claims ('tuning-free', 'state-of-the-art', 'manifold rectification', 'first to operationalize') are broader than the evidence, which shows marginal, backbone-specific, untested-for-significance gains from a trained gating module.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Tuning-free/few-parameter VAD is a relevant direction, but the marginal gains and single-backbone scope limit the likelihood that the subfield will build on it as presented."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Fisher-ratio head selection plus learned context-conditioned gating closely mirrors existing probe-based inference-time intervention / activation-steering ideas, transferred to VAD rather than fundamentally new."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is internally consistent and ablated, but the central 'manifold rectification' claim is asserted rather than demonstrated, and the theoretical justification is deferred to an appendix."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Own-method stability is reported (Table 3), but there are no error bars or significance tests for the SOTA comparison, and improvements over the nearest baseline are within plausible noise."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'Tuning-free' and 'state-of-the-art' framing overstates a lightweight trained module with marginal, scoped gains; limitations and supervision details are under-discussed."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method is understandable and logically organized, though the geometric terminology is heavier than the actual element-wise gating operation warrants."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure (Abstract, Intro, Related Work, Method, Experiments, Conclusion) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Key hyperparameters (K, F, epochs, lr, λ, σg) are given, but label granularity, the seed/subset relationship, and the theory needed to interpret 'manifold scaling' are unclear or appendix-bound."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers traditional, MLLM-based, and interpretability threads, but does not sharply position the contribution against inference-time intervention / activation-steering, which is the closest prior art."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative UMAP/t-SNE and framework diagrams, but the t-SNE separation is largely a tautological consequence of supervised training rather than direct evidence of manifold correction."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "One MLLM backbone and two datasets under-support the broad 'new direction' claim; some sweeps are non-monotonic, undercutting the stated trends."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A coherent, reasonably ablated applied method whose marginal gains, moderate novelty, and overclaimed framing place it at borderline-reject pending stronger evidence and scoping."
+    }
+  },
+  "publishability_probability": 0.28
+}

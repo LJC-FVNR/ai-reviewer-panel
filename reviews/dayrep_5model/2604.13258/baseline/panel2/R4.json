@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token-attribution method for decoder-only LLMs that fuses a causal attention–value rollout gate, a Hessian-vector-product sensitivity term, and a masked-token KL-divergence term, evaluated on three existing benchmarks, a new curated NarrativeQA+SciQ probe, and four models spanning GPT-J 6B to LLaMA-3.1 70B. The problem is timely, the three-component decomposition is well motivated, and the ablations, decoding-robustness sweep, and stress tests are the kind of empirical structure ICLR reviewers want to see. However, the reported gaps over baselines are extraordinarily large with implausibly small dispersion, several key methodological choices (HVP norm estimator, masking scheme for KL, β/γ selection, layer sampling on 70B) are under-specified, and a headline evaluation metric (DSA) is introduced by the authors themselves in a form that structurally advantages methods with sharp support—so the evidence does not yet reach the confidence level implied by the 'new standard' framing.",
+  "strengths": [
+    "Well-motivated three-part decomposition (causal rollout gate, second-order curvature via HVP, information-theoretic masking) that is intuitive and cleanly presented at the level of Eq. (5).",
+    "Broad evaluation surface: 3 established benchmarks (LongRA, TellMeWhy, WikiBio) plus a new curated NarrativeQA+SciQ probe with strong inter-annotator agreement (F1=0.91, κ=0.89), and 4 decoder-only models spanning 3B–70B.",
+    "Robustness protocol is more thorough than typical attribution papers: Gaussian perturbation sensitivity, active/passive syntactic invariance, and a decoding-hyperparameter grid (temperature × top-p × top-k × repetition penalty × seeds) reported as max relative change.",
+    "Component ablations (Transition-only, Hessian-only, KL-only, no-gate, uniform-gate) are aligned to the three claimed contributions, so the paper can attribute wins to specific ingredients rather than to the combination as a black box.",
+    "Explicit engagement with scalability: low-rank + windowed HVP variant, layer sampling on the 70B model, and stated compute budget on a single A100."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Headline numbers in Table 3 are implausibly separated with implausibly small dispersion. HETA reports Soft-NC ≈ 10.3 on GPT-J LongRA vs. ≈2 for the strongest baseline (ReAgent) while claiming std < ±0.06 across 3 runs. A >2× multiplicative gap with sub-0.1 std across four models and three datasets is not consistent with any reasonable seed-level variability of masked-perturbation faithfulness scores; there is no paired significance test, no confidence interval, and no discussion of why the effect size is this large. This is the single largest threat to the paper's credibility.",
+      "suggested_fix": "Report per-instance paired tests (e.g., Wilcoxon signed-rank) between HETA and each baseline, add bootstrap confidence intervals over instances, and either explain (or correct) the extreme effect sizes. Re-check whether Soft-NC/Soft-NS are computed identically across methods (same masking budget, same target tokens, same normalization) — a scoring-protocol asymmetry would produce exactly this pattern."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric on the curated dataset is proposed by the authors and structurally favors methods that place mass on a small set of annotated indices while penalizing mass on the NarrativeQA span. Because HETA's causal gate MT restricts attribution to tokens with attention paths to T, it inherits this structural advantage almost by construction, while gradient- and rollout-only baselines that spread mass more diffusely will look negative. This makes DSA a weak standalone signal.",
+      "suggested_fix": "Report DSA alongside an independent, non-authored alignment metric (e.g., precision@k against the annotated evidence set, AUPRC of attribution scores vs. the token-level gold, or the existing sufficiency/comprehensiveness metrics from ERASER) and show HETA still leads. Otherwise scope claims to 'evidence-localization' rather than 'attribution alignment' broadly."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian estimator in Eq. (3) is presented as an HVP with Rademacher vectors but is written as an average of ‖Π_i H_T (Π_i r_k)‖_1, which is not the standard Hutchinson trace/diagonal estimator and is not an unbiased estimator of any obvious sensitivity quantity. Without a derivation of what S(T)_i converges to (or a proof that it upper/lower bounds a meaningful curvature norm), the second-order component is heuristic rather than principled, undermining the paper's central 'second-order faithful' framing.",
+      "suggested_fix": "State precisely which functional of the block Hessian S(T)_i estimates (diagonal ℓ1 norm? Frobenius? induced ℓ1→ℓ1 operator norm?), prove unbiasedness/consistency, and report a variance/error analysis as m grows. If a Gauss–Newton/Fisher surrogate is actually used in practice, make that the default and quantify the bias vs. the true Hessian."
+    },
+    {
+      "severity": "major",
+      "issue": "Key methodological details are under-specified: (i) the exact masking scheme for KL (mean-pooled embedding? special token? removal? this materially changes I(x_i → x_T)); (ii) how β, γ = 0.5 was chosen and whether it was tuned on the same data used for evaluation (a leakage risk directly relevant to Tables 1 and 3); (iii) the target-conditioned rollout Φ^{(l,h)}(i→T) is invoked but not defined in a way that distinguishes it from Abnar & Zuidema; (iv) 'compute second-order terms only in the last six layers' for LLaMA-3.1-70B is a substantial approximation whose impact is not quantified against full HETA on the same model.",
+      "suggested_fix": "Add a Methods sub-section formally defining the masking scheme and the target-conditioned rollout; separate a held-out split for β,γ selection; and report a small-model sanity check comparing full-layer HETA vs. last-6-layer HETA to justify the 70B shortcut."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2's decoding-hyperparameter robustness numbers claim HETA varies <1% on all metrics while every baseline varies 2–5%. This is plausible in direction (HETA scores distributional shift, baselines score sampled logits), but the exact protocol (which decoded target x_T is held fixed across temperatures? are attributions recomputed per sample?) is not specified. Without it, HETA could be trivially invariant because it never uses sampled tokens, in which case the comparison is not apples-to-apples.",
+      "suggested_fix": "State the exact protocol: is x_T fixed (teacher-forced) or resampled at each hyperparameter setting? If fixed, note that HETA's invariance is by construction and reframe the claim; if resampled, describe how attributions are aligned across samples."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'new standard for interpretability in autoregressive language models' framing in the abstract and 'setting a new state-of-the-art' in Section 5.2 is stronger than the evidence supports given the concerns above and the absence of significance testing.",
+      "suggested_fix": "Soften the top-line claims to something like 'consistent improvements across the tested models and metrics' and confine SOTA language to specific (model, dataset, metric) triples where the gap is statistically established."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work discussion is present but does not clearly delineate HETA's contribution vs. concurrent second-order and rollout-based methods (Dong et al. 2025, Alvarez-Melis & Jaakkola 2018, Dhamdhere et al. 2018 are cited but not contrasted quantitatively).",
+      "suggested_fix": "Add a compact prior-work comparison table (properties: second-order, target-conditioned, causal-masked, output-aware) and, where feasible, at least one second-order attribution baseline in Table 3."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper cites 'released code and dataset' but reproducibility hinges heavily on the appendix (algorithmic pseudo-code, theoretical bounds, low-rank+windowing tables). From the main text alone, an independent implementer would not recover exact runtime/memory or the low-rank rollout details.",
+      "suggested_fix": "Move the full algorithm box (currently Appendix A3) and the low-rank+windowing description into the main text or a clearly labelled methods appendix that is treated as normative."
+    }
+  ],
+  "questions_for_authors": [
+    "Please report paired significance tests (Wilcoxon or bootstrap over instances) between HETA and ReAgent on each (model, dataset, metric) cell of Table 3. What p-values and effect sizes do you observe?",
+    "What exact masking operation is used inside I(x_i → x_T)? Removal, mean-embedding replacement, or a [MASK]-like token? How sensitive is HETA to this choice?",
+    "How were β=γ=0.5 chosen? Were any of LongRA/TellMeWhy/WikiBio/curated used to select them?",
+    "In Eq. (3), what functional of the block Hessian does S(T)_i estimate, and what is its bias/variance profile as m grows? Is Rademacher the right family here given the ℓ1 aggregation?",
+    "For LLaMA-3.1-70B, can you quantify (on a smaller model where full HETA is feasible) the attribution-quality gap between full-layer HETA and last-6-layer HETA to justify the approximation?",
+    "In Table 2, when varying temperature/top-p/top-k, is the target token x_T fixed via teacher forcing or resampled? If fixed, why is HETA's near-zero variation not simply a consequence of it never depending on sampled decodes?",
+    "For the DSA metric, can HETA's advantage be reproduced under a metric your team did not design (e.g., token-level precision@k or AUPRC vs. the same gold annotations)?"
+  ],
+  "calibration_check": "Claims of a 'new standard' and repeated SOTA framing overshoot the supplied evidence: the largest gaps are on a self-designed metric (DSA) and on Soft-NC values whose extraordinary effect sizes lack matching significance analysis, so the confidence expressed in the abstract is meaningfully greater than what the experiments currently justify.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs is a live and important problem, and a unified curvature+causal+information framework would matter to the subfield if the empirical claims hold up."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The three-way combination is sensible but each ingredient (attention rollout, Hutchinson-style HVPs for sensitivity, masked-token KL) exists in prior work; the contribution is architectural fusion rather than a new primitive."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Central methodological steps (HVP estimator identity, KL masking scheme, β/γ selection, 70B layer sampling) are under-specified or unjustified, weakening the link between claims and evidence."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Enormous headline gaps (>2× on Soft-NC) with std < 0.06 across only 3 seeds, no paired significance tests, no confidence intervals over instances, and no discussion of why effect sizes are this large."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Repeated SOTA/'new standard' language and 'remarkable stability' phrasing are not scoped to the (model, dataset, metric) triples where the tests are strongest; limitations are acknowledged but narrowly (compute only)."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level structure and equations are readable, but critical operational details (rollout definition, masking, HVP norm) are compressed and the extracted math renders inconsistently."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference layout (Intro, Motivation, Background, Method, Experiments, Ablation, Related Work, Conclusion) with appropriate length; appendices carry substantive material."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Compute (A100, seq lengths, batch sizes, β/γ, ranks) is reported, but algorithm box, low-rank+windowing details, and theoretical bounds are deferred to appendix and the main text alone would not suffice for a faithful re-implementation."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Good coverage of attention-rollout, gradient, and generative-LLM attribution baselines (ContextCite, TDD, PML, ReAgent), but no compact property-level comparison and no quantitative benchmarking of prior second-order attribution methods."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative displays (pipeline overview, ablation bars, robustness panels, qualitative heatmaps) that are aligned to specific claims rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models spanning 3B–70B and three benchmarks plus a curated probe cover reasonable breadth, but the generality claim is undermined by (i) shortcuts on the largest model and (ii) reliance on an author-designed metric for the alignment story."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the framework is well motivated and the empirical scope is respectable, but statistical soundness, calibration, and specification of the second-order estimator have to be addressed before this crosses the ICLR acceptance bar."
+    }
+  },
+  "publishability_probability": 0.22
+}

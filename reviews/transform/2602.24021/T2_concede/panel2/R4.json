@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes to identify a small set of attention heads (LAEs) inside a frozen MLLM via a between/within-class scatter ratio, then apply a learned, context-conditioned anisotropic scaling to those heads' features for video anomaly detection. The geometric framing is appealing and the calibration-stability, data-efficiency, and ablation analyses are reasonably thorough. However, the 'tuning-free' framing is misleading (a controller and classifier are trained), the improvements over the closest baselines are marginal (≤0.5% AUC, ≤0.9% AP), and the backbone (InternVL3) differs from those of all cited tuning-free baselines, making the SOTA claim confounded rather than demonstrated.",
+  "strengths": [
+    "Clear, geometrically motivated reframing of MLLM biases as manifold entanglement; the anisotropic scaling h' = h * (1 + s_global * g_i) is a simple, well-specified operator.",
+    "Solid calibration-stability analysis: identical LAE set across 10 seeds with σ ≈ 0.04% AUC (Table 3) is convincing evidence that RSA identifies stable intrinsic circuits.",
+    "Data efficiency is genuinely studied (Table 4): scaling calibration from 1% to 100% yields only +0.27% AUC, supporting the low-rank-signal argument.",
+    "Ablations isolate GSG vs LGM vs additive vs static scaling (Table 2A) and RSA vs positional/random selection (Table 2B), giving decent evidence for each design choice.",
+    "Method is lightweight (K=4 heads, low-rank adapters, logistic regression scorer) and offline calibration cost is small (<1 min for 1%)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Backbone confound in the SOTA comparison. SteerVAD uses InternVL3 (~8B) while LAVAD uses BLIP-2+LLM (~14B), EventVAD/VERA/HiProbeVAD use different ViT+LLM stacks, and the Full-Training baselines use I3D/ViT of different scales. Given the reported gaps are 0.43% AUC over HiProbeVAD on UCF-Crime and 0.87% AP on XD-Violence, it is impossible to tell whether the gains come from the method or from a stronger/newer backbone. No apples-to-apples comparison (e.g., applying the same tuning-free pipeline of a competing method on top of InternVL3, or applying SteerVAD on top of the backbones used by LAVAD/VERA) is provided.",
+      "suggested_fix": "Add a controlled comparison: (a) run at least one competing tuning-free method (e.g., LAVAD or VERA) on InternVL3, and/or (b) run SteerVAD on the backbones used by the closest baselines (LAVAD/VERA/HiProbeVAD). Report standard-deviation error bars on the headline numbers and a paired significance test against HiProbeVAD."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'tuning-free' framing is overclaimed. The HMC (GSG MLP + K low-rank LGM adapters), the anomaly scorer (logistic regression), and its BCE + L2 regularizer are trained for 1000 epochs on labeled anomaly data. Calling this 'tuning-free' because the MLLM weights are frozen conflates 'no MLLM fine-tuning' with 'no training', and puts SteerVAD in a category (with LAVAD/EventVAD, which are largely prompt/pipeline-based) that it does not really belong to.",
+      "suggested_fix": "Adopt precise terminology (e.g., 'frozen-backbone, few-parameter learning' — which is already the sub-category header in Table 1). Explicitly state trainable parameter count and required labels in the abstract and introduction, and separate comparisons against pure prompt-based tuning-free methods from comparisons against light-fine-tuning methods."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness of the main results is weak. The stability table reports σ ≈ 0.04% over calibration seeds but the main Table 1 numbers are single point estimates for the competing methods, with no confidence intervals or paired tests on the test set. Given deltas of 0.4–0.9% over HiProbeVAD, whether the improvement is statistically real is not established.",
+      "suggested_fix": "Report mean ± std over multiple test-time evaluation runs (e.g., different frame samplings, different smoothing seeds), and run a paired bootstrap or DeLong test on frame-level AUC vs the top two baselines. Report per-class or per-anomaly-category breakdowns."
+    },
+    {
+      "severity": "major",
+      "issue": "Breadth/generality claims are not backed. Only two datasets, one backbone (InternVL3), and hyperparameters K and F are ablated only on UCF-Crime (Table 5). The paper repeatedly frames the mechanism as an intervention paradigm for frozen MLLMs, yet no evidence of transfer across MLLM backbones (InternVL vs LLaVA vs Qwen-VL) or across other anomaly-related tasks (e.g., ShanghaiTech, MSAD, industrial anomaly) is provided.",
+      "suggested_fix": "Repeat RSA + HMC on at least one additional MLLM backbone and one additional VAD benchmark; if RSA selects different heads on the new backbone, that itself supports the intrinsic-circuit claim, but the method must still work."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty positioning vs mechanistic-interpretability / activation-steering literature is thin. The paper cites 'Wang & Veitch, 2025', 'Zheng et al., 2025', etc., but does not delineate what SteerVAD adds beyond (i) probing/selecting task-relevant heads and (ii) learning a linear/affine steering vector — both of which are established ideas in LLM steering and activation editing. The novelty argument rests on 'context-dependent' and 'anisotropic', but the operator is a per-head Hadamard scaling driven by a global MLP — a modest step.",
+      "suggested_fix": "Add a dedicated related-work paragraph contrasting SteerVAD against activation-steering / representation-engineering methods (e.g., function vectors, ITI, RepE, task vectors) and quantify what is new: the RSA metric, the video/spatio-temporal setting, or the joint global+local gating."
+    },
+    {
+      "severity": "minor",
+      "issue": "The RSA score in Eq. (1) reads '‖μ_anom − μ_norm‖² / (σ²_anom + σ²_norm)' but the LaTeX rendering ('(l,k)anom - (l,k)norm') is missing the centroid symbols and the variances appear to be scalars while features are d_head-dimensional; it is not stated whether σ² is trace of covariance, sum of variances, or scalar. This ambiguity matters for reproduction.",
+      "suggested_fix": "State the exact form (e.g., Fisher-style Tr(S_B)/Tr(S_W) or ‖·‖² over channel-wise means with sum of per-dim variances), and clarify feature dimensionality and pooling across frames/tokens."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Post-Hoc Explainability step is claimed but not evaluated. The abstract and intro imply textual explanations enhance trustworthiness, yet no user study, faithfulness metric, or example gallery with quantitative analysis is presented.",
+      "suggested_fix": "Either evaluate the explanations quantitatively/qualitatively (e.g., causal-consistency, human ratings) or scope down the explainability claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "λ_reg and σ_g are set without an ablation, though both directly influence false-positive rate and the AUC/AP tradeoff. Their importance is asserted (sparsity regularizer 'enhances the robustness') but not shown.",
+      "suggested_fix": "Add an ablation over λ_reg ∈ {0, 0.01, 0.1, 1} and σ_g ∈ {0, 3, 6, 12} on both datasets."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide a controlled comparison in which competing tuning-free baselines (LAVAD, VERA, HiProbeVAD) are run on the same InternVL3 backbone, so the SOTA claim is not confounded by backbone choice?",
+    "How many parameters does the HMC + scorer actually train, and what fraction of frame-level labels does the 1% calibration set contain (given weak-label vs frame-label conventions differ across UCF/XD)?",
+    "In Table 3 the four selected heads (L18H4, L23H24, L21H21, L22H7) are identical across 10 seeds — do they remain identical if the 1% subset is changed to a different 1% (rather than the same subset with different seed for the analysis)? The current experiment varies the seed but not the data split.",
+    "Please specify the exact form of Eq. (1): are σ² scalars (sum of per-dim variances / traces) and are centroids taken over frames, tokens, or segments?",
+    "Does the RSA-selected LAE set transfer if you swap InternVL3 for another MLLM (e.g., Qwen-VL, LLaVA-NeXT-Video)? If not, what does that imply about the 'intrinsic functional circuits' claim?",
+    "For Table 1, are the tuning-free baseline numbers taken from the original papers (with their own backbones) or re-run? If re-run, on which backbone?",
+    "Can you report per-anomaly-category AUC on UCF-Crime — where does SteerVAD gain vs HiProbeVAD, and is the gain concentrated in a few categories?"
+  ],
+  "calibration_check": "Claims are partially overreached: 'new competitive SOTA' is stated repeatedly on the basis of ≤0.9% improvements achieved with a stronger backbone than baselines used, and the framework is labeled 'tuning-free' despite training a controller and a classifier on labeled data.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Marginal absolute gains over the closest baseline (HiProbeVAD) and only two benchmarks; the geometric framing is intellectually interesting but the practical delta is small."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Head selection via a Fisher-like separability score and context-conditioned per-head scaling are natural extensions of existing activation-steering / representation-engineering work rather than a clearly new mechanism."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Method is well specified but the SOTA claim is confounded by a different (newer, stronger) backbone than the tuning-free baselines, and the 'tuning-free' framing conflates frozen-MLLM with no-training."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Good calibration-seed stability (σ ≈ 0.04%) and a data-scale table, but no error bars, paired tests, or bootstraps on the headline test-set comparisons where the gaps are sub-1%."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'Tuning-free', 'SOTA', and 'new direction' claims are stronger than the evidence; limitations section is boilerplate and does not concede the backbone or terminology issues."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Prose is readable and the method flow is easy to follow, though the RSA equation and centroid/variance definitions are ambiguous and some figures are referenced only via captions."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows a standard Intro/Related/Method/Experiments/Conclusion structure within a plausible ICLR length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, K, F, optimizer, LR, epochs, batch size, λ_reg and σ_g are stated, but the RSA scatter formulation is under-specified and the exact 1% subset construction and label granularity are not detailed."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers traditional/weakly/unsupervised VAD and MLLM VAD adequately, but the positioning against activation-steering / representation-engineering / probing literature — which is the technical neighborhood — is thin."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe reasonable diagnostic figures (UMAP manifolds, t-SNE before/after, framework overview), though the qualitative t-SNE 'compact clusters' evidence duplicates what AUC already quantifies."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Two datasets, one backbone, and hyperparameter ablations only on UCF-Crime is thin support for the paper's broad 'intervention paradigm for frozen MLLMs' framing."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: sensible method with useful ablations, but the SOTA claim is confounded by backbone choice, the 'tuning-free' framing is misleading, and gains are within noise of the closest baselines without statistical testing."
+    }
+  },
+  "publishability_probability": 0.28
+}

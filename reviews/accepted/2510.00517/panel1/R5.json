@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents a theoretical and empirical analysis of Differential Attention (DA) from the perspective of adversarial robustness, coining the 'Fragile Principle' to describe how DA's subtractive structure amplifies perturbation sensitivity via negative gradient alignment. The theoretical framework is clearly presented, and experiments span ViT/DiffViT and CLIP/DiffCLIP across five datasets, finding higher attack success rates and local Lipschitz estimates for DA models. However, the theoretical novelty is limited—the core insight reduces to a basic norm inequality—and critical experimental controls (parameter-count matching, statistical significance testing, seeds/error bars) are absent, undermining confidence in the empirical claims. The mixed results on ImageNet are underexplained and weaken the generality of the conclusions.",
+  "strengths": [
+    "The paper identifies a timely and counter-intuitive phenomenon: a mechanism designed to suppress noise (DA) increases adversarial sensitivity, which is a non-obvious and potentially useful finding for practitioners deploying DA in safety-critical contexts.",
+    "The depth-dependent analysis (Section 4.2) is the most technically interesting contribution, distinguishing two competing mechanisms (gradient amplification vs. noise cancellation) and predicting a robustness crossover — this is well-motivated and empirically validated at small budgets.",
+    "The empirical suite is broad relative to the paper's scope: ViT/DiffViT trained from scratch, pretrained CLIP/DiffCLIP, five datasets, three attack families (PGD, CW, AutoAttack), adversarial examples and patch attacks, and λ ablations — this coverage is commendable.",
+    "Limitations are honestly disclosed (local linearization, layer isolation, absence of natural/semantic adversarial evaluation) and the scope is appropriately constrained to mechanism-level analysis."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No parameter-count matched baselines. DiffViT uses two independent (Q1,K1) and (Q2,K2) projection pairs versus one for ViT, roughly doubling the attention-projection parameters. Higher capacity alone could explain both the clean accuracy advantage and different adversarial behavior. The paper never controls for this, making it impossible to attribute the ASR gap to the subtractive structure rather than to larger model capacity.",
+      "suggested_fix": "Train a ViT baseline with doubled Q/K projections (but summing rather than subtracting the two branches) as a capacity-matched control, or explicitly measure and report parameter counts and show the gap persists after equalization."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No statistical significance or variance estimates anywhere. Table 1 and all ASR figures report single-run point estimates with no error bars, no seeds, and no significance tests. For differences as small as a few percentage points on ImageNet (where the paper itself acknowledges 'results are more nuanced'), single-run numbers cannot support strong causal claims.",
+      "suggested_fix": "Report mean ± std over at least 3 random seeds for ViT/DiffViT training; for CLIP/DiffCLIP, report over multiple evaluation runs with different random attack initializations."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical novelty is thin. Lemma 1 and Theorems 1–3 are straightforward applications of the parallelogram law / Cauchy-Schwarz inequality: ‖a − λb‖² = ‖a‖² + λ²‖b‖² − 2λ⟨a,b⟩, which is amplified when ⟨a,b⟩ < 0. This is a mathematical identity, not a deep structural insight. The more substantive claim—that DA training 'encourages' negative gradient alignment as a 'functional necessity'—is stated informally and never formally proved; it is the key mechanistic hypothesis but lacks theoretical grounding.",
+      "suggested_fix": "Either provide a formal argument (e.g., via the training objective gradient) that DA's loss landscape is biased toward negative alignment, or reframe the theoretical contribution more modestly as a sensitivity characterization given alignment, reserving 'structural encouragement' for the empirical claims supported by Figure 5."
+    },
+    {
+      "severity": "major",
+      "issue": "The depth-dependent Lipschitz bound (Equation 5) introduces an attenuation factor α that is described as 'an emergent factor… not reducible to a deterministic function of λ.' This makes Theorem 4 and Corollary 1 empirically unverifiable: the crossover depth D* cannot be computed without knowing α, yet α is unknown. The bound is vacuous without it.",
+      "suggested_fix": "Estimate α empirically from the activation statistics or provide at least a range, so the predicted crossover depth can be compared to the empirically observed crossover. Alternatively, weaken the framing to a qualitative structural argument rather than a formal theorem."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper relies entirely on clean-accuracy-normalized ASR implicitly, but Table 1 shows that higher λ initially increases both clean accuracy AND ASR, while high λ decreases both. The ASR metric used (#successful attacks / #trials) is conflated with accuracy when trials are drawn from correctly classified inputs vs. all inputs. The relationship between λ, clean accuracy, and ASR is not disentangled, creating an alternative explanation: worse clean accuracy at high λ inflates ASR trivially.",
+      "suggested_fix": "Compute ASR conditioned on correctly classified clean examples (i.e., restrict trials to images correctly predicted without perturbation) to isolate architectural fragility from accuracy effects."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility is impaired by vague architecture descriptions ('lightweight transformers') with no embedding dimension, number of heads, MLP width, or training schedule specified in the main text.",
+      "suggested_fix": "Add a table of hyperparameters (model dimensions, optimizer, learning rate, epochs, batch size, augmentation) for the trained ViT/DiffViT models; this is standard for ICLR submissions."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper does not compare against other noise-suppressing or differential attention variants (e.g., sparse attention, local attention, or a simple ‖A1‖-only ablation without subtraction) which would help isolate whether the fragility stems from the subtraction specifically or from other DA design choices.",
+      "suggested_fix": "Add a 'DA without subtraction' baseline (A1 only, same projection structure) to confirm that the fragility is attributable to the subtractive step, not to the dual-projection architecture."
+    }
+  ],
+  "questions_for_authors": [
+    "How are the ViT/DiffViT models architecturally specified (embedding dim, heads, depth, MLP ratio)? Are they equivalent in parameter count to the corresponding DiffViT/ViT at each depth?",
+    "In Figure 3(d), the mean local Lipschitz estimate rises with depth for DiffViT — but Figure 3(a)/(b) show ASR decreasing with depth at ε=1/255. These trends appear contradictory: higher Lipschitz should imply higher ASR, not lower. Can you reconcile this, or does the Lipschitz bound not tightly predict ASR?",
+    "The non-monotonic relationship between λ_init and ASR in Table 1 (peak at 0.8, then decline) is described as 'over-cancellation' but is unexplained. Could this simply track clean accuracy (which also peaks at 0.87 near λ=0.8)? Have you conditioned ASR on correctly classified examples to separate these effects?",
+    "For CLIP/DiffCLIP on ImageNet, adversarial patch results show CLIP marginally outperforming DiffCLIP. Is this difference within noise? What does statistical testing over multiple runs show?",
+    "Is there evidence that the pretrained DiffCLIP and CLIP were trained on identical data, with identical augmentations and optimization, differing only in the attention module? Without this, architectural differences in training dynamics could explain ASR gaps."
+  ],
+  "calibration_check": "Claims are partially well-scoped to mechanism-level analysis, but the central narrative that DA 'inherently' amplifies adversarial vulnerability overstates the evidence given the missing parameter-count controls, absent error bars, and mixed large-scale results on ImageNet.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The finding is timely and practically relevant given DA's use in safety-critical applications, but impact is limited by the narrow scope (single attention mechanism, vision only) and the fact that DA is not yet widely deployed."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "First adversarial robustness analysis of DA is a genuine first, but the core theoretical insight (subtractive structures amplify gradients under anti-alignment) is a straightforward consequence of vector arithmetic rather than a deep structural discovery."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The formal claims are mathematically correct but the key mechanistic hypothesis—that DA training structurally encourages negative gradient alignment—is asserted rather than proved, and the depth-dependent bound relies on an uncharacterized emergent factor α."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "All reported results are single-run point estimates; no error bars, seeds, or significance tests are provided anywhere, which is below the standard expected at ICLR for empirical claims."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are honestly reported and the ImageNet mixed results are disclosed, but the headline claim of 'increased adversarial vulnerability' is stronger than the evidence supports given missing controls and absent variance estimates."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-written, logically organized, and the theoretical setup is clearly explained; notation is consistent and the key concepts (Fragile Principle, negative gradient alignment) are well-defined."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure is followed throughout (Abstract, Introduction, Related Work, Preliminary, Theory, Experiments, Discussion, Conclusion) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Attack hyperparameters and DA settings are described, but the ViT/DiffViT architectures are referred to only as 'lightweight transformers' without specifying dimensions, heads, or training schedules, making replication non-trivial."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of Transformer robustness, Lipschitz analysis, and interpretability literature is adequate, but the paper does not discuss capacity-matched or structurally similar differential mechanisms that would sharpen the positioning."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe figures covering ASR under multiple attacks, depth effects, Lipschitz estimates, and gradient alignment — the intended comparisons are relevant and well-chosen, though single-run results without confidence bands limit interpretability."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Experiments cover only vision tasks, controlled ViT/DiffViT models lack parameter-count matching, and the depth ablation is not replicated on CLIP/DiffCLIP; the generality claim to 'DA broadly' is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A borderline submission: the analysis question is well-motivated and the findings are interesting, but the combination of thin theoretical novelty, missing experimental controls (parameter parity, statistical testing), and under-resolved large-scale results places it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

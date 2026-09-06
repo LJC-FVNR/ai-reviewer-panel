@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper provides a novel, well-motivated theoretical analysis of the empirically observed 'PCC plateau' in attention-based regression with joint MSE+PCC losses, identifying two distinct limitations (optimization-dynamics gradient attenuation scaling as O(1/σ_y^{3/2}) and a convex-hull capacity bound on PCC gain) and proposing ECA, a three-component drop-in module (SRA, DATS, DNPL) each tied to a specific theoretical insight. The theory-practice loop is tight and the method shows consistent improvements across four diverse benchmarks, with particularly strong gains on spatial transcriptomics (~14-16% PCC). However, the experimental rigor is uneven: most main tables (UCI, MOSI, synthetic) report no error bars, standard deviations, or seed counts, and ECA is integrated into only one base architecture per benchmark, leaving the generality and statistical significance of several claimed improvements under-supported.",
+  "strengths": [
+    "First formal theoretical analysis of the PCC plateau phenomenon, decomposing it into an optimization-dynamics bottleneck (Corollary 2.1, gradient ratio decaying as O(1/σ_y^{3/2})) and a convex-aggregator capacity bound (Theorem 2.2), which is genuinely novel and well-motivated.",
+    "Tight theory-method correspondence: each of the three ECA components (SRA, DATS, DNPL) is directly motivated by a specific identified bottleneck (convex-hull limit, near-uniform attention under homogeneity, 1/σ_y gradient attenuation), rather than being ad-hoc engineering tricks.",
+    "Diverse and well-chosen benchmarks that specifically target the high-homogeneity regime the theory addresses, including spatial transcriptomics and video sentiment analysis where in-sample homogeneity is empirically verified (σ=0.068, 0.098).",
+    "The synthetic dataset with controllable homogeneity provides a clean validation of the theoretical predictions (Theorem 2.2's convex-hull bound and the gradient-ratio decay), which is a strong empirical-theoretical bridge.",
+    "Ablation studies on the UCI table cleanly isolate the contribution of each component (e.g., removing DATS drops Appliance PCC to 0.561, removing SRA drops Online News PCC to 0.418), supporting the claim that all three components are necessary."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Most main results tables (Table 1 UCI, Table 2 MOSI, and the synthetic results in Figure 5) report point estimates with no error bars, standard deviations, or number of seeds. Only the spatial transcriptomics table (Table 3) reports ± std over 3 folds. Several UCI improvements are small (Appliance PCC +0.042, Online News +0.012, Superconductivity +0.010) and could plausibly fall within run-to-run variance, so it is currently impossible to judge whether they are statistically real.",
+      "suggested_fix": "Re-run all main experiments over at least 3-5 random seeds (or folds) and report mean ± std for every cell; ideally add paired significance tests (e.g., Wilcoxon signed-rank) against the base architecture. At minimum, UCI and MOSI tables must include variance."
+    },
+    {
+      "severity": "major",
+      "issue": "ECA is integrated into only a single base architecture per benchmark (FT-Transformer for UCI, EGN for spatial transcriptomics, ALMT for MOSI). The central claim that ECA is a 'drop-in replacement for softmax attention' that 'consistently breaks the PCC plateau' is under-supported for generalization: it is unclear whether the gains come from ECA specifically or from interactions with the chosen base model.",
+      "suggested_fix": "Apply ECA to at least one additional base architecture per benchmark (e.g., a second tabular transformer for UCI, a different MSA backbone for MOSI) to demonstrate the improvement is architecture-agnostic, as claimed."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines are narrow relative to the generality claimed. UCI has no non-attention baselines (e.g., gradient boosting, XGBoost, MLP) to contextualize whether attention-based regression is even competitive on these tabular tasks; MOSI compares against 10 baselines but only augments ALMT, so 'ALMT+ECA' vs. other methods conflates ECA's contribution with ALMT's. No baseline tests the individual mechanisms against simpler alternatives (e.g., plain adaptive-temperature softmax without DATS's dispersion coupling, or a plain residual scaling without SRA's learned γ).",
+      "suggested_fix": "Add at least one strong non-attention tabular baseline for UCI; add ECA to a second MOSI baseline; and include 'naive' versions of each component (fixed-temperature softmax, fixed-γ residual scaling, unnormalized PCC loss) as ablation baselines to isolate the design choices."
+    },
+    {
+      "severity": "minor",
+      "issue": "No sensitivity analysis is provided for the key hyperparameters (λ_PCC, λ_γ, γ_max, β, T_min), and the exact values used per dataset are not reported in the main text. The regularizer L_γ and the clipping γ_max=2 are mentioned as optional but their effect is never ablated.",
+      "suggested_fix": "Report all hyperparameter values used per dataset in a table, and provide a sensitivity study (e.g., a sweep over γ_max ∈ {1.5, 2, 3, 5} and λ_PCC) showing ECA is robust to these choices."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several theoretical assumptions are under-discussed: Corollary 2.1 assumes ρ ∈ [0,1] (what happens when ρ is negative during early training?); Theorem 2.2 requires R < σ0/∥w∥2 (what is the regime of interest when this is violated?); and the StopGrad in DNPL changes the optimization landscape in a way that is only briefly justified.",
+      "suggested_fix": "Add a short discussion of the regime where the assumptions fail and whether the conclusions still hold qualitatively; provide empirical evidence that StopGrad(σ_y) does not change stationary points in practice (e.g., compare final PCC with and without StopGrad)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'first rigorous theoretical analysis' claim is strong; while the related work section notes that 'interaction dynamics between MSE and PCC under joint optimization remain underexplored', no explicit comparison is made to prior gradient-analyses of attention or to prior work on affine-invariant losses, which would help delineate the novelty.",
+      "suggested_fix": "Explicitly contrast with prior gradient/expressivity analyses of softmax attention (e.g., Bhojanapalli et al., 2020; Yang et al., 2017) and state precisely what is new versus what is a re-derivation in the regression setting."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the standard deviations / seed counts for the UCI (Table 1) and MOSI (Table 2) results? Are the UCI PCC improvements (e.g., +0.012 on Online News) statistically significant over multiple seeds?",
+    "How sensitive is ECA to γ_max, λ_PCC, and β? Was γ_max=2 used in all experiments, and does performance degrade gracefully if it is increased or removed?",
+    "Have you tried applying ECA to a second base architecture per benchmark (e.g., a different tabular transformer, or a non-ALMT MSA model) to confirm the gains are not specific to the chosen backbone?",
+    "In Theorem 2.2, the bound requires R < σ0/∥w∥2; empirically, what fraction of samples/datasets satisfy this, and what happens to ECA's benefit when the condition is violated?",
+    "Does the StopGrad in DNPL truly leave stationary points unchanged in practice? Could you show a controlled comparison of final PCC with vs. without StopGrad under identical settings?",
+    "For the synthetic dataset, how is the 'key element' identified by the model, and does the conclusion extend beyond the single-key-element construction to more realistic multi-signal settings?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped to the evidence, but the 'drop-in' generality claim and the 'consistent improvements' framing are modestly over-stated given that only one base architecture per benchmark is tested and most tables lack variance estimates.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "The PCC plateau is a real and broadly observed phenomenon in attention-based regression, and a principled theoretical account plus a working fix is of clear interest to ICLR's representation-learning community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "First formal decomposition of the plateau into an optimization-dynamics bottleneck and a convex-hull capacity bound; the individual ECA components resemble known ideas (residual scaling, adaptive temperature, gradient normalization) but their theory-driven combination is new."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Theorems are correctly derived and the synthetic experiments validate them, but key assumptions (ρ∈[0,1], R<σ0/∥w∥2) are under-discussed and the StopGrad justification is mostly verbal."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only one of four main result tables reports variance (Table 3, 3-fold); UCI, MOSI, and synthetic results have no error bars, seeds, or significance tests, leaving several small UCI gains statistically unverified."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Most claims are scoped to the evidence and limitations are acknowledged, but 'drop-in replacement' and 'consistent improvements across diverse benchmarks' slightly overstate the breadth given one backbone per benchmark and missing variance."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well written with a clean theory-method-experiment narrative; notation is consistent and the motivation for each component is clearly tied to its corresponding theorem."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (intro, theory, method, related work, experiments, conclusion) is followed and length appears reasonable for ICLR."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Architecture and high-level data processing are described, but exact per-dataset hyperparameters (λ_PCC, β, T_min, γ_max, λ_γ), the γ-MLP shape, and seeds are not reported in the main text; appendix may help but main-text reproducibility is incomplete."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Related work covers correlation learning and softmax attention expressivity, but the positioning against prior gradient/expressivity analyses of attention is thin and the novelty boundary is not sharply drawn."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative figures that directly support the claims (plateau illustration, gradient-ratio validation, σ_y growth, synthetic homogeneity sweep, training curves); no decorative figures."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four benchmarks is adequate, but only one base architecture per benchmark, no non-attention baselines for UCI, and ECA applied to only one of the 10 MOSI baselines under-support the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline-accept ICLR submission: novel, well-motivated theory with a working method, held back from a clear accept by missing variance estimates and narrow backbone/baseline coverage that are fixable in revision."
+    }
+  },
+  "publishability_probability": 0.42
+}

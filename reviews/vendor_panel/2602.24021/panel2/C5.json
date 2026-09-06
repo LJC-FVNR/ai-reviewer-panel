@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD combines gradient-free attention-head selection (RSA) with a lightweight hierarchical meta-controller performing context-dependent anisotropic feature scaling inside a frozen MLLM for tuning-free video anomaly detection. The data-efficiency story (1% calibration) and the stability of expert selection are appealing, and the ablation suite is broader than many submissions. However, the core mechanism is essentially FiLM-style feature modulation applied to probed heads, limiting technical novelty; the headline gains over the closest competitor (HiProbeVAD) are marginal on UCF-Crime (+0.43% AUC) with no error bars or significance testing; and the paper omits any discussion of HiProbeVAD despite it being the nearest baseline. With added statistical rigor, per-category analysis, a third dataset, and honest positioning, this could become a solid ICLR contribution.",
+  "strengths": [
+    "The data-efficiency framing is compelling: the saturation analysis (Table 4) showing only +0.27% AUC gain from 1% to 100% calibration data is a strong, well-presented result.",
+    "The stability analysis (Table 3) reporting identical LAE selection across 10 seeds with sigma~0.04% AUC, if it holds up, meaningfully addresses the natural concern about 1% calibration.",
+    "The ablation suite is reasonably comprehensive, isolating the global gate, local gating module, steering formulation, expert selection strategy, K, and F with clear takeaways.",
+    "The real-time single-pass problem formulation is well-motivated for deployment, and post-hoc explainability via re-querying the frozen MLLM is a nice practical touch."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Table 1 reports single point estimates with no error bars, variance, or significance tests for any method. On UCF-Crime the margin over HiProbeVAD is only +0.43% AUC (87.15 vs 86.72); it is impossible to judge whether this is real or noise without variance estimates.",
+      "suggested_fix": "Report SteerVAD over >=5 seeds (varying both the 1% calibration subset and HMC training seed) with mean+/-std, and run paired significance tests against the top 2-3 tuning-free baselines."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The stability analysis (Table 3) is described as '10 independent calibration runs using different random seeds,' but it is unclear whether the 1% calibration SUBSET was re-sampled across seeds or only the HMC training seed varied on a fixed 16-video subset. If the subset is fixed, identical-LAE selection only shows RSA determinism on fixed data, not robustness to subset choice.",
+      "suggested_fix": "State explicitly whether the subset was re-sampled; if not, run a separate experiment varying the subset and report LAE overlap and AUC variance across different 1% subsets."
+    },
+    {
+      "severity": "major",
+      "issue": "HiProbeVAD ([Author] et al., 2025) is the closest competitor (86.72% UCF, 82.15% XD) yet is absent from Related Work, and the paper never explains how SteerVAD differs methodologically. Given near-identical UCF-Crime numbers, novelty cannot be assessed without this comparison.",
+      "suggested_fix": "Add a dedicated paragraph or comparison table delineating SteerVAD from HiProbeVAD and VERA: mechanism, what is frozen vs trained, data fraction, and why SteerVAD is different/better."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'manifold rectification' / 'geometric intervention' framing is invoked heavily (title, abstract, intro) but the actual operation is element-wise feature scaling h'_i = h_i * (1 + s_global * g_i), a standard FiLM-style modulation applied to probed heads. The topological analysis in Appendix A is referenced repeatedly but absent, making the geometric claims unverifiable as more than re-interpretation.",
+      "suggested_fix": "Either include Appendix A so reviewers can verify the geometric claims, or moderate the framing to 'context-dependent feature modulation of task-aligned attention heads' and reserve manifold language for motivation."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is under-supported: only two dated datasets (UCF-Crime, XD-Violence) with no per-category breakdown across the 13 and 6 anomaly types. The 'SOTA among tuning-free methods' claim rests on aggregate numbers that may hide category-specific regressions.",
+      "suggested_fix": "Add per-category AUC/AP results and ideally a third benchmark (e.g., ShanghaiTech, MSAD) to support the generality claim; report where SteerVAD wins and loses per category."
+    },
+    {
+      "severity": "minor",
+      "issue": "Inference cost is not reported despite emphasizing real-time single-pass scoring and 'negligible computational overhead.'",
+      "suggested_fix": "Report per-segment latency and throughput (videos/sec) for SteerVAD vs the frozen backbone alone and vs at least one tuning-free baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "The abstract/conclusion claim SteerVAD 'establishes it as a powerful new direction,' overclaimed relative to evidence: competitive with (not clearly above) the nearest tuning-free baseline on UCF-Crime and still below fine-tuned Holmes-VAD (89.51%).",
+      "suggested_fix": "Soften to 'a data-efficient and competitive alternative' and explicitly state the remaining gap to fine-tuned methods in the conclusion."
+    }
+  ],
+  "questions_for_authors": [
+    "In Table 3, were the 1% calibration SUBSETS re-sampled across the 10 seeds, or was only the HMC training seed varied on a fixed 16-video subset? If the latter, can you report results with re-sampled subsets?",
+    "How does SteerVAD differ methodologically from HiProbeVAD, and why does it outperform it by only +0.43% AUC on UCF-Crime but +0.87% AP on XD-Violence?",
+    "Is the element-wise scaling in Eq. 4 different in substance from FiLM/feature-wise modulation, and what does the Appendix A topological analysis add beyond a geometric re-interpretation?",
+    "What are the per-category AUC/AP results, and are there anomaly types where SteerVAD underperforms HiProbeVAD or VERA?",
+    "What is the inference latency/throughput of SteerVAD relative to the frozen InternVL3 backbone and to LAVAD/EventVAD?"
+  ],
+  "calibration_check": "Claims are partially over-scoped: 'state-of-the-art among tuning-free methods' is appropriately limited, but 'powerful new direction' and the heavy manifold/geometric framing exceed what the marginal UCF-Crime gains and the absent Appendix A support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Tuning-free VAD with data efficiency is useful, but marginal gains over the nearest competitor limit likely impact and citation uptake."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The combination of probed head selection with FiLM-style modulation for VAD is new as an application, but the constituent techniques are established and the manifold framing adds limited technical novelty."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is sound and ablations are decent, but missing error bars, an unclear stability-analysis design, and an absent Appendix A weaken the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No variance or significance tests on the main comparison, ambiguous stability analysis, and only two datasets fall below the ICLR experimental-rigor bar."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "SOTA claim is scoped to tuning-free methods, but 'powerful new direction' and the geometric framing modestly overclaim relative to the evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Readable and well-organized, though the dense manifold/geometric terminology somewhat obscures the simplicity of the actual operation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard Abstract/Intro/Related/Method/Experiments/Conclusion structure is followed and length appears within ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, hyperparameters, and training settings are specified, but referenced appendices (A, B, G) are absent and some architectural details are incomplete."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of traditional and MLLM-based VAD is reasonable, but the conspicuous omission of HiProbeVAD (the closest competitor) undermines fair positioning."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative conceptual, framework, and UMAP/t-SNE visualizations that support the claims, though they are fairly standard."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two dated datasets, no per-category breakdown, and a thin set of close tuning-free baselines under-support the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising and well-ablated idea undermined by missing statistical rigor, marginal headline gains, and under-supported generality that require substantial added analysis."
+    }
+  },
+  "publishability_probability": 0.25
+}

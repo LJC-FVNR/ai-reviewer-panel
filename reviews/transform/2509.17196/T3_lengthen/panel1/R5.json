@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper adapts crosscoders — a sparse-autoencoder variant designed for cross-layer feature alignment — to track feature evolution across training checkpoints of Pythia-160M and Pythia-6.9B. The core empirical contributions include an emergence hierarchy (previous-token < induction < context-sensitive features), a universal directional turning point around step 1,000, and a proposed two-phase 'statistical-to-superposition' transition supported by KL-divergence and feature-dimensionality analyses. The research question is timely and the methodology is coherent, but the paper is held back by limited model/architecture scope (single family, single layer per model), questionable statistical framing of a weak correlation as 'moderate,' reliance on LLM-generated complexity labels without reliability assessment, and key validation material (crosscoder alignment quality, decoder-norm proxy validity) being deferred to appendices rather than justified in the main text. As submitted, the work is not at the ICLR acceptance bar but represents a promising direction that could be strengthened with broader experimental scope and more rigorous statistical treatment.",
+  "strengths": [
+    "The research question — how features mechanistically emerge during pre-training — is genuinely important and underexplored; the crosscoder adaptation to temporal snapshots is a natural but non-trivial methodological move.",
+    "The emergence hierarchy finding (previous-token → induction → context-sensitive features) is consistent with prior causal theory (Olsson et al., 2022) and provides a concrete, interpretable empirical anchor for the paper's claims.",
+    "Connecting microscopic feature evolution to macroscopic task metrics via attribution-patching-based circuit tracing (Section 5) is an ambitious and useful contribution; the ablation showing within ~tens of features one can disrupt or recover performance across training snapshots is striking.",
+    "Providing evidence at two model scales (160M and 6.9B) and demonstrating qualitatively similar trends in both adds useful cross-scale support to the main findings.",
+    "The statistical-to-superposition phase transition hypothesis is intellectually interesting, grounded in information-bottleneck theory, and testable — the bi-gram KL divergence convergence aligned with loss approaching entropy is a clean measurement."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Core alignment quality validation deferred to appendices: whether crosscoders actually map the 'same' semantic feature to the same dictionary direction across snapshots (rather than spuriously co-aligning unrelated features or splitting a single concept) is THE critical prerequisite for all downstream analyses. The two theoretical concerns acknowledged by the authors (misalignment and splitting) are addressed only in Appendix A, with the main text offering only informal arguments. Without this moved into the main paper with quantitative metrics, the entire edifice rests on unverified assumptions.",
+      "suggested_fix": "Promote the Appendix A completeness/faithfulness evaluation to a dedicated subsection in Section 3, reporting concrete metrics (e.g., monosemanticity scores, cross-snapshot cosine similarity distributions, and the linear probe results from Appendix C) and providing at least one example of potential misalignment or splitting to bound failure modes."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The Pearson r = 0.309 (n = 100) for complexity vs. emergence time is described as 'moderate strength,' but r² ≈ 0.10 means the complexity score explains less than 10% of timing variance — this is a weak effect by any standard convention (Cohen, 1988). Compounding this, the complexity scores themselves come from a single Claude Sonnet 4 evaluation pass with no inter-rater reliability (human or model) reported, no rubric validation, and no sensitivity analysis to prompt wording — making the dependent variable essentially unvalidated.",
+      "suggested_fix": "Relabel the correlation honestly as 'weak but statistically significant (r = 0.31, p = 0.002).' Conduct at least a second LLM evaluation pass (e.g., with a different prompt or model) and report consistency; ideally add a small human annotation set (even 20–30 features) to validate the automated scores. The claim that 'more complex features emerge later' is directionally believable and worth reporting, but the current framing overstates the strength of evidence."
+    },
+    {
+      "severity": "major",
+      "issue": "Experimental scope is limited to a single model family (Pythia) and single mid-layer per model. The paper acknowledges generalizability as a limitation but presents results with language that implies broad applicability (e.g., 'universal directional turning point,' 'phase transition'). No validation on any other architecture (GPT-NeoX, OLMo, Mistral, LLaMA) or different layers is provided, and the choice of Layer 6 (Pythia-160M) and Layer 16 (Pythia-6.9B) is justified only as 'middle layers' without checking whether patterns differ in early or late layers.",
+      "suggested_fix": "Either tone down 'universal' claims to be Pythia-specific, or add at least one additional model family (OLMo has public checkpoints) and one additional layer per model (early/late) to test robustness. Even null results (e.g., patterns do not hold in early layers) would sharpen the paper's contribution."
+    },
+    {
+      "severity": "major",
+      "issue": "No error bars, confidence intervals, or variance estimates appear on the main figures for feature emergence distributions, decoder-norm trajectories, or dimensionality dynamics. With stochastic training and 32 discrete snapshots, it is unclear whether the observed patterns would differ under different random seeds for the crosscoder training, different activation samples, or different subsets of features.",
+      "suggested_fix": "Report confidence intervals on the distributions in Figures 4, 5, and 8. For key quantitative claims (e.g., 70% dimensionality ratio, step-1000 turning point), report sensitivity to crosscoder random seed (even 2–3 runs suffices for 160M scale)."
+    },
+    {
+      "severity": "major",
+      "issue": "The downstream tasks (SVA, induction, IOI) used to connect feature evolution to model behavior are all well-studied toy benchmarks on a 160M-parameter model. The paper acknowledges this but the stated reason ('constrained by Pythia model capabilities, sparse dictionary quality, and circuit tracing methodologies') reads as a design choice rather than a fundamental constraint — Pythia-6.9B is capable of more complex tasks, and attribution patching has been applied beyond 160M models in prior work.",
+      "suggested_fix": "Extend at least one attribution analysis to Pythia-6.9B, and/or to a slightly more complex task (e.g., multi-hop reasoning or entity tracking) to demonstrate that the micro-to-macro connection is not unique to toy circuits."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 32-snapshot stratified sampling strategy (20 before step 10k, 12 after) is sensible but could bias phase-transition timing estimates. The paper does not discuss whether the observed turning point at step ~1,000 is an artifact of the dense early-snapshot sampling.",
+      "suggested_fix": "Report a brief sensitivity analysis showing that the step-1,000 turning point is robust to snapshot subsets, e.g., using only uniformly spaced snapshots."
+    },
+    {
+      "severity": "minor",
+      "issue": "The crosscoder sparsity hyperparameter λ_sparsity and the choice of activation function σ(·) are mentioned but treated as settled in the main text, with selection details deferred to Appendix A.1. Given that L0 norm and explained variance both depend heavily on these choices, readers need at least a sentence on the chosen values and their effect on the main results.",
+      "suggested_fix": "Add one line in Section 3 stating the final λ_sparsity value used and citing the Appendix for the ablation; include the main trade-off in a supplementary table rather than leaving it entirely implicit."
+    }
+  ],
+  "questions_for_authors": [
+    "The decoder norm is used as the primary proxy for feature presence/strength, but this depends on the L1 regularization driving irrelevant snapshot norms to near-zero. Could you report what fraction of features have near-zero norms at early snapshots versus late snapshots, and whether the threshold choice (0.3 for lifetime computation) significantly affects the lifetime distribution shown in Figure 5b?",
+    "For the 'universal directional turning point' at step ~1,000, how sharp is this transition — is it consistent across all feature types (initialization vs. emergent), and does it also appear in Layer 16 of Pythia-6.9B? The figure caption mentions Pythia-160M and 6.9B for Figure 5c but the text primarily discusses 160M.",
+    "The complexity-scoring experiment samples 100 features 'randomly.' Were these sampled uniformly across emergence times, or stratified? Given the weak correlation, the composition of this sample matters: if emergence-time coverage is uneven, the r value could be significantly different under different sampling strategies.",
+    "Figure 8c reports that Pythia-6.9B features account for a smaller proportion of activation-space dimensions and attributes this to the 32,768-feature crosscoder being undersized. Have you validated that a larger crosscoder (e.g., 98,304 features) on Pythia-6.9B recovers a similar 70% ratio, or does the discrepancy reflect a genuine model-size difference in superposition behavior?",
+    "Could you clarify what 'Layer 6' of Pythia-160M represents architecturally? Pythia-160M has 12 transformer layers — Layer 6 is roughly the middle. Is the step-1,000 turning point also observed at Layer 3 (early) and Layer 10 (late), or is it specific to mid-layer representations?",
+    "The attribution patching in Section 5 uses the first-order Taylor approximation. Prior work (e.g., Kramár et al., 2024) has noted that this approximation can be unreliable for nonlinear components. Did you validate the approximation quality (e.g., comparing Taylor attribution to activation patching for a subset of features), and how does reconstruction error θ(x) affect the attribution estimates?"
+  ],
+  "calibration_check": "The central empirical claims (emergence hierarchy, step-1,000 turning point, two-phase transition) are plausibly supported by the presented evidence for Pythia models, but the paper occasionally overstates scope — particularly in labeling a weak correlation (r = 0.31) as 'moderate,' describing findings specific to one model family and one layer per model as 'universal,' and using the word 'transition' for what is currently a correlational observation rather than a controlled intervention.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Tracking feature evolution during pre-training is a high-value research direction for mechanistic interpretability; the emergence hierarchy and phase-transition framing would be cited and built upon by the ICLR community if better validated."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Adapting crosscoders from cross-layer to cross-snapshot analysis is a natural extension of Lindsey et al. (2024), not a fundamental methodological advance, but the empirical findings on emergence timing, directionality dynamics, and the statistical-to-superposition transition are new observations."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The crosscoder framework and attribution patching are methodologically sound, but the phase-transition claim relies on correlational evidence, key alignment validations are deferred to appendices, and causal language is used where only associational analysis is performed."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "r = 0.309 is mislabeled as 'moderate,' complexity scores lack reliability validation, most figures lack error bars or confidence intervals, and no multi-seed crosscoder runs are reported to assess variance in the main findings."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations section is candid about scope, generalizability, and task complexity, but the main body uses 'universal,' 'moderate,' and 'phase transition' in ways that outrun the evidence provided."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable and the overview figure (Figure 1) is well-motivated, but the mathematical notation in Equations 1–5 is not consistently defined inline, and the relationship between cross-layer and cross-snapshot crosscoders is underexplained for readers unfamiliar with Lindsey et al. (2024)."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (introduction, related work, method, experiments, conclusion) within appropriate length, though the critical feature-alignment validation belongs in the main body rather than the appendix."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model suite (Pythia), dataset (SlimPajama), snapshot selection strategy, and layer choices are described, but crosscoder training hyperparameters (λ_sparsity, learning rate, batch size, dictionary size choices) are partially deferred to appendices and the automated complexity-scoring prompt is only in an appendix."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of SAE/crosscoder and training-dynamics literatures is reasonable, but the paper misses relevant work on intrinsic dimensionality evolution during training, representation similarity analysis across checkpoints, and the broader circuit-formation literature beyond the toy examples cited."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the figures appear well-designed and directly support the paper's claims — Figure 5c (cosine similarity heatmap across snapshots) and Figure 8 (KL divergence + dimensionality dynamics) in particular are informative diagnostic displays, though absence of error bands on trajectory figures limits their interpretability."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only Pythia models (single architecture family), single mid-layer per model, and three simple benchmark tasks are used; the claimed universality of patterns is not validated outside this narrow setting, and the paper's own limitations section confirms this gap."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting and timely paper with a coherent methodology and genuinely new empirical observations, but limited experimental scope, a mislabeled weak correlation as a key result, deferred critical validation, and no error quantification across the main figures collectively put it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.22
+}

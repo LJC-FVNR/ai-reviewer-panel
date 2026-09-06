@@ -1,0 +1,107 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a token-attribution method for decoder-only LLMs that fuses attention-value flow (a 'causal gate'), Hutchinson/Pearlmutter Hessian-vector-product sensitivity, and KL-based masking impact, plus a new curated evaluation dataset. The idea is reasonable and the experimental scope (4 models, several datasets, ablations, robustness sweeps) is broad, but the central claims of causal faithfulness are not validated, the reported margins are implausibly large and unexplained, and the evaluation raises a serious circularity concern between the KL-masking component and the perturbation-based faithfulness metrics. Combined with overclaiming and boilerplate limitations, the evidence does not yet support the paper's conclusions.",
+  "strengths": [
+    "Addresses a genuine gap: most attribution tooling targets encoder models and first-order approximations, and decoder-only generative attribution is a live, useful problem.",
+    "Broad experimental surface on paper: four decoder-only models spanning scales (GPT-J 6B to LLaMA-3.1 70B), three established benchmarks plus a curated dataset, ablations over the three components, and decoding-hyperparameter and syntactic-rephrasing robustness studies.",
+    "The motivation for a second-order term is articulated with a concrete saturated-activation example where gradients vanish but finite perturbations still matter, and the method uses scalable HVP machinery (Pearlmutter/Hutchinson, low-rank + windowing) rather than forming the full Hessian.",
+    "Related work engages fairly with recent generative-attribution methods (ContextCite, TDD, Peering/PML, ReAgent) and names their specific limitations."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Likely circular/unfair evaluation. HETA includes a KL-divergence-under-masking term as a scoring component, while the headline faithfulness metrics (Soft-NC/Soft-NS) are themselves perturbation/masking-based. A method that scores tokens by their masking impact will mechanically excel on a masking-based faithfulness metric, which plausibly explains the 5-10x gaps rather than genuinely better attribution.",
+      "suggested_fix": "Report faithfulness with metrics that are independent of the method's own masking mechanism (e.g., leave-one-out with a different perturbation family, insertion/deletion AUC computed without KL, or true causal interventions), and include an ablation showing HETA's advantage persists when the KL component is removed from the score but the metric is fixed."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Implausible, unexplained margins with apparently broken baselines. Table 3 reports HETA Soft-NC ~10.3 vs. next-best ~2.3, and many baselines (Attention Rollout -1.48, IG, TDD) return negative values; Table 2 shows HETA <1% variation vs. every baseline >2%. Such uniform, order-of-magnitude gaps are a red flag for mis-implemented or untuned baselines rather than a real effect.",
+      "suggested_fix": "Provide baseline implementation details, tuning, and sanity checks; explain the metric scale and why baselines go negative; and demonstrate the gap is not an artifact of the metric normalization or baseline configuration."
+    },
+    {
+      "severity": "major",
+      "issue": "Causal-faithfulness claims are asserted, not demonstrated. The 'causal gate' is an attention rollout, which the paper's own Motivation section argues is not a faithful causal signal; no ground-truth causal intervention or controlled synthetic setting validates that HETA recovers true causal contributions. The promised theoretical properties/error bounds are relegated to an appendix that is not shown.",
+      "suggested_fix": "Add a controlled setting with known causal structure (synthetic or constructed) to test recovery, and surface the theoretical guarantees and their assumptions in the main text."
+    },
+    {
+      "severity": "major",
+      "issue": "'Human alignment' is conflated with LLM-generated labels. The abstract and F1 analysis reference 'human annotations,' but the curated dataset's labels are produced by GPT-4o and GPT-5 intersection, not humans. This is a calibration/honesty problem and undermines the alignment claim.",
+      "suggested_fix": "Relabel these as model-generated annotations throughout, and add at least a subset of true human annotations to substantiate the human-alignment claim."
+    },
+    {
+      "severity": "major",
+      "issue": "Self-defined winning metric. DSA is introduced by the authors and HETA dominates on it by large margins; the metric's definition is presented ambiguously and evaluates precisely the two-segment structure the method is designed to exploit. Winning on a bespoke metric is weak standalone evidence.",
+      "suggested_fix": "Validate DSA against established attribution-quality metrics and human judgments, and show HETA's ranking is preserved under independent, pre-existing metrics."
+    },
+    {
+      "severity": "minor",
+      "issue": "Overclaiming and boilerplate limitations. Phrases like 'establishing a new standard' and 'causally faithful' overstate the evidence, and the Limitations section is generic and does not confront the circularity, baseline, or annotation issues.",
+      "suggested_fix": "Scope claims to the evidence and expand limitations to name the specific methodological risks above."
+    },
+    {
+      "severity": "minor",
+      "issue": "Statistical reporting is thin relative to the claims. Three seeds with reported std but no significance tests, no confidence intervals on the DSA/robustness comparisons, and no discussion of variance across the decoding grid beyond a single max-relative-change number.",
+      "suggested_fix": "Add paired significance tests and CIs; report full distributions rather than max-relative-change summaries."
+    }
+  ],
+  "questions_for_authors": [
+    "Does HETA retain its advantage on Soft-NC/Soft-NS when the KL-masking component is removed from the attribution score (to rule out circularity with the masking-based metric)?",
+    "Why do multiple baselines yield negative faithfulness/DSA values, and how were they implemented and tuned? Can you show they match published performance in a shared setting?",
+    "What explains the 5-10x margin over ReAgent on Table 3? Is the metric bounded, and how is it normalized?",
+    "Is there any ground-truth causal validation (synthetic or interventional) showing the attention-rollout gate recovers causal, not merely attentional, structure?",
+    "Given labels come from GPT-4o/GPT-5, can you justify calling the alignment 'human,' and can you provide human-annotated validation?"
+  ],
+  "calibration_check": "Claims are over-scoped relative to the evidence: 'causally faithful' and 'new standard' are asserted without causal validation, the flagship results likely benefit from circularity with the evaluation metric, and LLM labels are presented as human annotations.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Decoder-only attribution is an important, timely problem, but the impact is undercut because the reported gains are not yet credible."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The contribution is a sensible but largely incremental combination of existing tools (attention rollout, HVP-based Hessian sensitivity, KL masking) rather than a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "Causal-faithfulness claims are unsupported, baselines appear broken (negative scores), and a plausible circularity between the KL component and masking-based metrics undermines the core comparison."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Three seeds with small reported std are given, but there are no significance tests or CIs and the implausibly large, uniform margins are left unexplained."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Overclaims ('new standard,' 'causally faithful'), conflates LLM labels with human annotations, and offers only boilerplate limitations that avoid the real methodological risks."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Structure is logical and the motivation is clear, but the method's key equations are dense and ambiguously presented and much of the substance is deferred to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, motivation, background, method, experiments, ablations, related work, conclusion, limitations) is present and appropriately sized."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Models, datasets, key hyperparameters (weights, rank, windowing) and dataset construction are described, but baseline implementation details and several derivations live in unshown appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of classic attribution and recent generative-attribution methods is fair and reasonably current, with specific critiques of competitors."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative ablation and robustness figures that map to the claims, but they lean heavily on appendix content and a self-defined metric."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models across scales and multiple datasets plus ablations and robustness sweeps give reasonable breadth, though generality claims outrun the credibility of the evidence."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising direction with broad experiments, held below the bar by unsupported causal claims, implausible margins, likely evaluation circularity, and conflated annotations that require a major evaluation redo."
+    }
+  },
+  "publishability_probability": 0.15
+}

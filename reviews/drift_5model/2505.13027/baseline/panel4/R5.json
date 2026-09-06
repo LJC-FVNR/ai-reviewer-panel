@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-matrix framework unifying additive and multiplicative positional encodings, then uses synthetic tasks to identify a 'single-head deposit pattern' in RoPE—a concentration of positional logic into one shallow head—and provides a gradient-amplification theoretical argument for its inevitability. The core observation is genuinely interesting and the framework is conceptually clean. However, the entire empirical case rests on two simple synthetic tasks with a 6-layer decoder, and the connection between the deposit pattern and RoPE's known practical trade-offs on real language tasks is asserted but never empirically established. Statistical reporting is inadequate, and several theoretical claims rest on unverified idealized assumptions.",
+  "strengths": [
+    "The Toeplitz-based decomposition cleanly unifies additive (Absolute, T5, ALiBi) and multiplicative (RoPE) PE families, providing a common language for mechanistic comparison that the community currently lacks.",
+    "The 'single-head deposit pattern' is a concrete, falsifiable, and novel empirical phenomenon, clearly demonstrated in the controlled synthetic setting through well-designed head-wise causal ablations.",
+    "The four ablation studies (Abs+RoPE hybrid, partial-head RoPE, MLA, layer-wise activation ablation) are thoughtfully sequenced to progressively isolate the mechanism—each ablation answers a distinct causal question.",
+    "Connecting the finding to MLA (DeepSeek-V3) as a naturally occurring mitigation is a useful practical hook that grounds the theoretical story.",
+    "The gradient-coherence argument (Propositions 6.1–6.2, Theorem 6.1) provides a plausible mathematical story for why multiplicative coupling produces seed coherence whereas ALiBi cancels, which is nontrivial."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The entire empirical case is restricted to two small synthetic tasks (100k / 50k examples) with a 6-layer decoder. The paper's central claim—that the deposit pattern is a mechanistic explanation for RoPE's 'practical performance paradox'—requires at minimum some validation in a pre-trained LLM (e.g., verifying that the deposit pattern exists in Llama-style models via probing or ablation). As submitted, the link to real-world trade-offs is purely asserted.",
+      "suggested_fix": "Run a head-criticality ablation on at least one medium-scale pre-trained RoPE model (e.g., 1B–7B parameters). Even a single experiment showing that shallow heads in real models bear disproportionate positional responsibility would substantially strengthen the claim."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical reporting is inadequate throughout. 'Variance less than 5%' (Section 4, paragraph 1) is both vague and insufficient: it does not specify whether this is standard deviation, range, or coefficient of variation; figure captions (Figs. 2–3) do not mention error bars; no significance tests are reported for any performance comparison. For a paper whose main empirical claims hinge on quantitative accuracy differences (e.g., RoPE 92.64 vs. MLA 88.34 in Table 1), the absence of confidence intervals makes it impossible to assess whether differences are meaningful.",
+      "suggested_fix": "Report mean ± std dev across seeds for all accuracy numbers, add error bands to learning curves, and include a brief significance test (e.g., paired t-test or bootstrap CI) for key pairwise comparisons in Table 1 and Figure 4."
+    },
+    {
+      "severity": "major",
+      "issue": "The claimed paradox ('RoPE underperforms on certain tasks') is not actually demonstrated in the paper's own experiments. On Task 2 (position-agnostic), RoPE performs strongly—it is ALiBi that underperforms. The motivation for the deposit pattern as a 'drawback' therefore rests on a paradox claimed in a citation (Kazemnejad et al., 2023) but not reproduced here, leaving the framing weakly grounded.",
+      "suggested_fix": "Either replicate the conditions under which RoPE underperforms relative to NoPE (as in Kazemnejad et al.) within the synthetic framework, or add a third task designed to exhibit this failure mode, so the paper is empirically self-contained."
+    },
+    {
+      "severity": "major",
+      "issue": "Theorem 6.1 (exponential amplification) requires each inter-layer gain γ_k > 1 (equation 5), but this is never verified under the stated assumptions; it is stated as a consequence rather than derived. Assumption A2 ('monotone anchor path') is empirically plausible but circular in context—it essentially assumes a learning signal exists in the direction of interest, which is close to assuming the conclusion.",
+      "suggested_fix": "Either provide a derivation that γ_k > 1 follows from Assumptions A1–A3 with explicit parameter dependencies, or soften the theorem to 'polynomial amplification under additional conditions X' with the conditions made explicit."
+    },
+    {
+      "severity": "major",
+      "issue": "Breadth is insufficient to support the generality claimed. All experiments use a single architecture (6-layer decoder), a single model size, sequences of unspecified length, and only 2 tasks. It is unknown whether the deposit pattern depends on depth, number of heads, sequence length, or vocabulary size. At least a brief sensitivity analysis over one or two of these axes is needed.",
+      "suggested_fix": "Add a small sweep over number of heads (e.g., 4 vs. 8 vs. 16) and sequence length to check whether the deposit pattern is robust or disappears under different capacity regimes."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper's conclusion says it uses 'spectral theory' prominently, but the main text contains no spectral analysis (eigenvalue distributions, Szegő theorem application, etc.)—the referenced Toeplitz spectral literature in Related Work is never actually invoked. This creates a framing mismatch.",
+      "suggested_fix": "Either add a spectral analysis (e.g., eigenvalue comparison of the additive vs. multiplicative logit matrices) or adjust the framing to 'Toeplitz matrix theory' consistently throughout."
+    },
+    {
+      "severity": "minor",
+      "issue": "Figure 4's violin plot description is ambiguous: 'distribution of accuracies after ablating each head' does not specify what the distribution is over (seeds, subsets of test data, random reinitializations?). Without this, the violin width is uninterpretable.",
+      "suggested_fix": "Clarify in the caption and text exactly what source of variance produces the violin distributions."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you verify the deposit pattern in at least one pre-trained RoPE-based LLM using probing or causal ablation? Even a qualitative analysis of head importance distributions in a public model would substantially support the claim.",
+    "In Theorem 6.1, what are the sufficient conditions on the model and data that guarantee γ_k > 1 for all k? The current statement requires this but does not derive it.",
+    "On Task 2 (position-agnostic), RoPE performs well despite the deposit pattern being present (Fig. 4 caption describes a 'shock' shape, not a deposit shape). Does this mean the deposit pattern is absent on Task 2? If so, what activates or suppresses it, and does this weaken the claim that it is an intrinsic property of RoPE?",
+    "The paper claims the deposit pattern 'explains why Transformers using RoPE tend not to form the latent positional representations observed in models with additive or no PE.' This is a causal claim. What is the evidence for the direction of causality—could the absence of latent representations cause the deposit pattern rather than the reverse?",
+    "How sensitive is the deposit pattern to the number of attention heads? With more heads, does a small cluster form rather than a single head, and at what granularity does the paper's theoretical story break down?"
+  ],
+  "calibration_check": "The paper's claims are partly well-scoped (the Toeplitz framework and the synthetic deposit-pattern finding are presented with appropriate caveats) but overreach in connecting the deposit pattern to RoPE's real-world performance paradoxes, which are cited from external work and never reproduced; this gap is acknowledged only briefly in the Limitations section.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The deposit-pattern finding is interesting to mechanistic interpretability researchers, but its scope is currently limited to synthetic tasks; significance would increase substantially if validated in real pre-trained models."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Toeplitz unification and deposit-pattern discovery are genuinely new observations; the additive/multiplicative distinction and gradient-amplification argument are incremental but not routine."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theoretical framework is internally consistent and the ablations are well-designed, but the key proof (Theorem 6.1) relies on an unverified positivity condition (γ_k > 1), and the empirical scope is too narrow to validate the main causal claims."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Variance is described as 'less than 5%' without specifying the measure, figures show no error bands, and no significance tests are reported for any key comparison."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper is honest about the length-generalization link being unvalidated, but the framing of the deposit pattern as an explanation for RoPE's practical paradoxes overreaches the synthetic evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The framework is explained clearly and the ablation structure is logical, but there are writing rough patches, the spectral theory framing is inconsistent with actual content, and Figure 4's violin interpretation is underspecified."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard ICLR structure well; the long ablation section could be tightened, but the overall organization is sound."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Synthetic tasks are described at a level that permits reimplementation, and hyperparameters are deferred to Appendix D; the 6-layer Transformer setup is standard, though sequence lengths and exact vocabulary construction details are missing from the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of PE variants and mechanistic analysis literature is adequate; the positioning of the Toeplitz framework relative to prior matrix-theoretic PE analyses (e.g., Peng et al.) could be sharper."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, the violin ablation plots and accuracy curves appear informative and directly support the claims; the absence of error bands is a presentation gap that limits interpretability."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "All experiments use a single 6-layer decoder on two synthetic tasks; no variation in model scale, depth, head count, or sequence length is explored, and no real-language experiment is included, making generality claims very weakly supported."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "An interesting mechanistic hypothesis with a clean theoretical framework and compelling synthetic evidence, but the combination of missing real-world validation, inadequate statistical reporting, and an overreaching central causal claim places this below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.12
+}

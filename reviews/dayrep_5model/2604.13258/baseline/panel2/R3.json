@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token-attribution framework for decoder-only LLMs that combines target-conditioned attention rollout, Hessian-based curvature sensitivity (via Hutchinson/Pearlmutter HVPs), and KL-divergence information loss, plus a curated dataset and a new DSA alignment metric. The experimental scope is broad (four models, three benchmarks plus a curated set, robustness and ablation studies), but the evidence is undermined by unexplained and implausibly large metric gaps, a self-defined evaluation metric that structurally favors the method, an actual error in the central mathematical motivation, and theory relegated entirely to appendices. The idea is reasonable and the engineering is nontrivial, but the correctness and calibration issues need substantial repair before acceptance.",
+  "strengths": [
+    "Addresses a genuine and timely gap: most attribution methods target encoder models and first-order/linear approximations, and applying them faithfully to autoregressive decoder-only generation is known to be problematic.",
+    "Broad experimental surface — GPT-J-6B, Phi-3-14B, LLaMA-3.1-70B (and Qwen2.5-3B), three established benchmarks (LongRA, TellMeWhy, WikiBio) plus a curated dataset — with robustness tests over decoding hyperparameters and active/passive rephrasings, and a component ablation.",
+    "The scalable second-order estimation (blockwise low-rank + windowing + HVPs, with layer sampling for the 70B model) is a sensible, practical answer to the obvious cost objection, and compute/hardware are stated.",
+    "Related-work positioning against recent generative-attribution methods (ContextCite, TDD, Peering/PML, ReAgent) is specific and reasonably fair in prose."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Implausible and unexplained metric magnitudes. In Table 3, HETA reports Soft-NC of ~10.3/9.2/3.8 while every baseline sits near 0.1–2.1, a 5–10x jump with no explanation of the metric's scale, why the method should dominate by this margin, or why many baselines are negative. Similarly, DSA (Table 1) is positive only for HETA and a couple of methods and strongly negative for all gradient/attention baselines. Gaps this large, absent a scale/units explanation and evidence of fair baseline tuning, read as either a metric artifact or an unfair comparison rather than a real effect.",
+      "suggested_fix": "Define the numeric range and expected null/random-baseline value for Soft-NC/Soft-NS and DSA, show baseline hyperparameter tuning, and report a sanity/upper-bound reference (e.g., oracle attribution) so readers can judge whether a 5–10x gap is meaningful or an artifact."
+    },
+    {
+      "severity": "major",
+      "issue": "Self-serving evaluation and mild circularity. The headline DSA metric is introduced by the authors and rewards concentrating mass on the SciQ segment — exactly the causal-gating behavior HETA is built to produce — while the F1 'alignment' metric compares attributions against GPT-4o/GPT-5 annotations that also serve as the gold labels the method is optimized to match. This risks measuring the method against its own inductive bias.",
+      "suggested_fix": "Add independent, established faithfulness metrics (e.g., comprehensiveness/sufficiency, insertion/deletion AUC) computed identically for all methods, and human (not only LLM) annotation on a subset; report whether HETA's advantage persists on metrics it was not designed around."
+    },
+    {
+      "severity": "major",
+      "issue": "Error in the core mathematical motivation. The text states '∂f(x)/∂x_i = 0 but f(x+εe_i) = f(x)' as evidence that gradients miss higher-order influence — but this says the function does NOT change, contradicting the point. The softplus example (w·x+b ≪ 0) is a regime where both the gradient and the function value are near-flat, so the claim that 'the function value still changes significantly for finite perturbations' is dubious. The central argument for needing the Hessian is thus stated incorrectly.",
+      "suggested_fix": "Correct the inequality (presumably f(x+εe_i) ≠ f(x)), and give a concrete regime/example where the gradient truly vanishes yet a finite perturbation produces a large, curvature-driven change; ideally back it empirically."
+    },
+    {
+      "severity": "major",
+      "issue": "Theory and key procedural details are deferred wholesale. 'Theoretical properties and error bounds' (Appendix A2) and the full algorithm (A3) are not in the main text, so central soundness claims cannot be evaluated. Key estimator parameters (Hutchinson sample count m, rank, windowing effect) are said to be reported 'in our experiments' but m and the accuracy of the low-rank approximation vs. exact Hessian are not shown in the body.",
+      "suggested_fix": "Bring the essential theorem statements/assumptions and the algorithm box into the main paper, and report m, low-rank-vs-full agreement, and variance of the HVP estimator."
+    },
+    {
+      "severity": "major",
+      "issue": "Overclaiming relative to evidence. Abstract/results assert 'a new state-of-the-art', 'establishing a new standard', and 'consistently outperforms' across faithfulness, robustness, and alignment — strong generality claims that rest on a self-defined metric and unexplained gaps, with an unusually brief limitations paragraph.",
+      "suggested_fix": "Scope claims to the metrics and settings actually tested, remove 'new standard' language absent independent-metric confirmation, and expand the limitations discussion (metric validity, annotation reliance, cost)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation/consistency errors. Notation is sloppy (MT called a 'learned semantic transition vector' though it is deterministic attention rollout); Table 1 shows TDD-backward as +0.31 for GPT-J while negative elsewhere (likely a sign typo); Table 3's LLaMA Attention-Rollout row repeats identical values suggesting a copy error; and the text says Qwen results are in the appendix yet Qwen appears as a Table 1 column.",
+      "suggested_fix": "Fix terminology, verify all table entries, and reconcile which Qwen results appear where."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the numeric ranges and random/null baselines for Soft-NC, Soft-NS, and DSA, and why does HETA exceed the next-best method by 5–10x on Soft-NC — is this a scale artifact or a real effect?",
+    "How were baseline methods tuned? Were per-method hyperparameters (e.g., IG baseline/steps, ContextCite ablation budget) optimized, or used at defaults?",
+    "Does HETA retain its advantage under established, method-agnostic faithfulness metrics (comprehensiveness/sufficiency, deletion/insertion AUC) that it was not designed around?",
+    "Please clarify the motivating inequality: is it f(x+εe_i) ≠ f(x)? Can you provide an empirical case where the gradient vanishes but curvature drives a large output change?",
+    "What is the Hutchinson sample count m, and how closely does the rank-64 windowed estimator match the exact Hessian block sensitivity?",
+    "How independent are the DSA/F1 evaluations from HETA's causal gate, given both reward mass on the SciQ evidence span?"
+  ],
+  "calibration_check": "Claims are over-scoped: 'state-of-the-art' and 'new standard' assertions rest on a self-defined metric and unexplained 5–10x margins, not on independent faithfulness measures, and a mathematical error sits in the core motivation.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Faithful attribution for decoder-only LLMs is an important problem, but the questionable evidence limits how much the community can rely on or build on the specific results."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "The three components (attention rollout, Hessian/HVP sensitivity, KL masking) are each established; the contribution is their integration and a curated benchmark, which is incremental rather than fundamentally new."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "A genuine error in the central motivating inequality, unexplained metric magnitudes, and theory deferred entirely to appendices undermine the soundness of the claim–evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Seeds and small std values are reported, but the implausibly large, unexplained gaps and unclear baseline tuning make it hard to trust that the improvements reflect a real, fairly measured effect."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Strong SOTA/'new standard'/'consistently outperforms' claims exceed what a self-defined metric and unverified margins support, and limitations are treated only briefly."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The high-level method is understandable, but notation is loose (e.g., 'learned' gate that is deterministic), the DSA definition is garbled, and key details point offstage to appendices."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference organization (intro, motivation, background, method, experiments, ablation, related work, conclusion/limitations) is present and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Hardware, weights, and estimator family are described, but the main text omits the Hutchinson sample count, low-rank-vs-exact agreement, and full algorithm, and defers much to appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Recent generative-attribution methods are positioned specifically and mostly fairly in prose; the removed reference list is not penalized."
+    },
+    "figure_quality": {
+      "score": 4,
+      "justification": "The overview figure and ablation/robustness bar plots are on-topic and support claims, but the supporting result tables contain apparent copy/sign errors and unexplained scales that weaken their evidentiary value."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and several datasets give reasonable coverage, but the generality claims outrun the evidence given metric-validity concerns and reliance on a single self-defined alignment probe."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A reasonable idea with broad experiments but borderline-reject due to questionable metric evidence, a motivating math error, self-serving evaluation, and overclaiming that require substantial revision."
+    }
+  },
+  "publishability_probability": 0.2
+}

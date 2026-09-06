@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper adapts crosscoders (Lindsey et al., 2024) from cross-layer to cross-snapshot analysis to track feature emergence during Pythia pre-training, and connects those features to downstream tasks via attribution patching. It reports several concrete empirical findings: two populations of features (initialization vs emergent), a directional turning point around step ~1,000, a moderate correlation between feature complexity and emergence time, task-relevant circuits identifiable by <100 features, and a statistical→feature-learning transition consistent with IB theory. The methodological novelty is modest (a repurposing of an existing SAE variant), and the generality is narrow (one model family, one layer per model, simple tasks), but the empirical package is coherent, the causal ablations are meaningful, and the findings would be of interest to the mechanistic-interpretability subcommunity at ICLR.",
+  "strengths": [
+    "Clear, well-motivated adaptation of crosscoders to the training-dynamics setting; the argument that decoder norms track feature presence per snapshot is intuitive and supported by the sparsity/regularizer design.",
+    "Multi-scale analysis: features are not just described but tied causally to downstream task metrics (SVA, IOI, induction) via integrated-gradient attribution and complementary ablations (keep-top-k and remove-top-k), which is stronger evidence than most SAE-descriptive papers provide.",
+    "Direct empirical baseline against per-snapshot SAEs (Fig. 3) showing the crosscoder is not paying a large reconstruction/sparsity penalty for the cross-snapshot alignment — an important sanity check that many interpretability papers skip.",
+    "Concrete, non-trivial empirical findings that go beyond restating existing theory: the near-orthogonal pre-/post-step-1000 direction shift, the emergence-time hierarchy (previous-token → induction → context-sensitive), and the compression-then-expansion of total feature dimensionality tying superposition dynamics to a phase transition.",
+    "Limitations are explicitly stated (scope to Pythia, simple tasks, discrete snapshots), and the phase-transition claim is framed as consistent-with, not proof-of, IB theory."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Generality is asserted more strongly than the evidence supports. Claims like a 'universal directional turning point' and a general 'statistical-to-superposition transition' are drawn from a single model family (Pythia) at a single middle layer per model, on one training-data mixture. Without at least one non-Pythia architecture, one different layer, or one different data mixture, the universality reading is unearned and other explanations (Pythia-specific optimizer schedule, warmup, or data-order artifacts around step ~1000) are not ruled out.",
+      "suggested_fix": "Replicate at least the two headline claims (directional turning point at ~step 1000 and total-dimensionality compression-then-expansion) on either (a) a second open-checkpointed model suite (e.g., OLMo/OLMoE, or a different Pythia size at a different layer) or (b) additional layers of the same models, and soften language from 'universal' to 'consistent within Pythia' where the extra evidence is not run."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin. Aside from the complexity-vs-emergence correlation (r=0.309, p=0.002), most results — reconstruction/L0 curves, ablation recovery curves, KL trajectories, dimensionality dynamics — appear to be reported from single crosscoder training runs at single dictionary sizes, with no seed variation, no confidence intervals, and no significance tests. Given that SAE/crosscoder training is known to be seed- and hyperparameter-sensitive (feature identities can shift across runs), the reader cannot tell how stable claims like 'features emerge around step 1000' are to re-training the crosscoder itself.",
+      "suggested_fix": "Train ≥3 seeds of the crosscoder at the reported dictionary size, report mean±std or bootstrap CIs on the emergence-time distribution, the directional-turning-point step, the top-k ablation recovery, and the total-dimensionality curve. Where a claim depends on a threshold (e.g., 'lifetime = |{θj : ‖W_dec‖>0.3}|'), demonstrate that the qualitative claim holds across a range of thresholds."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'statistical → feature learning' phase transition (Section 6) is the paper's most theoretically ambitious claim but the causal chain is loose. Two facts are established — early loss tracks unigram/bigram entropy, and total feature dimensionality first compresses then expands — but neither directly shows that the model 'switches' from one regime to the other; both are consistent with a smooth continuum. The framing as an IB fitting/compression transition (Shwartz-Ziv & Tishby, 2017) is asserted rather than tested, and IB's compression phase itself remains contested in the literature.",
+      "suggested_fix": "Either (a) provide a quantitative marker of a transition (change-point detection on the dimensionality curve with a null model; a discontinuity test) and correlate it step-by-step with the directional-turning-point in Fig. 5c and the KL saturation in Fig. 8a/b; or (b) reframe as 'two coexisting regimes with a soft handoff' rather than a phase transition, and disentangle from the specific IB claim which is not directly measured (no I(X;T), I(T;Y) computation)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Feature-alignment failure modes are discussed qualitatively but not stress-tested. The argument that crosscoders 'should' align semantically identical features and 'should' not fragment them is intuitive but Section 3's own text admits splitting does occur among highly-active features (deferred to Appendix F). It is unclear how often this happens and whether it biases the emergence-time and directional-turning-point statistics (a fragmented feature could look like a 'late-emerging' one).",
+      "suggested_fix": "Report the fraction of features involved in splitting, and rerun Fig. 5a/b/c on the deduplicated set (merging split features by cosine similarity) to show the headline distributions are unchanged."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attribution/circuit results (Section 5) are compelling qualitatively but under-quantified. The paper states 'within tens of features, we can consistently disrupt or recover model performance' but does not give a table of, e.g., k needed to recover 90% metric, per task and per snapshot, nor compare against a random-feature baseline of the same k.",
+      "suggested_fix": "Add a small table: for SVA/IOI/induction, report k to recover 50/90/95% of the clean-corrupted metric gap, versus a random-k-features baseline and versus a neuron-level baseline; include at least 2–3 snapshots per task."
+    },
+    {
+      "severity": "minor",
+      "issue": "The complexity vs emergence-time correlation (r=0.309) is reported as evidence that 'more complex features emerge later', but a Pearson r of 0.3 with N=100 is a weak effect and the complexity scores come from an LLM judge (Claude Sonnet 4) rated 1–5, so inter-rater reliability and prompt-sensitivity matter. The categorical rule-based analysis (previous-token → induction → context-sensitive) is more convincing than the LLM-scored one.",
+      "suggested_fix": "Either report multiple judges or a human-annotation subset for calibration, add a bootstrap CI on r, and lead with the categorical hierarchy result while treating the LLM-scored correlation as supporting rather than headline evidence."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable are the emergence-time distribution (Fig. 5a) and the directional turning point (Fig. 5c) across independent crosscoder training seeds on the same activations?",
+    "Does the ~step-1000 directional turning point coincide with any known change in the Pythia training schedule (e.g., warmup end, LR schedule inflection, data-order boundary), or is it visible independent of those?",
+    "For the total-dimensionality dynamics (Fig. 8c): if you train the crosscoder on only the pre-turning-point snapshots vs only the post-turning-point snapshots, do you recover the same shape, or is the compression-then-expansion pattern induced by the joint objective?",
+    "In the SVA ablation, how does k-to-recover compare when you replace crosscoder features with (i) random directions of the same norm, (ii) top-k neurons, and (iii) SAE features from a same-size per-snapshot SAE?",
+    "How much do results change when the crosscoder is trained at a different layer (e.g., layer 3 or 10 of Pythia-160M) — does the two-population picture and the turning-point step persist across depth?"
+  ],
+  "calibration_check": "Mostly appropriate — limitations are stated — but the words 'universal', 'first', and the framing of Section 6 as a 'phase transition' overreach the single-model-family, single-layer evidence and should be softened or backed by additional experiments.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Answers a genuinely interesting and under-studied question — how SAE-style features form during pre-training — and gives a reusable methodological recipe that the interpretability community is likely to build on."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The core move (crosscoders across snapshots instead of across layers) is a natural but non-trivial repurposing of Lindsey et al. (2024); the empirical findings around the turning point and the emergence hierarchy are the more novel contributions."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is well-specified, attribution/ablation design is appropriate, and the SAE baseline is a useful sanity check, but several qualitative claims rest on thresholds and single training runs without robustness checks."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only one correlation reports a CI/p-value; most curves and distributions appear to come from a single crosscoder run with no seeds, error bars, or significance tests — a real weakness given known SAE run-to-run variability."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "A dedicated limitations section is included and the IB framing is hedged, but 'universal turning point' and the strong phase-transition wording go beyond what one model family at one layer can support."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The method, motivation, and empirical narrative are readable and logically ordered; some equations (esp. Eq. 6 and the attribution decomposition) are compact but decipherable, and the extraction artifacts don't obscure the science."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure — abstract, intro, related work, method, results across three targeted studies, limitations, conclusion — well within expected length."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Uses open Pythia checkpoints and SlimPajama, specifies layers, snapshot selection, dictionary sizes, and training objective; hyperparameter sweep for σ/regularizer is deferred to appendix, and seed/variance protocol is not spelled out — but a competent group could reimplement."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Covers learning-dynamics theory (NTK, IB, SLT) and the SAE/crosscoder lineage adequately, and positions the contribution against Lindsey et al. and Mishra-Sharma/Minder; misses a bit of the developmental-interpretability literature but coverage is fair."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative, claim-supporting displays (Pareto plots, decoder-norm evolution grids, directional projection matrix, attribution ablation curves); none look decorative or redundant."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "One model family (Pythia) at two sizes, one middle layer per model, one data mixture, three simple tasks — insufficient to support the 'universal' framing, and the paper's own limitations section concedes this."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: coherent empirical package with real causal ablations and interesting findings, but held back by narrow scope, thin statistical reporting, and some overreach in the phase-transition claim."
+    }
+  },
+  "publishability_probability": 0.55
+}

@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER proposes a plausibility-guided, dynamic activation steering method for LLMs that modulates KV-cache steering strength at each decoding step using a rejection criterion and a one-time attention-sensitivity layer ranking. The core contribution—coupling KV-cache scaling with a token-level rejection loop to prevent oversteering—is a principled and elegant idea that is well-motivated, cleanly described, and supported by multi-model, multi-benchmark experiments. The paper's main weaknesses are a thin baseline landscape (only two steering comparators), reliance on a self-authored benchmark for one of its three evaluation tracks, and an absence of variance estimates on the primary result tables, any of which alone is manageable but together warrant revision before acceptance.",
+  "strengths": [
+    "The plausibility-guided rejection mechanism is a principled and practically effective solution to the oversteering problem, requiring no extra data and no task-specific hyperparameter search—a genuine practical advantage over PASTA and SpotLight.",
+    "Hyperparameter robustness is demonstrated convincingly: performance is stable across several orders of magnitude in α and across the full range of β values tested (Figure 3a/3b), which substantially reduces the tuning burden relative to prior methods.",
+    "Multi-architecture and multi-scale generalization (Llama-3.2-1B through Qwen-2.5-14B, Table 2) and the efficiency breakdown (≈16% throughput reduction, negligible memory, FlashAttention compatibility) are valuable and set DIRECTER apart from attention-level interventions that preclude kernel-level optimizations.",
+    "The ablation suite (reversed ranking, random layer ordering, random token positions, fixed-strength variants) is well-targeted and isolates each design choice cleanly, providing a satisfying mechanistic explanation for the performance gains.",
+    "The plausibility filter is also shown to improve PASTA and SpotLight when applied as a plug-in gate (Figure 2b), demonstrating generality of the mechanism beyond DIRECTER itself."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Only two activation-steering baselines (PASTA, SpotLight) are compared, leaving out a range of contemporaneous methods that ICLR reviewers will expect: representation engineering/RepE (Zou et al., 2023, which the paper cites but does not evaluate), instruction following via residual-stream injection (Turner et al., 2023, also cited but untested), and ITI/contrastive activation addition. The claim of superiority over 'prior steering methods' is therefore only partially substantiated.",
+      "suggested_fix": "Add at least one residual-stream or vector-injection baseline (e.g., RepE or CAA) to the comparison in Table 1, even if only on the IFEval split, to establish a more complete picture of the activation-steering landscape."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is a new benchmark authored by the paper's team, and it is used as one of three primary evaluation tracks to support the headline claim of balanced task-vs-formatting accuracy. Self-constructed benchmarks introduce the risk of design choices that inadvertently favor the proposed method, and no held-out validation or independent replication is presented.",
+      "suggested_fix": "Either (a) supplement GSM8K-Format results with an established formatting/constraint benchmark (e.g., FollowBench or ConstraintEval if available) to cross-validate the task-fidelity claim, or (b) provide the benchmark construction code/data to enable immediate independent verification and motivate a robustness analysis across different GSM8K problem subsets."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 (main results) and Table 2 (cross-scale results) report point estimates with no variance—no standard deviations, confidence intervals, or significance markers. While greedy decoding is deterministic for a fixed input, the benchmarks themselves have sampling variation in how representative subsets are, and IFEval's programmatic scoring is sensitive to prompt phrasing. Only the random-ordering ablation rows in Table 3 include ± figures.",
+      "suggested_fix": "Report mean ± std over at least three independent runs with different IFEval prompt-rewriting seeds (since GPT-4o-mini rewriting is stochastic) or over a bootstrap confidence interval on benchmark subsamples; add significance markers to inter-method comparisons in Tables 1 and 2."
+    },
+    {
+      "severity": "minor",
+      "issue": "The headline '6.5% improvement over baselines' in the abstract and introduction refers to the gap over the zero-shot baseline, not over the best competing steering method. Over the best-tuned competitor (SpotLight★ at 72.1%), DIRECTER scores 76.5%, a gap of ~4.4%. This framing is technically accurate but risks misleading readers about how large the advance over the state of the art is.",
+      "suggested_fix": "Report both gaps explicitly in the abstract and in Section 4.2, e.g., '+6.5% over zero-shot and +4.4% over the best prior steering method', to be fully transparent."
+    },
+    {
+      "severity": "minor",
+      "issue": "The choice of α=100 as the fixed key-scaling factor is never motivated in the main text. The softmax renormalization argument explains robustness to large α, but it does not explain why 100 was chosen as the operating point rather than, say, 10 or 1000. If α was selected on a validation split, the split should be disclosed; if not, a brief explanation of the selection process is needed.",
+      "suggested_fix": "Add one sentence in Section 4.1 explaining whether α=100 was found via a small sweep, derived analytically, or is simply a safe saturation operating point consistent with Figure 3b, and disclose which data was used."
+    },
+    {
+      "severity": "minor",
+      "issue": "The plausibility criterion (Eq. 1) operates only on the top-1 token probability ratio, ignoring distributional shift in the rest of the vocabulary. A steered distribution could concentrate mass on a very different set of tokens while still passing the top-1 criterion if the raw model assigns moderate probability to the steered top-1 token. The paper does not discuss whether full-distribution divergence measures (e.g., KL divergence threshold) were considered or compared.",
+      "suggested_fix": "Add a brief discussion in Section 3.2 or Appendix C about this design choice—either an empirical comparison with KL-based filtering or a theoretical argument for why the top-1 criterion is sufficient."
+    }
+  ],
+  "questions_for_authors": [
+    "How were the default hyperparameters α=100 and β=0.5 selected? Was a held-out validation set used, and if so, which split and how many examples?",
+    "The per-token decoding loop can trigger up to log₂(L) steered forward passes per token in the worst case. What is the empirical distribution of the number of passes per token across a typical IFEval run, and how does the 16% throughput reduction figure behave in adversarial cases (e.g., a long sequence where steering is continuously rejected)?",
+    "The layer sensitivity score (Eq. 2–3) is computed once after prefill. Does the ranking change substantially across different prompts or tasks? How stable is the ordering, and would per-prompt ranking (at the cost of extra computation) improve results meaningfully?",
+    "What happens when the instruction span is not cleanly separated from the task context—i.e., instructions are interleaved throughout the prompt rather than isolated in a prefix? The appendix mentions a simple automatic span-detection experiment, but the main text does not quantify the performance degradation, which is a common real-world scenario.",
+    "Could you report the inter-annotator agreement statistics for the human evaluation in Appendix E.3, including the number of annotators, annotation protocol, and IAA metric (e.g., Cohen's κ)?"
+  ],
+  "calibration_check": "The claims are broadly scoped to evidence—results on IFEval/LIFBench/GSM8K-Format support the instruction-following narrative, limitations are acknowledged, and the 'general mechanism' claim is partially substantiated by the plug-in filter experiment—but the headline improvement figure is presented relative to zero-shot rather than to the best competitor, and the generality claim rests on a self-authored benchmark and a limited set of steering baselines.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Mitigating oversteering in inference-time activation steering is a practically important problem, and the plausibility-guided decoding framework is a contribution that other researchers could adopt to improve existing methods, but the scope is specific to instruction-span steering rather than LLM improvements broadly."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The combination of KV-cache scaling with a rejection-sampling-style plausibility gate and sensitivity-based layer ranking is genuinely new, but each individual component has close antecedents (contrastive decoding, KV-cache quantization sensitivity), placing this at the solid rather than exceptional end of novelty."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is carefully described and the ablations isolate most key design choices, but the plausibility criterion's reliance on top-1 token probability rather than a fuller distributional measure and the unexplained choice of α=100 leave some design decisions without rigorous justification."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Main result tables report only point estimates without variance or significance testing; the GPT-4o-mini-based prompt rewriting introduces stochasticity that is not accounted for, and only the random-variant ablation rows carry ± figures."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations around instruction-span assumptions, the heuristic nature of the sensitivity metric, and the computational overhead are acknowledged, but the abstract's '6.5% improvement over baselines' conflates zero-shot and steering baselines in a way that overstates the advance over the state of the art."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-structured and the core algorithm (Algorithm 1) and mathematical notation are precise and readable; minor notation overloading (e.g., 'layer' redefined to exclude FFN blocks mid-paper) creates occasional ambiguity."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard ICLR structure (abstract, introduction, related work, method, experiments, conclusion with limitations), is at an appropriate length, and makes good use of appendices without burying essential methodology."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters and model checkpoints are named, greedy decoding is used (removing sampling variance), and the algorithm is fully specified, but the IFEval prompt-rewriting procedure requires a live GPT-4o-mini API call, the GSM8K-Format construction details are partly in the appendix, and code/data links were removed for anonymization."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The positioning against PASTA and SpotLight is thorough and the connection to contrastive/DoLa decoding is acknowledged, but several cited steering methods (RepE, CAA, Turner et al.'s activation addition) are mentioned only in passing and not empirically compared, leaving an incomplete picture of the space."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe comparisons that directly support each claim (fixed-vs-adaptive strength, plug-in filter compatibility, robustness sweeps, efficiency decomposition), and Table 5's qualitative example is a useful illustration; the efficiency figures appear appropriately granular from their captions."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Multi-scale and multi-family generalization is a genuine plus, but the method is evaluated on only three benchmarks (one self-created), only two steering baselines are included, and all evaluations are within the instruction-following domain, leaving broader applicability undemonstrated."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A technically sound, well-motivated contribution with convincing ablations and multi-model validation, held back from a confident accept by the thin baseline comparison, self-authored benchmark, and missing variance estimates—all addressable in a revision."
+    }
+  },
+  "publishability_probability": 0.42
+}

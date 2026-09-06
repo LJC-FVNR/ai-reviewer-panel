@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA combines attention rollout with value norms, Hessian-vector products for curvature, and KL-divergence under masking into a unified token attribution framework for decoder-only LLMs. The problem is real and timely, the baseline coverage is broad, and the ablation design is principled. However, the manuscript contains an internally contradictory result table (LLaMA-3.1 70B rows in the inline fragment show HETA with Soft-NC=0.6 while all baselines score 2.3–3.4, directly contradicting the surrounding narrative), a circularly defined novel metric (DSA), a reference to a non-existent annotation model ('GPT-5 Thinking'), and performance margins that are so large (6–7× over the next-best method) that they demand independent validation before acceptance. These issues collectively prevent confident acceptance without substantial revision and re-evaluation.",
+  "strengths": [
+    "Principled three-component decomposition (semantic flow, second-order curvature, information-theoretic masking) with a mathematically grounded combination formula that enforces causal directionality via the MT gate.",
+    "Broad experimental scope: nine baselines including recent state-of-the-art methods (ContextCite, ReAgent, SEA-CoT), four diverse model sizes/families, and three standard benchmarks plus a new curated dataset.",
+    "Comprehensive ablation across six component configurations, plus robustness evaluation over decoding hyperparameter grids and active/passive syntactic rephrasings—these are the right evaluations to run.",
+    "The curated NarrativeQA + SciQ mixed-paragraph dataset is a clever controlled probe that disentangles causal from spurious attribution mass; this contribution has independent value."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The inline table fragment for LLaMA-3.1 70B shows HETA with Soft-NC=0.6 and Soft-NS=0.8 while every baseline ranges from 2.3–3.4 — meaning HETA is the worst method on the largest model, directly contradicting 'similar trends hold across Phi-3 and Llama-3.1' in the surrounding prose. Whether this is a typesetting error or a genuine data discrepancy, reviewers cannot accept the result table as correct without a corrected, unambiguous Table 3 for LLaMA.",
+      "suggested_fix": "Provide a clean, complete Table 3 that unambiguously reports all metrics, all models, and all baselines. If the numbers were transposed or the column order was scrambled in typesetting, correct and re-submit. If HETA genuinely underperforms on LLaMA-3.1 70B, this must be disclosed and analyzed (e.g., second-order computation restricted to 6 layers—is this responsible?)."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric definition is circular: 'let SNarrQA and SSciQ denote the set of model-selected important token indices' uses the model's own attribution output to define the reference set against which that same attribution is scored. This conflates the quantity being measured with its measurement target.",
+      "suggested_fix": "Clarify that SNarrQA and SSciQ are derived exclusively from the GPT-4o/annotator-provided answer spans and not from model attributions. Rewrite the formal definition to make this unambiguous: the reference sets should be fixed annotation-derived sets, not attribution-dependent."
+    },
+    {
+      "severity": "blocking",
+      "issue": "'GPT-5 Thinking' is referenced as one of the two independent annotation systems used to construct the curated dataset gold labels. No such publicly available model exists under this name; this either refers to an unreleased internal model, a misidentified model, or a placeholder, all of which undermine reproducibility and raise questions about how the dataset can be released or re-created.",
+      "suggested_fix": "Identify the actual model used, provide its exact version/API identifier, and verify that the intersection-based annotation procedure can be reproduced with publicly available tools."
+    },
+    {
+      "severity": "major",
+      "issue": "Performance margins over all baselines are implausibly large: Soft-NC 10.3 for HETA vs. 3.6 for ReAgent (next best) on GPT-J/LongRA is a 2.8× margin; DSA 4.8–5.1 vs. 3.5–3.8 for ReAgent. While individual improvements are plausible, uniform 2–3× margins across all models, all datasets, and all metrics simultaneously would be extraordinary and demand an explanation for why prior methods fail so severely.",
+      "suggested_fix": "Include error bars with 95% CI (not just std < 0.2), verify that all baselines use their recommended hyperparameters and not default settings, and consider adding a per-dataset breakdown for DSA. If the margins are genuine, a dedicated analysis explaining why existing methods degrade so severely (rather than just underperforming) would strengthen credibility."
+    },
+    {
+      "severity": "major",
+      "issue": "The weights β=γ=0.5 are fixed throughout all experiments with no sensitivity analysis. The multiplicative gating structure (Attr = MT[i] × (β·S + γ·I)) means that the relative contribution of curvature vs. information-theoretic terms is entirely determined by two arbitrary constants, yet no ablation or grid search over β/γ is reported.",
+      "suggested_fix": "Add a sweep over β,γ ∈ {0.1,0.3,0.5,0.7,0.9} on a held-out split; report how sensitive final performance is to this choice. If the method is robust to β/γ, this is a positive robustness result worth reporting."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several key technical details appear only in appendices or are underspecified: the Gauss–Newton/Fisher surrogate used for numerical stability, the exact Hutchinson estimator order, and the windowing overlap scheme for long contexts. The computational cost comparison between full HETA and HETA-LR+WIN is relegated to appendix tables only.",
+      "suggested_fix": "Add a one-paragraph complexity/approximation-error summary in the main paper, and include a small table showing quality vs. cost tradeoff between HETA variants inline."
+    }
+  ],
+  "questions_for_authors": [
+    "The inline table fragment for LLaMA-3.1 70B appears to show HETA with Soft-NC=0.6 / Soft-NS=0.8 while all baselines score 2.3–3.4. Is this a typesetting error? If HETA genuinely underperforms on LLaMA-3.1, please provide a full explanation and revise the claims accordingly.",
+    "What is 'GPT-5 Thinking'? Please identify the exact model, version, and API endpoint used for annotation, and confirm this is publicly accessible for reproducibility.",
+    "DSA uses 'model-selected important token indices' SNarrQA and SSciQ — are these sets determined by annotators or by the attribution method being evaluated? If the latter, the metric is circular; please clarify.",
+    "For LLaMA-3.1 70B, second-order terms are computed only in the last six layers. Is this design choice validated by an ablation (e.g., comparing last-6, last-12, all layers)? What performance degradation results from this approximation?",
+    "The standard deviations reported ('std < 0.2' for DSA, 'std < ±0.06' for Soft metrics) are unusually tight given the score ranges (0.4–10.3 for Soft-NC). Are these standard deviations across the three seeds, across the test instances, or something else? Full per-cell standard deviations would help calibrate statistical significance.",
+    "Attention rollout (the component underlying MT) has known pathological behaviors (e.g., residual-stream dilution). How does HETA behave when attention rollout produces near-uniform MT weights—does the Hessian+KL term dominate, and is this empirically tested?"
+  ],
+  "calibration_check": "The abstract's claim of 'establishing a new standard for interpretability in autoregressive language models' is overscoped relative to the evidence: results are limited to next-token prediction onset, three standard benchmarks, and a single curated dataset; and the internal inconsistency in the LLaMA-3.1 table means the 'consistent outperformance' claim is unverified for at least one tested model.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Token attribution for decoder-only LLMs is an active and practically important area; a method that is genuinely more faithful and robust than ContextCite/ReAgent would be widely adopted, but the result inconsistencies prevent confident assessment of actual significance."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each individual component (value-norm rollout from Kobayashi et al., Hessian-vector products, KL under masking) exists in prior work; the contribution is their integration and the causal gating structure MT, which is incremental but directionally useful rather than transformative."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method derivation is sound and the three-component decomposition is principled, but the internally contradictory LLaMA-3.1 table, the circular DSA definition, and the unvalidated β/γ hyperparameters together indicate insufficient rigor in execution and reporting."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only three seeds are used; standard deviations are reported as a single bound rather than per-cell; the suspiciously large margins (2–3× over strong baselines uniformly) are not accompanied by significance tests, and the LLaMA table contradiction casts doubt on data integrity."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper claims a 'new standard for interpretability' and 'consistently outperforms' while burying a contradictory LLaMA result in an unreliable table, and the DSA metric definition is author-designed and potentially circular, limiting independent verification of the claims."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method section is logically organized and the equations are clear, but the DSA definition is genuinely ambiguous ('model-selected important token indices'), multiple table rows appear garbled, and the four-panel figure descriptions (a)-(d) are inconsistently keyed across Figures 2 and 3."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard ICLR structure (Introduction, Motivation/Background, Method, Experiments, Related Work, Conclusion) within a reasonable length; the Motivation section could be folded into Introduction but this is a minor stylistic point."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters are specified (β=γ=0.5, rank-64, window-512, batch-16, A100 80GB), but the 'GPT-5 Thinking' annotator cannot be identified or reproduced, the Hessian surrogate selection criteria are unclear, and the full algorithmic procedure is deferred to the appendix."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of recent attribution methods for generative LLMs is good (ContextCite, TDD, PML, ReAgent, SEA-CoT), but attribution patching (Nanda et al.), direct logit attribution, and causal tracing as an attribution mechanism are absent, and the framing of prior limitations is occasionally imprecise."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, the figures appear well-designed: Figure 2 shows ablation bar plots with the correct comparators, Figure 3 shows three complementary robustness metrics, and Figure 1 provides a pipeline overview; however, the dual use of panel (d) in both Figures 2 and 3 for qualitative examples is confusing."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four model families spanning 3B–70B parameters and nine baselines across three standard benchmarks plus one curated dataset is decent coverage, but all models are decoder-only English LLMs and the curated dataset is limited to a specific two-paragraph concatenation structure, constraining generality claims."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The core idea is worth pursuing and the evaluation framework is largely appropriate, but the blocking contradictions in results, the circular metric definition, and the unverifiable annotation procedure require substantive revision before this paper can be reliably assessed or accepted."
+    }
+  },
+  "publishability_probability": 0.13
+}

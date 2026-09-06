@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies a real and practically relevant phenomenon — the PCC plateau in joint MSE+PCC training of attention-based regression models — and provides a theoretical decomposition of its causes along two axes (gradient conflict and convex-hull capacity). The proposed ECA method is directly motivated by the theory and shows consistent improvements across four domains. However, several of the theoretical observations build closely on well-known results (MSE bias-variance-correlation decomposition, PCC scale-invariance), the experimental evidence lacks statistical significance reporting almost everywhere, ablation coverage is uneven, and some theoretical conditions (Theorem 2.2) are not empirically validated for the datasets used.",
+  "strengths": [
+    "Clear problem formulation with genuine practical relevance: joint MSE+PCC training is widely used and the plateau failure mode is underexplored theoretically.",
+    "Theory-to-method coherence: each of the three ECA components (DNPL, DATS, SRA) is directly motivated by a specific identified limitation, creating a clean narrative from analysis to solution.",
+    "Diverse experimental coverage: synthetic data with controllable homogeneity, tabular UCI benchmarks, high-homogeneity spatial transcriptomics, and multimodal sentiment analysis collectively span the claimed operating regime.",
+    "Theorem 2.2 (convex hull PCC bound) is the most technically novel result and provides a concrete, geometry-grounded explanation for why softmax attention struggles with homogeneous data.",
+    "DNPL's use of StopGrad is elegant and mathematically justified: it rescales the PCC gradient magnitude without shifting stationary points.",
+    "Ablation studies are reported for all three components across UCI benchmarks."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Near-complete absence of statistical significance reporting. UCI improvements are point estimates with no error bars or seeds. MOSI results are single-run figures. Spatial transcriptomics standard deviations (0.160–0.202) are large relative to the absolute PCC values (~0.60–0.72), making the reported gains uncertain; no test is reported to establish whether EGN+ECA improvements are significant across folds.",
+      "suggested_fix": "Report mean ± std over at least 5 seeds for all UCI and MOSI results. For spatial transcriptomics, report per-fold scores and a paired statistical test (e.g., Wilcoxon across folds or bootstrapped CI). This is a mandatory minimum for accepted ICLR experiments."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Theorem 2.2 requires the condition R < σ0/‖w‖₂, but the paper never empirically checks whether this condition holds on the actual benchmark datasets. If it is violated on the high-homogeneity settings (where R is small but ‖w‖₂ and σ0 are unconstrained), the theorem may not apply where the paper most wants to invoke it.",
+      "suggested_fix": "For each benchmark, report the empirical ratio R/(σ0/‖w‖₂) to confirm the condition is satisfied and to calibrate how tight the bound is in practice. If the condition is often violated, the theorem's role in motivating SRA needs to be reframed."
+    },
+    {
+      "severity": "major",
+      "issue": "The two foundational propositions (Proposition 2.1, Lemma 2.1) are well-known results in statistics and machine learning — the MSE bias-variance-correlation decomposition and PCC scale-invariance are textbook material. The paper does not adequately acknowledge this prior existence or explain what is genuinely new beyond applying these to the attention-regression context.",
+      "suggested_fix": "Explicitly cite the classical sources of these decompositions, characterize them as 'instantiating a known decomposition to this setting,' and sharpen the contribution statement to focus on Theorem 2.1 and Theorem 2.2 as the novel theoretical contributions."
+    },
+    {
+      "severity": "major",
+      "issue": "The MOSI comparison is structurally limited: ECA is only added to one baseline (ALMT), and the table includes 10 baselines that are simply listed without ECA variants. The gain over DLF (the next-best method) is +2.5% PCC without statistical significance; this small advantage, combined with no replication across seeds, is insufficient to establish state-of-the-art performance.",
+      "suggested_fix": "Report mean ± std over at least 3 seeds for ALMT, ALMT+LPCC, and ALMT+LPCC+ECA. Consider applying ECA to at least one additional strong baseline to demonstrate that the gains are due to ECA and not ALMT-specific factors."
+    },
+    {
+      "severity": "major",
+      "issue": "DATS (Equation 10) lowers the softmax temperature when embeddings are homogeneous, but Remark 2.3 also notes that homogeneous inputs produce low-variance logits z_si. Lower temperature amplifies existing logit differences, but if z_si are all near-identical (logit collapse), DATS cannot recover meaningful differentiation regardless of temperature. The paper does not experimentally isolate this failure mode or verify that DATS actually produces non-degenerate attention weights on high-homogeneity samples.",
+      "suggested_fix": "Include a diagnostic plot of attention entropy or attention weight variance under different homogeneity levels, comparing standard softmax and DATS, to confirm DATS meaningfully differentiates attention even under logit collapse."
+    },
+    {
+      "severity": "minor",
+      "issue": "The related work section is brief (roughly one paragraph each for correlation learning and softmax attention) and does not discuss temperature scaling in attention (a widely explored technique), multi-task gradient balancing methods (GradNorm, PCGrad, etc.), or residual attention variants — all of which partially overlap with ECA's components.",
+      "suggested_fix": "Expand the related work to position SRA against residual/extra-attention designs, DNPL against gradient-balancing multi-task methods, and DATS against prior adaptive-temperature softmax literature."
+    },
+    {
+      "severity": "minor",
+      "issue": "No computational overhead analysis is provided. SRA introduces a sample-specific MLP for γ_s; DATS adds a per-sample temperature computation. For streaming or large-batch settings this may matter.",
+      "suggested_fix": "Report training time or FLOPs comparison between baseline and ECA variants, even informally."
+    }
+  ],
+  "questions_for_authors": [
+    "Corollary 2.1 bounds the PCC/MSE gradient RMS ratio at O(1/σ_ŷ^{3/2}). How tight is this bound in practice? Figure 3 shows the ratio is constrained, but is the bound numerically close to the empirical ratio, or many orders of magnitude loose?",
+    "DNPL uses StopGrad(σ_ŷ)·(1−ρ) — as σ_ŷ increases during training (Figure 4), the effective PCC weight λ_PCC·σ_ŷ grows unboundedly. Does this eventually destabilize training, and how is this managed in practice? Is there a cap on σ_ŷ used in the gradient?",
+    "The backbone-agnosticism claim (Section 2.1) asserts that the analysis applies to multi-layer Transformers via the final attention pooling. But in a Transformer with multiple self-attention layers, intermediate attention layers also affect the embedding distribution fed to the final pooling layer. Has any ablation been done to distinguish gains from modifying intermediate vs. final attention?",
+    "Table 1 appears to have truncated values for the ECA (full) and ECA (w/o DATS) rows on Superconductivity — can the authors confirm the full numbers? Some reported improvements in UCI benchmarks look small enough that, without error bars, their practical significance is unclear.",
+    "For the spatial transcriptomics experiment, what is the within-fold variance of EGN vs. EGN+ECA PCC across different random seeds? The 3-fold standard deviations (0.16–0.20) are large relative to the mean (~0.63–0.72); it is unclear whether the improvement is consistent within each fold."
+  ],
+  "calibration_check": "The paper's core theoretical claims (Theorem 2.1, Theorem 2.2) are appropriately scoped, but the experimental claims are somewhat overclaimed given the absence of significance tests and limited seed replication, and the opening claim of 'first rigorous theoretical analysis' overstates novelty since the MSE decomposition and PCC scale-invariance it builds on are well-established.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The PCC plateau is a real and underexplored failure mode with practical impact in pathology, sentiment analysis, and genomics, but the audience is narrow (attention-based regression with joint MSE+PCC), limiting broad ICLR impact."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Theorem 2.2's convex-hull PCC bound is genuinely new; however, Proposition 2.1 and Lemma 2.1 instantiate known results, and the three ECA components each draw on established techniques (residual scaling, temperature softmax, gradient normalization) without clearly novel combinations."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Proofs are provided with stated assumptions; the gradient analysis in Theorem 2.1 is sound; but the applicability condition in Theorem 2.2 is not empirically validated, and the interaction between DNPL's dynamic reweighting and MSE optimization is not analyzed."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Point estimates with no error bars on UCI and MOSI, no repeated-seed experiments, and large standard deviations relative to improvements on the spatial transcriptomics dataset make it impossible to assess whether reported gains are statistically reliable."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The limitations section is vague and does not specifically identify the statistical gaps or boundary conditions of Theorem 2.2; the claim of 'first rigorous theoretical analysis' overstates novelty given the foundational propositions are well-known."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper follows a logical theory-to-method structure and is generally readable, but the interaction between DATS and SRA (when DATS fails due to logit collapse) is underexplained and Table 1 appears to have truncated values."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed with clear Abstract, Introduction, Theory, Method, Experiments, Related Work, Conclusion, and Limitations sections at reasonable ICLR length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameter names are given (T_min, β, λ_PCC, γ_max, λ_γ) and datasets are public, but specific hyperparameter values used in each experiment are relegated to appendix sections not visible in this extraction; no code repository is referenced."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related work section is brief and omits important adjacent literature: multi-task gradient balancing methods, adaptive-temperature softmax, and residual/extra-attention variants that directly relate to ECA's components."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, the figures appear well-chosen — Figure 5 systematically varies homogeneity levels, Figure 6 shows per-fold training curves, and Figure 3 validates the theoretical gradient ratio bound — but the synthetic experiment plots lack axes ranges and quantitative markers visible from captions alone."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "ECA is only integrated into two backbone architectures (FT-Transformer and EGN/ALMT); UCI datasets are small and improvements are modest on Online News and Superconductivity; the claim of broad generality is not supported by results on larger or more diverse architectures."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper has a well-motivated problem, coherent theory-to-method design, and promising results, but the lack of statistical rigor across all experiments and incomplete validation of theoretical conditions make it borderline-reject in its current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

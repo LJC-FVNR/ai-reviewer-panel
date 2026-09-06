@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper introduces CDAS, a steering method combining a Jensen-Shannon divergence distribution-matching objective with the DII protocol from DAS. The core idea—supervising steering vectors to reproduce the model's own counterfactual output distribution rather than ground-truth tokens or preferences—is genuinely novel and conceptually well-motivated by mechanistic interpretability. However, the empirical case is mixed: CDAS is competitive but not dominant on AxBench, requires factor tuning to shine there (undermining its tuning-free selling point), shows strong layer sensitivity, and case-study results rely on small test sets with limited seeds and no significance testing. The paper is refreshingly honest about these limitations, but the evidence for the central 'faithful, stable' claim is thinner than the framing implies.",
+  "strengths": [
+    "Novel training objective (JSD-based matching of intervened vs. counterfactual output distributions) that departs meaningfully from Lang./PO paradigms and is well-motivated by the DAS/causal-abstraction lineage.",
+    "Explicit conceptual link between intervention-based steering and mechanistic interpretability, framing steering as concept feature identification rather than parameter-efficient fine-tuning.",
+    "Multiple evaluation regimes: large-scale AxBench across two Gemma sizes and layers, plus two safety-relevant case studies (refusal override, CoT backdoor neutralization) with models up to 70B.",
+    "Honest, well-scoped conclusions: the authors explicitly note that CDAS does not always outperform strong-supervised baselines and clearly state limitations (data requirements, factor tuning, rank-1 only, lack of causal grounding).",
+    "Utility-preservation analysis (MMLU/TruthfulQA/tinyBenchmarks plus KL divergence) is a valuable second axis beyond raw steering effectiveness, and CDAS's KL-faithfulness result is a real, differentiated contribution."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The central claim of 'faithful, stable' bi-directional steering is under-supported by statistics: Table 1/2/3 report point estimates without error bars or significance tests across seeds; Case Study 2 averages only three initializations on 100 test instances (tinyBenchmarks); no confidence intervals separate CDAS from RePS/DAS/DIM.",
+      "suggested_fix": "Add multiple training seeds for all methods, report mean±std (or bootstrap CIs) in every headline table, and provide paired significance tests (e.g., paired bootstrap) for the key CDAS-vs-RePS comparisons on refusal suppression and backdoor ASR."
+    },
+    {
+      "severity": "major",
+      "issue": "The AxBench story is inconsistent with the paper's framing. On Gemma-2-2B, CDAS is weaker than RePS/Lang.; on Gemma-2-9B it leads at L20 but not L31; and 'unit factor' CDAS is substantially worse than 'tuned factor' CDAS, contradicting the tuning-free advantage highlighted elsewhere. The paper acknowledges layer sensitivity but does not diagnose it.",
+      "suggested_fix": "Add an analysis of why CDAS is layer-sensitive (e.g., feature separability across layers, distribution of concept latents αc across xc), sweep more layers, and either drop or heavily qualify the 'tuning-free' claim given that AxBench requires β>1 grid search."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage in the case studies is narrow. Lang. is only included via the 'DAS' adaptation (Lang. objective + DII protocol), so a like-for-like comparison against the original Lang. steering method from Wu et al. (2025a) is missing. BiPO is dropped citing AxBench evidence, but the case-study regime differs enough that this exclusion should be justified with at least a sanity check.",
+      "suggested_fix": "Include vanilla Lang. and BiPO in both case studies, or provide a controlled ablation isolating the contribution of the JSD objective from the DII protocol (e.g., JSD+Add vs. Lang.+DII vs. PO+DII vs. CDAS)."
+    },
+    {
+      "severity": "major",
+      "issue": "Rank-1 assumption is baked into the whole method and evaluation. The paper's ambition (steering as causal feature manipulation) naturally extends to higher-rank subspaces, and the refusal literature explicitly investigates when rank-1 is/isn't sufficient. Restricting to rank-1 makes the generality claim ('faithful bi-directional model steering') stronger than the evidence.",
+      "suggested_fix": "Either narrow the framing to rank-1 explicitly in title/abstract, or add rank-k CDAS experiments (even a small pilot on one model/layer) to demonstrate the objective scales beyond one direction."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'one-to-many' DII source-token selection is chosen via grid search 'for optimal steering effectiveness,' which is another hidden hyperparameter that could inflate CDAS results relative to baselines with fewer tunables.",
+      "suggested_fix": "Report sensitivity to source-token position and use a held-out split for its selection, or fix it a priori and report degradation."
+    },
+    {
+      "severity": "minor",
+      "issue": "Concept-eliciting instructions (xc) for AxBench are generated by prompting gpt-4o-mini with a template; the quality/variance of this augmentation is a load-bearing detail affecting CDAS specifically (since PO baselines don't use xc).",
+      "suggested_fix": "Provide ablations over augmentation quality (e.g., template variants, multiple LLM generators) and report how CDAS's steering score depends on xc quality."
+    },
+    {
+      "severity": "minor",
+      "issue": "The mechanistic-interpretability framing is aspirational: the paper explicitly disclaims that CDAS is a causal variable localization method, yet motivates it via DAS and 'causal concept features.' This risks overclaiming a causal interpretation the method cannot support.",
+      "suggested_fix": "Tighten language in the introduction and conclusion to say 'DAS-inspired' rather than implying causal identification; move the Remark's disclaimer earlier."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide seed-level variance and significance tests for the CDAS vs. RePS comparisons in Tables 2–4, especially the harmonic-mean and KL-divergence differences?",
+    "Why does CDAS's advantage disappear at deeper layers (Gemma-2-9B L31, Gemma-2-2B L20 relative to RePS)? Is this an artifact of xc-derived factors, of feature diffusion at later layers, or of the JSD objective's optimization landscape?",
+    "How does CDAS compare against a JSD objective applied with ordinary addition interventions (isolating the objective from DII), and against Lang./PO applied with DII (isolating the protocol)?",
+    "For the backdoor study, why only three seeds and 100 tinyBenchmark instances? Would results hold on full MMLU/ARC, and is the 6.68% trigger ASR at L16 robust across seeds?",
+    "The 'unit factor' setting is central to the tuning-free narrative in the case studies but fails on AxBench. What property of the refusal/backdoor concepts makes αc well-scaled there but not for AxBench concepts?",
+    "How sensitive is CDAS to the choice of source-token position within the chat-template <model> span, and what does the grid search space look like in practice?"
+  ],
+  "calibration_check": "Claims are largely well-scoped—the authors repeatedly acknowledge CDAS 'may not always outperform' baselines and enumerate limitations—but the abstract/title's 'faithful bi-directional' framing outruns the actual evidence given layer sensitivity, missing significance tests, and the AxBench inconsistency.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Steering and mechanistic-interpretability crossovers are an active ICLR topic; a robust distribution-matching objective would matter, but the mixed empirical wins limit near-term impact."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The JSD distribution-matching objective applied to steering, coupled with implicit factor sampling via DII, is a genuinely new formulation distinct from Lang./PO and from vanilla DAS."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Method is coherently derived, but key design choices (source-token position, xc augmentation, β scaling) are tuned in ways that could confound the objective's actual contribution, and rank-1 is an unexamined restriction."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Headline tables lack error bars/CIs; the case study uses only three seeds on tinyBenchmarks (n=100); no significance tests separate methods, making close-margin comparisons (e.g., CDAS vs. RePS on refusal) hard to trust."
+    },
+    "calibration_honesty": {
+      "score": 8,
+      "justification": "The paper is unusually candid: it states CDAS doesn't always win, flags layer sensitivity, admits factor tuning is needed on AxBench, and lists concrete limitations including the lack of causal grounding."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Method exposition (esp. Equation 3 and DII notation) is dense and would benefit from a running example; the DAS → CDAS transition and the 'one-to-many' intervention protocol require careful re-reading."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure with introduction, related work, method, experiments, and conclusion; case studies are well-delineated and limitations explicit."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, datasets, layers, sample sizes, and inference-time strategies are specified; several details (augmentation templates, red-teaming procedure, factor grids) live in appendices referenced but not shown here—assuming they exist, this is adequate but not exemplary."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Good positioning across steering (Lang., BiPO, RePS, DIM), causal abstraction/DAS, SAEs, and safety-mechanism probes; contribution is clearly delineated as a JSD+DII combination."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Tables convey the key comparisons but without variance; Figure 1's three-panel ASR-by-layer plot is informative for the backdoor study; overall display items are functional rather than illuminating."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Multiple models (Gemma-2-2B/9B, Phi-3.5, Llama-3.1-8B/70B) and settings are covered, but only rank-1 is tested, baselines are pruned in case studies, and the generality claim outruns the ablation depth."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A conceptually interesting, honestly written paper with a real methodological idea, but currently sitting at borderline reject: the empirical case needs seed variance, better-controlled ablations isolating objective vs. protocol, and either a narrower framing or evidence beyond rank-1."
+    }
+  },
+  "publishability_probability": 0.35
+}

@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "CDAS proposes a JSD-based distribution matching objective paired with Distributed Interchange Interventions (DII) for bi-directional model steering, drawing principled motivation from causal variable localization. The safety-critical case studies (refusal override, backdoor neutralization) are the paper's strongest contribution, showing CDAS preserves model utility while achieving meaningful concept suppression. However, AXBENCH results are mixed and inconsistent, the unit-factor variant performs far below baselines suggesting the practical tuning-free claim is overstated, statistical reporting is weak throughout, and important ablations are absent. The paper is honest about its limitations, which is commendable, but the evidence base needs substantial strengthening before the contribution can be evaluated at ICLR confidence.",
+  "strengths": [
+    "Principled motivation: framing steering as faithful causal feature identification rather than policy imposition is conceptually well-grounded and differentiates CDAS from pure fine-tuning analogues.",
+    "The safety case studies are compelling and novel in scope—testing up to 70B models, evaluating both concept suppression and utility preservation simultaneously, and tackling a CoT-based backdoor is ambitious and practically relevant.",
+    "Honest, calibrated conclusion: the paper clearly delineates when CDAS is preferred (larger models, utility-critical applications) and explicitly lists several significant limitations without burying them.",
+    "Bi-directionality via DII is elegant—the same intervention naturally handles both elicitation and suppression, unlike Lang.-based methods that are inherently uni-directional."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Insufficient statistical rigor throughout. AXBENCH results in Table 1 report no variance or confidence intervals across runs. The backdoor case study uses only 3 random seeds. The faithfulness benchmarks use 100-instance tinyBenchmarks subsets, which yields very wide confidence intervals (e.g., a 3% accuracy difference on 100 samples is not distinguishable from noise at conventional significance levels). No significance tests are applied anywhere.",
+      "suggested_fix": "Report mean ± std (or 95% CI) for all AXBENCH scores across seeds. Increase backdoor experiment seeds to at least 5. Either use full MMLU/TruthfulQA or explicitly acknowledge that tinyBenchmark differences are indicative only. Add a brief significance test (e.g., bootstrap) for key pairwise comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'unit factor' performance of CDAS on AXBENCH is drastically weaker than competing methods (e.g., 0.121 vs. 0.756 for RePS on 2B/L10), yet the paper's tuning-free advantage for case studies relies on unit factors. The large unit-vs-tuned gap suggests the learned steering direction does not reliably encode concept strength at inference time, which undermines the core claim that DII faithfully captures concept features.",
+      "suggested_fix": "Provide an ablation or analysis explaining why unit factors fail for general-purpose steering but suffice for binary-mode safety tasks. Is the difference due to concept granularity, data quality, or a fundamental limitation of the objective? This gap needs mechanistic explanation, not just empirical reporting."
+    },
+    {
+      "severity": "major",
+      "issue": "Critical ablations are absent: (a) JSD vs. KL divergence as the distribution matching objective—the choice of JSD over forward/reverse KL is presented as motivated but never ablated; (b) sensitivity to the DII source token position selected by grid search is not characterized; (c) no comparison of rank-1 vs. higher-rank intervention to bound the loss from rank-1 restriction.",
+      "suggested_fix": "Add a table comparing JSD, forward KL, reverse KL objectives on at least one task. Report how steering score varies with token position choice in the 'one-to-many' protocol. A brief higher-rank experiment or at least a discussion with references to prior rank comparisons would address (c)."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2 (refusal results) appears to have a truncated or corrupted Llama-3.1-70B row—only three numbers appear ('1001001008384275'), making it impossible to assess DIM and full RePS/DAS comparison at 70B scale. The 70B model is otherwise a key result supporting scale claims.",
+      "suggested_fix": "Verify and correct Table 2. The 70B refusal/suppression/harmonic-mean scores for all methods must be present; the current state makes the 70B scale claim unverifiable."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper reuses 'DAS' as the name for its ablation baseline (DII + Lang. objective), which conflicts with the established meaning of DAS as Geiger et al.'s causal localization framework already cited extensively in the paper. This creates persistent ambiguity (e.g., 'DAS successfully defends against red-teaming but fails on the trigger' is read as a claim about Geiger et al.).",
+      "suggested_fix": "Rename the ablation baseline throughout (e.g., 'DII-Lang.' or 'CDAS-Lang.') to avoid conflation with the Geiger et al. method."
+    },
+    {
+      "severity": "minor",
+      "issue": "The ethical framing of refusal-override as 'quality-of-service improvement for local LLMs' without any dual-use discussion is insufficient for an ICLR paper. Techniques that systematically disable safety guardrails require explicit responsible-disclosure consideration.",
+      "suggested_fix": "Add a brief ethics/dual-use statement acknowledging that refusal-override capability can be misused, and scope the claimed benefit (e.g., local deployment contexts where the operator has appropriate authority)."
+    }
+  ],
+  "questions_for_authors": [
+    "Why does the unit factor fail so dramatically on AXBENCH but appear sufficient for the safety case studies? Is this a data quality difference, a task granularity difference, or does the DII objective only faithfully recover features in binary-mode settings?",
+    "The JSD objective is described as 'weaker' than Lang./PO. Can you provide a theoretical argument or empirical evidence that weaker supervision specifically leads to better causal faithfulness, rather than simply lower overfitting? Have you compared to a standard KL divergence objective?",
+    "How sensitive are results to the grid-searched DII source token position? If the optimal token position shifts across concepts or models, how practically costly is the grid search?",
+    "Table 2 for Llama-3.1-70B appears incomplete—could you confirm the full results for all four methods on this model?",
+    "BiPO is dropped from the case studies for 'consistent suboptimal performance on AXBENCH.' Since AXBENCH and case studies test different task types (general-purpose vs. safety-critical suppression), could BiPO behave differently in the safety setting? Even a single data point would strengthen the baseline coverage.",
+    "How was the quality of gpt-4o-mini-generated neutral responses (yi) validated? Does data quality here bottleneck AXBENCH results for CDAS?"
+  ],
+  "calibration_check": "The paper's claims are generally appropriately scoped and honestly hedged—the conclusion correctly narrows CDAS's advantages to larger models and utility-critical scenarios—but the 'tuning-free advantage' claim and the 'more faithful supervision' narrative are stated more confidently than the evidence supports given the unit-factor gap and missing JSD ablation.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a genuine and growing need (reliable, reversible LLM control) with safety-relevant case studies at 70B scale, but mixed AXBENCH results and rank-1-only scope limit immediate impact on the broader steering community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Combining DII with a JSD distribution-matching objective for steering is genuinely new; the causal-variable-localization framing of steering offers a fresh conceptual perspective not present in existing Lang. or PO methods."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method derivation is sound and the experimental protocol is reasonable, but key ablations are missing (JSD vs. KL, token position sensitivity, rank > 1), and the mechanistic explanation for why DII faithfully captures concept features is largely asserted rather than demonstrated."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No variance or confidence intervals are reported for AXBENCH; the backdoor experiment uses only 3 seeds; faithfulness benchmarks rely on 100-instance tinyBenchmark subsets without significance tests, making most numerical differences statistically uninterpretable."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The conclusion and limitations section are unusually transparent for a conference submission—the authors clearly state when CDAS underperforms and enumerate four concrete limitations—though the unit-factor gap and JSD choice are not sufficiently interrogated."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is readable and the notation is internally consistent, but the reuse of 'DAS' for an ablation baseline creates persistent confusion, and the 'one-to-many' DII protocol description lacks enough detail to fully understand the grid-search procedure."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed; the division into a benchmark evaluation and two case studies is logical; length appears consistent with ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Training data curation, model choices, and most hyperparameters are described; the DII token-position grid search lacks detail; gpt-4o-mini augmentation prompts are referenced in appendix but the appendix content is unavailable in this extraction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of steering and preference optimization literature is adequate, but sparse autoencoder-based steering (a closely related mechanistic interpretability approach) is mentioned only in passing without experimental comparison or substantive discussion."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figure 1 captions describe per-layer ASR curves with standard error shading—informative for the main claim—but Table 2 appears to have a corrupted 70B row and Table 1's inclusion of both oracle and fair scores in the same cells reduces readability."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH evaluation covers only the Gemma-2 family (2B/9B); the scale generality claim rests primarily on two safety case study models; rank-1 restriction is acknowledged but not bounded; the JSD vs. KL ablation needed to validate the core design choice is absent."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper has genuine novelty and the safety case studies are a meaningful contribution, but the combination of weak statistical reporting, a large unit-factor performance gap, missing ablations, and an apparently corrupted table keeps it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.22
+}

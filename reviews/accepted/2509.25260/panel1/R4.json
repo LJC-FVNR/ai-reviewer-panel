@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes an information-theoretic pipeline that compresses transformer hidden states with a VQ-VAE and estimates mutual information between discrete codes to study three interpretability questions: pre-output planning horizon, branch-awareness of alternative correct continuations, and layer/block localization of next-token information. The methodology is thoughtfully motivated as an alternative to probing, and the case studies on CFG, synthetic path-finding, and OpenWebText yield sensible qualitative conclusions (task-dependent horizon, weak branch awareness, recency effect). However, the empirical scope is narrow (GPT-3-Small-sized models trained from scratch, one 0.3B ablation, no real pretrained LMs), the MTP-vs-NTP comparison is explicitly reported as null, and the framework has an under-controlled confound: the estimated MI is a property of both the LM and the VQ-VAE, and the paper only supports relative claims within a single quantizer without demonstrating that the qualitative conclusions are stable to codebook size, VQ-VAE seed, or block partitioning.",
+  "strengths": [
+    "The critique of probing (probe-capacity confounds, DPI violations) is well argued and the appeal to information theory is principled; the paper adds a validation study (App. A.4) and an explicit MI estimator analysis (App. E), which is more careful than typical interpretability work.",
+    "Task suite is deliberately chosen to span symbolic (CFG), long-horizon reasoning (PF-Short/Long designed with disjoint correct and decoy paths), and natural text, and the branch-awareness experiment on PF is a genuinely clean design because correct and decoy paths are node-disjoint.",
+    "Findings are honestly scoped: authors use nMI, disclaim absolute meaning, report a null result for NTP vs. MTP, and note the ratio attenuates with path length — this is refreshingly non-overclaimed.",
+    "The same pipeline is repurposed for a layer/block-localization diagnostic that recovers the expected recency and late-layer effects and adds a conditional-MI control to rule out the trivial explanation via the final prefix token."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The core measurements are properties of the (LM, VQ-VAE) pair, but robustness of the qualitative claims to the quantizer is not demonstrated. Codebook size K, encoder capacity, entropy/cosine loss weights, and training seed all shape the codes and hence the MI ranking; without a sweep showing that 'nMI decays fast on CFG but not on PF' and 'I(Z_H;Z_alt) > I(Z_H;Z_decoy)' are stable across at least K, VQ-VAE seed, and block length, an alternative reading is that the quantizer, not the LM, drives the trend.",
+      "suggested_fix": "Add a robustness study: repeat the three headline analyses across a grid of codebook sizes (e.g., 4 values), 3+ VQ-VAE seeds, at least two block lengths in Sec 3.3, and report the fraction of configurations in which the qualitative conclusion holds, plus a rank-correlation of nMI curves across settings."
+    },
+    {
+      "severity": "major",
+      "issue": "Empirical scope is thin for the generality claimed. All main results use GPT-3-Small-sized models trained from scratch, and one 0.3B CFG ablation. The paper repeatedly frames conclusions in terms of 'LMs' and connects to modern reasoning systems (Tree/Graph-of-Thoughts, tool-using LMs), but never evaluates a real pretrained LM (e.g., Pythia, OLMo, Llama-2/3 at multiple scales). This gap is especially load-bearing for the natural-text (OpenWebText) diagnostic in Sec 3.3.",
+      "suggested_fix": "Rerun Sec 3.3 on at least one open pretrained LM family across two scales, and report whether the recency/late-layer profile matches. If it does not, scope the claims to trained-from-scratch small models."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is uneven. Table 1 reports mean ± std across seeds but the number of seeds is not stated in the visible body, and Fig. 3 curves are described without variance information in the caption. Some of the highlighted differences (e.g., 'MMTP slightly more uniform than MNTP' on PF-Long; slower decay in CFG for MMTP) are qualitative eyeballing rather than significance-tested claims.",
+      "suggested_fix": "State the number of LM training seeds and VQ-VAE seeds; add error bands to Fig. 3 and Fig. 4 heatmaps; report a paired significance test (e.g., bootstrap CI on nMI difference) for the MTP-vs-NTP comparisons before drawing directional conclusions."
+    },
+    {
+      "severity": "major",
+      "issue": "The branch-awareness claim rests on the ratio I(Z_H;Z_alt)/I(Z_H;Z_decoy) exceeding 1, but the design has an uncontrolled confound: the prefix directly contains the edge list, and both correct paths share the start/goal nodes and traverse edges from that list, whereas the decoy is constructed to be node-disjoint. Any prefix representation that encodes the input edges would score higher on the alternative than on the decoy, without any 'branch-awareness' inside the LM. The paper acknowledges disjointness but does not rule out this input-side explanation.",
+      "suggested_fix": "Add a control where Z_H is replaced by a code trained only on the raw input tokens (no LM), or restrict Z_H to layers before any nontrivial computation, and show the ratio is meaningfully larger for the trained LM's mid/late layers than for these controls."
+    },
+    {
+      "severity": "minor",
+      "issue": "The nMI normalization uses the max within an experimental group, which mechanically forces one point to 1 and can obscure whether the peak MI is itself large or small. This complicates cross-task comparison (e.g., 'CFG decays faster than PF') because both curves are self-normalized.",
+      "suggested_fix": "Report raw MI in nats alongside nMI, and include the H(Z_A), H(Z_B) baselines so the reader can see the effective dynamic range."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning against neighboring information-theoretic interpretability (Voita/Titov MDL probes, Skean et al. 2025) is mentioned but not empirically compared; the paper's superiority over probing is argued mainly via App. D.2 (not in the main body).",
+      "suggested_fix": "Move a compact head-to-head against an MDL/V-information probe into the main text, on at least one of the three tasks, showing where the VQ-VAE-MI approach yields a different or more stable conclusion."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: several sentences run on and equations are wrapped inline (extraction artifacts notwithstanding, structure is dense), figure captions do not state the number of seeds, and the meaning of 'block' in Sec 3.3 (a chunk of 16 prefix positions at a fixed layer) is easy to confuse with 'transformer block' used elsewhere.",
+      "suggested_fix": "Rename the Sec 3.3 unit (e.g., 'prefix window') to disambiguate from 'transformer block', and add seed counts and error information to all captions."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are the three main qualitative findings (fast nMI decay on CFG, sustained/rising nMI on PF, alt>decoy ratio) to codebook size K, VQ-VAE seed, and the loss weights λ_q, λ_cos, λ_ent? Please quantify.",
+    "In the branch-awareness experiment, what does the ratio look like when Z_H is replaced by a VQ-VAE trained directly on the raw edge-list tokens (i.e., no LM)? Is the LM adding branch information beyond what the input already provides?",
+    "How many LM training seeds and how many VQ-VAE training seeds underlie Table 1 and Fig. 3? Are the MTP-vs-NTP differences statistically significant under a paired test?",
+    "Does the layer/block localization pattern in Fig. 4 replicate on a real pretrained LM (e.g., Pythia-160M/410M/1.4B) on OpenWebText? If so, how does the depth of the model change the recency footprint?",
+    "The paper claims 'no consistent differences' between NTP and MTP, yet Sec 3.2 highlights MMTP's higher accuracy and larger ratio on PF-Long. Which characterization should the reader adopt, and can you reconcile them?",
+    "Since nMI is normalized within a group, is the cross-task comparison in Sec 3.1 (CFG vs PF) meaningful in absolute terms, or should it be interpreted only as a within-task shape comparison?"
+  ],
+  "calibration_check": "Claims are largely appropriately scoped (nMI framed as relative, 'no consistent differences' between NTP and MTP reported honestly), but the framing of 'branch-aware planning' overreaches given the acknowledged confound that the raw prefix already contains the alternative-path edges, and the generality implied by talking about 'LMs' is not supported by the trained-from-scratch small-model empirical scope.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Interpretability angle is timely and the diagnostic could be useful, but findings are modest, the NTP-vs-MTP comparison is a null, and results are confined to small models trained from scratch, limiting expected uptake."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "VQ-VAE-based coarse-graining plus count-based MI estimation for interpretability is a reasonable and not-obvious combination; the specific horizon/branch/localization design around this compressor is fresh, though each ingredient (VQ-VAE, MI, block-level analysis) is individually well established."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Method is coherently defined, App. E addresses estimator bias, and controls like conditional MI on the final prefix token are included, but load-bearing confounds (quantizer-dependence of MI, input-side explanation of branch awareness) are not directly ablated in the main text."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Seed counts are underreported, error bars are largely absent from the main-text figure captions, and directional MTP-vs-NTP claims are made without paired significance tests despite the paper's own conclusion that overall differences are inconsistent."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Authors correctly disclaim absolute MI, use only relative claims, acknowledge quantizer-dependence, and openly report the null result on MTP vs NTP; some overreach remains in generalizing to 'LMs' broadly."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Motivation and framework are readable, but notation is dense, the term 'block' is overloaded across sections, and several key design choices (block length 16, codebook size, number of seeds) surface only implicitly."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed, method is separated from analyses, and appendices carry validation and estimator analysis; length appears within ICLR norms."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The pipeline is described in enough detail that a competent reader could re-implement, but critical hyperparameters (K, λ values, seed counts, VQ-VAE training data) and the CFG/PF generation specifics are pushed to appendices, and the pipeline's sensitivity to those choices is not characterized."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The prose positions the work reasonably against probing and mechanistic interpretability and cites relevant information-theoretic prior work; head-to-head empirical comparisons with MDL/V-information probes remain in the appendix."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "From captions, Fig. 1 usefully illustrates the pipeline, Fig. 2 the tasks, and Fig. 3/4 the main results; captions, however, do not report variance or seed counts, and Fig. 4 relies on self-normalized heatmaps whose absolute scale is not conveyed."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Three datasets is a reasonable spread, but all experiments use small architecture-matched models trained from scratch, no real pretrained LM is evaluated, and the paper generalizes to 'LMs' more broadly than the evidence warrants."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising methodological direction with sensible pilot findings, but the empirical scope, quantizer-robustness, and confound controls needed to make the interpretive claims trustworthy are not yet in place."
+    }
+  },
+  "publishability_probability": 0.28
+}

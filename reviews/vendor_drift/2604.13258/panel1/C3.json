@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a three-component token attribution method for decoder-only LLMs (target-conditioned attention-value rollout gating, HVP-based Hessian sensitivity, and KL-under-masking), evaluated on three benchmarks plus a new curated dataset with a new DSA metric. The problem is relevant, the baseline suite is broad, and the ablation/robustness plan is appropriate in design. However, the paper has serious internal inconsistencies (DSA values in Table 1 exceed the metric's own definitional range; the DSA definition as written is circular), an unaddressed evaluation confound (a KL-masking-based method scored primarily on masking/perturbation-based faithfulness metrics), implausibly large effect sizes without significance testing, and mischaracterization of LLM-generated labels as 'human annotations'. These are substantive evidentiary problems, not cosmetic ones.",
+  "strengths": [
+    "Well-motivated problem: faithful token-level attribution for autoregressive decoder-only models is under-served, and the critique of attention-based and first-order methods is accurate and well-cited.",
+    "Broad empirical design in principle: 9 baselines including recent generative-attribution methods (ContextCite, TDD, PML, ReAgent, SEA-CoT), 4 models spanning 3B-70B, 3 established benchmarks plus a curated probe dataset, plus decoding-hyperparameter sensitivity and syntactic-rephrasing robustness studies.",
+    "Component ablations (Transition-only, Hessian-only, KL-only, no-gating, uniform-gating) are the right ablations to isolate each design choice.",
+    "Scalability is at least addressed: low-rank (rank-64) blockwise Hessian with windowing and 6-layer sampling for the 70B model, with hyperparameters (beta, gamma, rank, window, batch size, hardware) stated in the main text.",
+    "Limitations (runtime, memory, long-text inefficiency) are explicitly acknowledged in the conclusion."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Internal inconsistency in the headline metric: DSA is defined as a difference of normalized attribution masses (total mass sums to 1), which bounds it to [-1, 1], yet Table 1 reports DSA values of 2.10-5.10 (HETA 4.80/5.10). Either the definition or the table is wrong, and the main quantitative claim ('DSA >= 4.2 across all models') is uninterpretable as written. Additionally, the formal definition is circular: S_SciQ and S_NarrQA are defined as 'model-selected important token indices', so the metric appears to be computed over sets selected by the method being evaluated.",
+      "suggested_fix": "Redefine DSA precisely over fixed, annotation-derived token sets (not model-selected ones), state its range, reconcile the reported magnitudes, and re-report all of Table 1 with the corrected definition."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Evaluation circularity: HETA's third component is literally the KL divergence of the target distribution under token masking, and the primary faithfulness metrics (Soft-NC/Soft-NS) also measure output-distribution shift under attribution-guided input perturbation. A method that directly computes per-token masking effects will be near-optimally aligned with masking-based metrics, which plausibly explains the otherwise implausible 3-7x Soft-NC gaps over every baseline. This confound is never discussed, and no metric decorrelated from masking (e.g., erasure-independent sufficiency, downstream counterfactual tasks, or human/ground-truth-rationale evaluation on established datasets) is used as the primary evidence.",
+      "suggested_fix": "Add at least one primary evaluation axis that does not reward masking-perturbation agreement (e.g., ground-truth rationale benchmarks such as ERASER-style tasks, or counterfactual task-performance tests), and explicitly analyze the metric-method correlation."
+    },
+    {
+      "severity": "major",
+      "issue": "The abstract and contribution list claim 'alignment with human annotations', but the curated dataset's gold labels are the subword intersection of GPT-4o and GPT-5 outputs — no human annotators are involved. This is a material mischaracterization of the evidence and inflates the headline claim.",
+      "suggested_fix": "Relabel as LLM-annotated throughout, add a genuine human annotation subset (even a few hundred instances) to validate the LLM labels, and soften the abstract claim accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Incomplete evidence for the central comparative claim: the text states HETA exceeds 'the next best method, ReAgent, by over 2x' on GPT-J and Phi-3, but ReAgent rows are absent from the GPT-J and Phi-3 blocks of Table 3 (present only for LLaMA-3.1), and Table 2's DSA row is missing SEA-CoT and ReAgent entries. Qwen2.5-3B, advertised as one of four models, appears only in the appendix. The strongest-baseline comparison is therefore not verifiable from the main results.",
+      "suggested_fix": "Report all 10 baselines x all 4 models x all datasets completely, in the main text where space-claimed conclusions depend on them."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin relative to the effect sizes claimed: 3 seeds with 'std < 0.2' / 'std < ±0.06' stated globally rather than per cell, no significance tests, and no investigation of why HETA's Soft-NC (9-11) sits in an entirely different regime from every prior method (~0-4) on the same metric — a gap this large demands a sanity check, not just a mean.",
+      "suggested_fix": "Report per-cell mean ± std over seeds, add paired significance tests against the strongest baseline (ReAgent), and include a diagnostic explaining the regime shift (e.g., metric saturation or scale analysis)."
+    },
+    {
+      "severity": "major",
+      "issue": "Correctness of the Hessian estimator is unclear: Eq. 3 uses Rademacher vectors supported on token i's own block, so it probes only the diagonal block H_ii and captures no cross-token second-order interactions — contradicting the stated motivation of modeling 'second-order interactions between inputs'. As written it is also not a standard unbiased Hutchinson estimator of any named quantity (trace/diagonal), and the number of samples m, runtime, and memory promised ('we report m, runtime, and memory') never appear in the main text.",
+      "suggested_fix": "Clarify what quantity Eq. 3 estimates and its bias/variance; if cross-token interaction is claimed, use cross-block probes; report m, wall-clock, and memory per model in the main results."
+    },
+    {
+      "severity": "minor",
+      "issue": "The KL masking scheme is unspecified ('for a chosen scheme') — mask token, replace with [MASK]/UNK, or ablate embedding? — and beta=gamma=0.5 is asserted without a sensitivity sweep; baseline tuning budgets (especially for the expensive ContextCite) are not described, so fairness of comparison cannot be assessed.",
+      "suggested_fix": "Specify the masking operator, add a beta/gamma sensitivity analysis, and state baseline hyperparameter protocols and compute budgets."
+    },
+    {
+      "severity": "minor",
+      "issue": "The curated dataset's construction (topically disjoint NarrativeQA distractor + SciQ evidence) makes the 'correct' attribution nearly trivially separable by topic, so high DSA may reflect topic detection rather than causal attribution; the causal-gating component is itself built on attention rollout, which the paper's own motivation section argues is not a faithful causal signal — this tension is unresolved.",
+      "suggested_fix": "Add harder curated variants with topically matched distractors, and discuss/empirically test whether the rollout gate inherits the non-causality criticized in attention-based methods."
+    }
+  ],
+  "questions_for_authors": [
+    "How can DSA exceed 1.0 given its definition as a difference of simplex-normalized masses? Please provide the exact implemented formula and reconcile it with Table 1.",
+    "Soft-NC/Soft-NS measure distribution shift under attribution-guided perturbation; HETA's KL term computes distribution shift under masking. Why is this not a circular evaluation, and how do you explain HETA's Soft-NC being 3-7x higher than every published baseline on the identical metric?",
+    "Where are the ReAgent rows for GPT-J and Phi-3 in Table 3, given ReAgent is identified as the strongest baseline and the 'over 2x' claim rests on it?",
+    "The gold labels come from GPT-4o/GPT-5 intersection. On what basis do you call this 'alignment with human annotations', and what is human agreement with the LLM labels on a validation subset?",
+    "With Rademacher probes supported on token i's own block, what cross-token second-order information does Eq. 3 retain, and what are m, runtime, and peak memory per model?",
+    "How were baseline hyperparameters and compute budgets (particularly ContextCite's ablation budget) set to ensure a fair comparison?"
+  ],
+  "calibration_check": "Claims exceed the evidence: 'alignment with human annotations' rests on LLM-generated labels, 'establishing a new standard' rests on a metric with an internal inconsistency and a masking-based evaluation that favors the method's own masking component, though the limitations section on compute cost is commendably honest.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Faithful attribution for decoder-only LLMs is a real and active problem, and a validated benchmark plus a strong method would be used; impact is capped because the core evidence is currently unreliable."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The target-conditioned integration of rollout gating, HVP curvature, and KL-masking is a reasonably fresh combination, but each ingredient (attention rollout, Hessian/Integrated-Hessians sensitivity, masking-based KL attribution) is established prior work."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The DSA definition contradicts its reported values and is circular as written, the Hessian estimator does not capture the cross-token interactions the paper motivates, and the main evaluation is confounded with the method's own masking term."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, global rather than per-cell std, no significance tests, and implausibly large effect sizes reported without any sanity or regime analysis."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "LLM-generated labels are presented as 'human annotations', 'new standard' language overclaims, and the metric-method circularity is undisclosed; the honest compute-limitations section partially offsets this."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Prose motivation and method overview are readable and well organized, but the DSA formal definition is garbled/circular and several key quantities (m, masking scheme) are left vague."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (abstract, intro, motivation, background, method, experiments, ablations, related work, limitations/conclusion) is followed at plausible length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hardware, weights, rank, windowing, batch sizes, and grid are specified, but the Hutchinson sample count, masking operator, baseline tuning protocols, and runtime/memory numbers are missing from the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attribution, attention-critique, and recent generative-attribution methods is broad and the criticisms of ContextCite/TDD/PML/ReAgent are specific, though the positioning conveniently omits discussion of perturbation-metric circularity known in this literature."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe genuinely informative items (pipeline overview, component ablations, robustness panels, qualitative attributions), but two of four figures lean on qualitative examples and the tables they accompany contain missing rows."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models, three benchmarks, a curated probe, and nine baselines is good breadth in design, but the strongest baseline is missing from two of three main-table model blocks, Qwen results are appendix-only, and all faithfulness evidence shares one perturbation-based metric family."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, well-scoped contribution whose headline evidence is currently undermined by a metric inconsistency, evaluation circularity, and incomplete baseline reporting — fixable, but requiring substantial new analysis and re-reporting (borderline reject)."
+    }
+  },
+  "publishability_probability": 0.25
+}

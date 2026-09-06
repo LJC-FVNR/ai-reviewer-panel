@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes that reasoning models form an 'internal bias' (a preliminary answer formed before deliberate reasoning) which, when it diverges from the reasoning trajectory, triggers overthinking. It supports this with correlational statistics across three models and multiple tasks, two counterfactual interventions (question removal at first answer, and SFT-based bias injection), attention-based mechanistic analysis, and mitigation trials showing existing methods do not eliminate the bias effect. The hypothesis and multi-pronged evidence are interesting and timely for the efficient-reasoning literature, but the operationalization of 'internal bias' via a forced no-reasoning template, the confounded nature of the bias-injection SFT, the reliance on a single model for causal experiments, weak statistical reporting (no error bars/seeds/significance tests), and coarse reflection-keyword proxies leave the causal story short of the bar for ICLR acceptance.",
+  "strengths": [
+    "Clear, testable hypothesis (internal bias -> overthinking) with a two-part causal claim explicitly stated up front.",
+    "Multi-pronged evidence: correlational stratification by deviation degree, two distinct counterfactual interventions, attention-based mechanistic analysis, and a mitigation-methods stress test.",
+    "The 'remove the question after the first candidate answer' intervention is clever and yields sizable (31-53%) length reductions without accuracy collapse, which is genuinely informative about redundancy.",
+    "Coverage across three model families/sizes (DeepSeek-R1, QwQ-32B, R1-Distill-Qwen-14B), three task types (character ops, KnowLogic, AIME), and both Chinese and English prompts adds credibility to the correlational finding.",
+    "Honest reporting of limitations (open-ended tasks not covered; simple-task accuracy dips slightly under intervention) and a fair characterization of mitigation methods as ineffective at removing bias-driven behavior.",
+    "The parroting analysis links a concrete pathological behavior to the proposed mechanism in a testable way."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The operationalization of 'internal bias' via the forced </think> no-reasoning template may not measure what the paper claims. On AIME the direct-answer accuracy is 0-3.3%, so 'a_bias' is essentially noise / prior over plausible numeric magnitudes; calling this the model's 'preliminary guess' and computing MAE against a_final risks tautology (harder problems have larger a_bias-a_final gaps because harder problems have longer reasoning). The 'first reasoning length is roughly constant across deviation groups' argument partially addresses this but is not sufficient — the analysis is still stratifying by an outcome-correlated variable.",
+      "suggested_fix": "Validate the direct-answer probe: (i) show that the direct-answer distribution changes when only irrelevant surface features of the question are perturbed (holding difficulty fixed), (ii) compare against a probe-based readout of a_bias from hidden states (Appendix J.1 is the right direction — bring it into the main text and quantify predictive validity), and (iii) add difficulty-matched stratification (e.g., match on first-reasoning-length quantile) before computing R."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias-injection experiment is confounded. SFT on 50 rephrased declarative statements per sample changes far more than the model's a_bias: it changes the model's estimate of a_final, its confidence, and its familiarity with the exact question. The Random2Wrong/Random2Correct baselines are designed to control for 'training itself' but do not control for injecting information *about the specific test sample* — the causal claim is 'bias causes overthinking', but the manipulation is 'answer knowledge for this question causes overthinking', which is a weaker claim.",
+      "suggested_fix": "Add a control that alters bias without altering direct sample knowledge — e.g., activation steering on the direct-answer probe direction, or few-shot prompting that shifts a_bias without exposing the answer. Alternatively, verify that a_bias actually moves in the intended direction post-injection (measure a_bias before/after) and that a_final and reasoning content are unchanged conditional on length."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin. No seeds, error bars, confidence intervals, or significance tests are reported for any of the length differences, R values, or intervention effects. Length distributions in reasoning models are heavy-tailed; a 21-42% relative increase across ~30-60 questions per stratum on AIME could easily be within run-to-run variance. Mitigation-method comparisons (Table 4) are single-run point estimates.",
+      "suggested_fix": "Report seeds, per-question paired statistics (Wilcoxon/paired-t on log-length), bootstrap CIs for R and Llow/Lhigh, and multiple-run means for at least the intervention and mitigation tables. For AIME (30 questions), this is essential."
+    },
+    {
+      "severity": "major",
+      "issue": "The causal interventions rely on a single 14B model. The correlational results generalize across three models, but the two headline causal claims (Section 5) use only R1-Distill-Qwen-14B. QwQ-32B and DeepSeek-R1 may behave very differently at scale, and the paper's broad framing ('reasoning models overthink because of internal bias') is not underwritten by the causal evidence.",
+      "suggested_fix": "Replicate at least the question-removal intervention on QwQ-32B and one non-Qwen-derived reasoning model. If cost is prohibitive, scope the causal claims to the 14B setting in the abstract and conclusion."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reflection is quantified almost entirely by keyword counting ('wait' etc.). This is coarse, and the paper uses it in headline claims about 'reflection frequency' rising with deviation. It also does not disentangle useful reflection from redundant reflection.",
+      "suggested_fix": "Complement keyword counts with an LLM-judge (or human) categorization of reflection segments as useful vs redundant on a subsample, and show the redundant-reflection count carries the effect."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention analysis (Section 6) is presented as mechanistic evidence but is descriptive. Higher attention to the question at reflection points is consistent with the bias-reactivation story but also with many alternatives (e.g., the model re-reading the prompt to verify constraints, which would be functional, not pathological).",
+      "suggested_fix": "Add an intervention: mask attention from reflection-decision positions back to question tokens (attention ablation) and measure whether reflection rate drops, especially for high-deviation cases. This would convert the attention finding from correlational to causal."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work leans heavily on '[Author] et al., 2025a/b/c', suggesting substantial reliance on the authors' own prior contributions. The delineation between the current paper's contribution and 'Author et al., 2025b' (which also studies overthinking) is not made crisply enough in prose.",
+      "suggested_fix": "Add an explicit paragraph contrasting this paper's contribution with the closest prior works (in particular the 2025b overthinking paper and Arcuschin et al. 2025 on bias-driven rationalization) — what specific claims are new here that were not in those works?"
+    },
+    {
+      "severity": "minor",
+      "issue": "The prose has numerous artifacts (run-on sentences, missing spaces at line breaks, ', and'-linked clauses that appear to be OCR/formatting fallout) that hurt readability in the current form.",
+      "suggested_fix": "Careful copy-edit pass; several sentences in Sections 1, 4.3, and 5 are hard to parse."
+    }
+  ],
+  "questions_for_authors": [
+    "When direct-answer accuracy is 0% (AIME), in what sense does a_bias represent the model's 'preliminary guess' rather than a template-induced fallback? Have you validated that a_bias shifts with prompt-level content changes that hold difficulty constant?",
+    "In the bias-injection experiment, did you verify that a_bias actually moved (measured via the same 64-sample direct-answer procedure) after SFT, and that a_final was unchanged? Without this, the manipulation cannot be attributed specifically to bias.",
+    "Are the Table 1 differences (Llow vs Lhigh, R) statistically significant per model/dataset? Please report a paired significance test or bootstrap CI.",
+    "For the question-removal intervention: how does the model 'know' the question is gone (KV cache manipulation vs re-prompting)? Could the length reduction partly reflect a general trigger to stop, not specifically bias suppression? A control that removes an equally sized, irrelevant span would clarify this.",
+    "Does the attention-mask ablation implied by Section 6 (masking question-token attention at reflection-decision positions) actually reduce reflection rate, or is the attention finding purely correlational?",
+    "How sensitive are the keyword-based reflection counts to the specific keyword list? Do the trends hold with an LLM-judge classification of reflective vs non-reflective segments?",
+    "Why does FCS_SFT harm AIME accuracy so dramatically (63.3 -> 50.0), and does this reflect a general concern that shortening reasoning also removes bias-independent useful reflection — undermining the paper's implicit prescription of an 'attention-based early-exit'?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped and limitations are acknowledged, but the causal language in the abstract and conclusion is stronger than what a single-model intervention and a confounded SFT bias-injection actually license.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Understanding drivers of overthinking is a timely question that ICLR readers care about; the framing of 'internal bias' is useful, though it partially recapitulates existing narratives around unfaithfulness and post-hoc rationalization."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The specific link from a directly-probed a_bias to overthinking via attention reactivation is a fresh angle, but sits close to prior work on unfaithful CoT (Turpin, Arcuschin, Paul) and existing overthinking analyses that the paper self-cites."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Counterfactual interventions are a real methodological strength, but the causal claims lean on a single model, the bias-injection SFT is confounded, and the direct-answer probe is not independently validated as measuring 'preliminary guess' rather than template artifact."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, no seed reporting, no significance tests on length differences that carry all headline claims; AIME has ~30 questions per stratum with heavy-tailed length distributions, so single-run point estimates are not compelling."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations section explicitly restricts scope to closed-form outputs; simple-task accuracy dips under intervention are reported openly; mitigation-methods failures are stated rather than buried."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall argument is followable and Section 1 sets up the hypothesis cleanly, but sentence-level prose has many run-ons and word-break artifacts, and key concepts (deviation degree, direct-answer template) require re-reading."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR-style structure (Intro, Related Work, Method/Definitions, three empirical sections, Mitigation, Conclusion), length appears within norms, appendix used appropriately."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Templates, models, keyword lists, and hyperparameters are referenced with explicit appendix pointers; the described procedures could be replicated by a competent group, though many specifics are appendix-only and seed/variance details are missing."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers the main efficient-reasoning families and the unfaithfulness literature; the contribution vs prior '[Author] et al., 2025a/b/c' works (which appear substantially adjacent) is not delineated as sharply as ICLR expects."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative displays (illustrative overthinking traces, deviation-vs-length bars, attention heatmaps, layerwise score ratios) that directly support claims rather than decorate; Figure 3 in particular ties the mechanism story to a concrete example."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Correlational study spans three models, three task families, two languages — reasonable — but the causal interventions and mitigation trials are almost entirely on R1-Distill-Qwen-14B, which under-supports the general 'reasoning models overthink because of internal bias' framing."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Interesting hypothesis with multi-pronged but not fully rigorous evidence; the operationalization of internal bias, the confounded SFT injection, single-model causal experiments, and absent significance tests together push this below the ICLR bar in its current form, though a strengthened revision could clear it."
+    }
+  },
+  "publishability_probability": 0.3
+}

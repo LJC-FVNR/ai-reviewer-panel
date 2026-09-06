@@ -1,0 +1,120 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies a real phenomenon (PCC plateau under joint MSE+PCC training in attention-based regressors) and offers a two-part theoretical story: (i) a gradient-ratio decay ~1/σ_ŷ^{3/2} plus a within-sample-dispersion factor, and (ii) a convex-hull PCC gain bound for convex aggregators. It then proposes ECA (SRA + DATS + DNPL) and reports improvements on a synthetic setup, three UCI tabular tasks, a spatial-transcriptomics dataset, and MOSI. The theoretical framing is useful but partly rests on well-known decompositions and restrictive assumptions, and the experimental evidence is under-powered (mostly single-seed, only one benchmark reports error bars) and lacks comparisons to alternative correlation-focused losses/aggregators, leaving the empirical claims weakly supported for an ICLR bar.",
+  "strengths": [
+    "Identifies and formalizes a concrete, observable failure mode (PCC plateau) in a training regime that is common in pathology/transcriptomics/MSA — the motivation is real and relatable.",
+    "The gradient decomposition sharing a common local factor L_si with different global scalars is a clean way to reason about the MSE/PCC conflict, and the derived RMS ratio bound gives a testable prediction that the paper checks empirically (Figure 3).",
+    "The convex-hull PCC gain bound (Theorem 2.2) is intuitive and directly motivates the SRA extrapolation design; the framework's three components map 1-to-1 to identified failure modes (attenuation → DNPL, homogeneity → DATS, convex hull → SRA), and are individually ablated.",
+    "Evaluation spans four heterogeneous settings (synthetic sweep over homogeneity, UCI tabular, spatial transcriptomics, MOSI), and the spatial-transcriptomics result does show a plateau visually and its mitigation, which supports the core narrative.",
+    "Ablations on UCI show non-trivial per-component contributions rather than a monolithic gain."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin. Only the spatial-transcriptomics table reports ± std; UCI, MOSI, and synthetic gains are given as point estimates with no seeds, error bars, or significance tests. Several headline gains (e.g., +0.012 PCC on Online News, +0.010 on Superconductivity, +2.3% on MOSI) are within a plausible seed-to-seed range for these datasets.",
+      "suggested_fix": "Rerun all tables with ≥5 seeds, report mean±std, and add a paired significance test (or bootstrap CI) for ECA vs baseline; also report the same for the ablation rows so component attribution is defensible."
+    },
+    {
+      "severity": "major",
+      "issue": "The novelty of the theoretical machinery is overstated. The MSE = mean² + std² + 2σyσŷ(1−ρ) decomposition is a textbook identity, and PCC's affine invariance is elementary; the paper's framing (\"first rigorous theoretical analysis\") should be tempered. The genuinely new pieces are Corollary 2.1's RMS ratio bound and Theorem 2.2's convex-hull PCC gain bound — these should be positioned as the contribution, not the decomposition.",
+      "suggested_fix": "Rewrite the intro/contributions to attribute the decomposition to prior literature, and sharpen claims to what is actually new: the softmax-Jacobian gradient analysis, the specific 1/σ_ŷ^{3/2} decay, and the convex-hull PCC ceiling."
+    },
+    {
+      "severity": "major",
+      "issue": "Corollary 2.1 assumes ρ ∈ [0,1], but in early training ρ can be near zero or negative, and 1−ρ is used as a loss precisely because ρ is not saturated. The rate O(1/σ_ŷ^{3/2}) and the empirical claim in Fig. 3 depend on this regime assumption; the paper does not justify why it holds during the plateau or whether the bound is tight enough to be causally responsible.",
+      "suggested_fix": "State when the assumption holds, quantify tightness (bound vs. actual ratio), and empirically show the decay regime holds during the plateau (not just late training)."
+    },
+    {
+      "severity": "major",
+      "issue": "Missing baselines/positioning against the correlation-loss literature. There is a substantial body of work on correlation-based losses (CCC loss, concordance correlation, ranking losses, Spearman-surrogate losses, distribution matching, deep CCA-style objectives, dispersion regularizers), none of which are compared against or even discussed. DNPL and DATS are simple enough that reviewers will ask why not any of these prior tricks.",
+      "suggested_fix": "Expand Related Work to cover correlation-oriented losses and temperature-adaptive attention, and add at least one prior correlation-loss baseline (e.g., CCC loss, Spearman surrogate, or a normalized-PCC variant) as a comparison in the main tables."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that ECA \"consistently breaks the PCC plateau\" is broader than the evidence. On MOSI, the reported PCC lift is 0.783 → 0.806 (+0.023) over the ALMT baseline that does NOT already use PCC loss; on UCI Online News PCC gain is 0.012, and MSE actually gets worse in some ablation rows (e.g., w/o SRA MSE 5.994 vs. base 6.108 but +ECA full is 5.790 — mixed picture). This is inconsistent with the framing.",
+      "suggested_fix": "Scope the claim (e.g., \"substantial gains on high-homogeneity settings; modest gains on tabular\") and add per-dataset PCC-curve figures like the transcriptomics one so readers can see whether a plateau even exists before ECA."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2.2's utility depends on R < σ0/‖w‖2; the paper does not verify this holds on the real datasets, nor discuss what happens when it doesn't. It's also unclear whether the bound is tight for softmax specifically (vs. arbitrary convex aggregators).",
+      "suggested_fix": "Report R and σ0/‖w‖2 for each real dataset, and discuss tightness (e.g., a numerical example where softmax hits the bound)."
+    },
+    {
+      "severity": "minor",
+      "issue": "SRA with a learnable γ_s ≥ 1 and a soft cap γ_max=2 is essentially a residual scaling head — the paper should discuss the relationship to feature-modulation methods (FiLM, gated residuals) and to non-convex attention variants (e.g., signed attention, attention with negative weights).",
+      "suggested_fix": "Add a paragraph on relation to prior extrapolation/residual mechanisms and cite them; consider a simple non-convex-attention baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "The applicability to deep architectures is asserted (\"analysis applies regardless of the depth\") because deep Transformers 'typically derive the final prediction with a convex attention pooling followed by a linear projection.' This is over-broad — many regression Transformers use CLS + MLP head, mean pooling, or attention pooling with non-convex readouts; the theory only strictly targets the final aggregation step.",
+      "suggested_fix": "State the exact class of architectures the theory covers and label the deep-architecture applicability as a hypothesis validated empirically, not a corollary."
+    },
+    {
+      "severity": "minor",
+      "issue": "Notation is confusing (y, ŷ, ȳ collision from anonymization; y vs y-hat rendered similarly), and PDF-extraction artifacts (word joins, split subscripts) make some equations hard to parse.",
+      "suggested_fix": "Clean up rendering; consider using bold or tilde for predictions to disambiguate."
+    }
+  ],
+  "questions_for_authors": [
+    "For every empirical table, what is the seed count, and can you report mean±std with a significance test against the baseline? The transcriptomics table already shows that some 'improvements' fall within one std of the baseline (e.g., PCC@F 0.690±0.202 vs 0.602±0.160).",
+    "Corollary 2.1 assumes ρ ∈ [0,1]. During the plateau in Figure 2 (and Figure 6 fold 2), what is the empirical ρ, and does the bound stay tight when ρ is small or negative?",
+    "How does DNPL differ empirically from simply increasing λ_PCC as σ_ŷ grows? Is StopGrad(σ_ŷ)·(1−ρ) meaningfully different from an annealing schedule on λ_PCC?",
+    "For SRA, what does γ_s learn in practice? Distribution over samples, per-epoch trajectory, and whether the γ_max=2 cap ever binds — this determines whether SRA is really extrapolating or just rescaling.",
+    "Does the theorem 2.2 precondition R < σ0/‖w‖2 hold on 10xProteomic, MOSI, and UCI? If not, the derived bound is vacuous and the motivation for SRA on those datasets weakens.",
+    "Have you compared against alternative correlation-oriented losses (CCC, Spearman surrogate, listwise ranking) or non-convex attention variants (e.g., attention with signed weights, kernel attention with negative kernels)?",
+    "In Table 2, ALMT+LPCC degrades F1/MAE relative to ALMT — does this mean adding a PCC loss to a purely-MSE baseline is generally harmful under homogeneity? If so, the plateau story may be conflated with an MSE/PCC weight-tuning problem."
+  ],
+  "calibration_check": "Claims are moderately overscoped: 'first rigorous theoretical analysis' overstates novelty (the MSE decomposition is textbook), and 'consistently breaks the PCC plateau' overstates evidence on tabular and MOSI where gains are small and single-seed.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The plateau is a real, practically relevant issue in a few applied areas (transcriptomics, MSA), but the contribution is unlikely to shift ICLR-wide practice; the impact is niche-to-moderate."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The convex-hull PCC gain bound and the specific gradient-ratio decay are new, but the framing leans on a textbook MSE decomposition, and the ECA components (residual scaling, temperature schedule, gradient-magnitude rescaling) are individually familiar patterns."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The derivations look internally consistent, but key results rest on restrictive assumptions (ρ∈[0,1], R<σ0/‖w‖2) whose applicability during the plateau and on the tested datasets is not verified, and the 'applies to deep architectures' claim is broader than the setup supports."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only the spatial-transcriptomics table reports variance; UCI, MOSI, and synthetic results are point estimates with no seeds or significance tests, and several headline gains are plausibly within seed noise — a serious weakness for a claim of 'consistent' improvement."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Several claims are overreached: 'first rigorous theoretical analysis,' 'consistently breaks the plateau,' and the general applicability to deep architectures. Limitations of the theorems' preconditions are not surfaced."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level narrative is clear and well-motivated, but notation (y vs ŷ), rendering artifacts, and dense equation blocks hurt readability; theorem statements and their preconditions could be organized more transparently."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Intro, Theory, Method, Related Work, Experiments, Conclusion) with clear signposting; length appears within ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets, baseline integrations (FT-Transformer, EGN, ALMT), and the three ECA components are described in enough detail to reimplement, though key hyperparameters (β, T_min, λ_γ, γ_max, MLP for γ_s) and training protocol depth vary by section."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The Related Work is thin — two short paragraphs — and misses the substantial literature on correlation-oriented losses (CCC, concordance, ranking/Spearman surrogates), temperature-adaptive attention, and non-convex/extrapolative aggregation, which are directly relevant to positioning ECA's novelty."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions indicate purposeful, claim-supporting figures (plateau demonstration, gradient-ratio decay bound, per-fold PCC curves, homogeneity sweep) that are well aligned with the theoretical claims; nothing suggests decorative-only visuals."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings is a reasonable spread, but only one baseline per domain is modified, no correlation-loss competitor is included, and the ablations don't cover interactions among SRA/DATS/DNPL across all datasets — insufficient to support the generality the paper claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: an interesting and reasonable theoretical framing paired with a plausible method, but incremental theory relative to prior identities, under-powered statistics, and missing correlation-loss baselines leave it below the ICLR acceptance bar without a substantive revision."
+    }
+  },
+  "publishability_probability": 0.25
+}

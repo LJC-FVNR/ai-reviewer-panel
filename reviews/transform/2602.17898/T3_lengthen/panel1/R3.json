@@ -1,0 +1,96 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies and analyzes a 'PCC plateau' in attention-based regressors trained with a joint MSE+PCC loss, offering a gradient-scaling argument (PCC gradient attenuates as prediction std grows) and a convex-hull capacity bound, then proposes ECA (residual extrapolation + dispersion-aware temperature + std-normalized PCC loss). The framing is fresh and the synthetic study supports the theory cleanly, but the theoretical claims are somewhat overstated relative to their depth, and the empirical evidence is statistically thin: most tables report single numbers with no seeds/error bars, and the one experiment with variance (transcriptomics) shows heavily overlapping standard deviations. The contribution is promising but needs substantially stronger statistical rigor and more careful scoping before it meets the ICLR bar.",
+  "strengths": [
+    "Clearly articulated and practically relevant phenomenon (PCC plateau under joint MSE+PCC training), with a coherent two-pronged analysis (optimization dynamics + convex-aggregation capacity).",
+    "The MSE mean/std/correlation decomposition and the scale-invariance argument give a plausible, testable mechanism, and the synthetic experiment with controllable homogeneity is a good design that directly probes the theory (Figure 3, Figure 5).",
+    "ECA's three components are each tied to a specific identified failure mode, and ablations (Table 1) attempt to isolate their contributions; the drop-in evaluation across four settings (synthetic, UCI, transcriptomics, MSA) shows reasonable breadth of application domains."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Weak statistical support for the central empirical claims. Table 1 (UCI) and the synthetic results report single-run numbers with no seeds or error bars, and improvements are often tiny (e.g., Online News PCC 0.408→0.420, Superconductivity 0.920→0.930). Where variance is reported (Table 3, transcriptomics: 0.602±0.160 vs 0.690±0.202), the standard deviations overlap heavily, so the headline '~16.5%'/'+14.64%' gains are not shown to be statistically significant.",
+      "suggested_fix": "Report multiple seeds with mean±std for every table, and provide paired significance tests (e.g., paired t-test or bootstrap across folds/seeds) for the ECA-vs-baseline comparisons. For the small UCI deltas, demonstrate that gains exceed run-to-run variance."
+    },
+    {
+      "severity": "major",
+      "issue": "Overstated framing relative to the analysis. The 'conflict' in Limitation 1 is largely a consequence of PCC's scale-invariance (its gradient necessarily scales as 1/σ_ŷ), which is closer to a normalization artifact than a fundamental optimization conflict; the fix (DNPL = multiply the PCC loss by StopGrad(σ_ŷ)) is essentially a gradient re-scaling. Claims such as 'first rigorous theoretical analysis', SRA 'fundamentally bypasses the capacity limit', and 'significant improvements' are stronger than the evidence supports.",
+      "suggested_fix": "Rescope claims: present DNPL explicitly as gradient normalization, acknowledge that SRA (a learnable per-sample residual scale γ_s≥1) trivially escapes the convex hull by construction rather than 'fundamentally' overcoming a deep limit, and soften 'first/significant' language or substantiate it against specific prior work."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline and design-choice coverage is limited for the generality claimed. Each setting uses a single backbone with ECA added, and there is no comparison against simpler alternatives that would target the same mechanisms (e.g., standardizing/whitening predictions before the PCC term, plain temperature tuning, or non-attention extrapolation baselines). It is therefore unclear whether the three ECA components each beat cheaper controls.",
+      "suggested_fix": "Add controlled baselines that isolate each mechanism (e.g., PCC-on-standardized-predictions vs DNPL; fixed low-temperature softmax vs DATS; a fixed γ vs learned γ_s), and test ECA on at least one additional backbone per domain to support generality."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several theoretical statements are hard to verify from the body because derivations are deferred to appendices and the reported bounds (Corollary 2.1, 2.2, Theorem 2.2) rely on RMS/inequality manipulations whose tightness and assumptions (e.g., ρ∈[0,1], R<σ0/||w||) are not discussed for regimes where they may fail.",
+      "suggested_fix": "State assumptions and their empirical validity range in the main text, and discuss when the bounds are vacuous (e.g., R close to σ0/||w||) or when ρ<0."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning is thin: the paper motivates novelty against 'no prior work analyzes convex-attention PCC capacity', but does not engage with existing work on extrapolative/negative attention, prediction standardization in correlation losses, or temperature scheduling, which are conceptually close to ECA's components.",
+      "suggested_fix": "Add a focused discussion contrasting ECA's three mechanisms with the closest prior techniques, clarifying what is new."
+    }
+  ],
+  "questions_for_authors": [
+    "For Table 3, are the per-fold improvements consistent enough that a paired test yields significance despite the large across-fold std? Please report seeds/paired tests for all tables.",
+    "How does DNPL differ empirically from simply standardizing predictions (z-scoring ŷ) before computing the PCC loss, which would also remove the 1/σ_ŷ scaling?",
+    "SRA's γ_s≥1 scales residuals per sample; since PCC is invariant to a single global affine map, what exactly does a per-sample scale buy beyond re-weighting samples, and could a fixed γ achieve the same?",
+    "Under what conditions does Theorem 2.2's bound become vacuous (R→σ0/||w||), and how often does that occur in your real datasets?",
+    "Can you report ECA on a second backbone per domain (e.g., a different tabular transformer, a different MSA model) to substantiate the drop-in generality claim?"
+  ],
+  "calibration_check": "Claims are somewhat over-scoped: the theory is plausible but modest, and 'first/significant/fundamentally' language outruns the statistically weak and small-effect empirical evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC-plateau phenomenon is real and relevant to correlation-oriented regression (pathology, transcriptomics, sentiment), but the audience and effect sizes are moderate rather than broad."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The plateau framing and convex-hull PCC bound are fresh, but the method combines known ingredients (temperature scaling, learned residual scaling, gradient re-normalization)."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The decomposition is correct and the mechanism plausible, yet the 'conflict' is partly a scale-invariance artifact and key derivations/assumptions are deferred and only partially validated."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Most results are single-run with no seeds or error bars, effect sizes are small, and the one variance-reporting table shows heavily overlapping stds with no significance testing."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Repeated strong claims ('first rigorous', 'fundamentally bypasses', 'significant') are not matched by the modest and noisy empirical evidence."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure and logic are followable, but notation is dense, several sentences are grammatically broken, and core proofs are pushed to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (intro, theory, method, related work, experiments, conclusion) is present and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets are public and the method and some hyperparameters (γmax, Tmin, β, MLP for γ_s) are described, though training details rely on appendix pointers."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Relevant PCC-loss and softmax-expressivity works are cited, but positioning against close analogues (prediction standardization, extrapolative/temperature attention) is thin."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative diagnostic plots (gradient-ratio validation, PCC/MSE training curves, per-fold curves) that support rather than decorate the claims."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four domains give surface breadth, but each uses a single backbone with weak statistics, undercutting the claimed general 'drop-in' generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, well-motivated study whose interesting theory is undermined by statistically weak experiments and overstated claims—borderline reject pending stronger evidence."
+    }
+  },
+  "publishability_probability": 0.28
+}

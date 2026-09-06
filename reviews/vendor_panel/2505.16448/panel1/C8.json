@@ -1,0 +1,126 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes that reasoning models form an 'internal bias' (a preliminary answer guess elicited by forcing an immediate no-reasoning answer) and that conflict between this guess and the reasoning outcome is a key trigger of overthinking. It supports this with correlational statistics across three models and four task families, two counterfactual interventions (removing the question mid-trajectory, and sample-wise bias injection via fine-tuning), an attention analysis showing elevated attention to the question at reflection points, and mitigation trials showing existing efficiency methods do not remove the effect. The question is timely and the empirical program is broader than most analysis papers, but the central identification is confounded: deviation degree is not separated from question difficulty or model uncertainty, the question-removal intervention lacks the controls needed to attribute the effect to bias rather than to context ablation in general, and no result anywhere is accompanied by seeds, error bars, or significance tests despite AIME conclusions resting on 30-item sets.",
+  "strengths": [
+    "Addresses a genuinely under-explored question — the mechanistic cause of overthinking rather than yet another mitigation heuristic — which is of clear interest to the efficient-reasoning subfield.",
+    "Operationalizes an implicit construct in a simple, checkable way: forcing an immediate answer via a no-reasoning prompt plus </think>, sampled 64 times across templates to approximate a bias distribution rather than a point guess.",
+    "The correlational evidence spans three models (R1, QwQ-32B, R1-Distill-Qwen-14B), two model families, three task types, and two prompting languages, with a consistent direction of effect (Table 1, Figure 2).",
+    "The bias-injection experiment includes Random2Wrong and Random2Correct control regimes designed to rule out the effect of the injection training procedure itself, which is more care than many analysis papers take.",
+    "The mitigation trials report a negative result — FCS, SEAL, and PROBE shorten traces but leave or worsen the deviation-driven length gap R, and FCS-SFT degrades AIME accuracy from 63.3% to 50.0% — and the paper reports this honestly rather than burying it.",
+    "The paper states a concrete scope limitation (analyses confined to numeric/range/multiple-choice answer formats) and flags the attention-based early-exit idea as preliminary appendix work rather than a contribution."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Deviation degree is confounded with question difficulty and, more importantly, with model uncertainty. A question on which the model's 64 direct answers disagree with its final answer is very likely one the model is uncertain about, and uncertainty independently predicts longer generation. The only control offered is that 'first reasoning length' is similar across deviation groups (Section 4.3), which is a single coarse proxy and does not address uncertainty at all. The natural competing hypothesis — that the entropy/spread of the direct-answer distribution, not its disagreement with a_final, drives length — is never tested.",
+      "suggested_fix": "Report the entropy or self-consistency spread of the 64 direct answers alongside D_bias and fit a regression of reasoning length on both, plus an independent difficulty proxy (e.g., pass@k over multiple full reasoning rollouts, or held-out per-item difficulty labels). Show that D_bias retains explanatory power after conditioning on uncertainty and difficulty. Additionally, construct matched pairs of items with equal direct-answer entropy but different agreement with a_final."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The question-removal intervention (Section 5.1) does not isolate internal bias. Deleting the question deletes all task information and pushes the KV context far off-distribution; a model that can no longer see what it was asked has no basis to verify anything and will plausibly terminate early regardless of any bias mechanism. The paper nonetheless writes that this 'causally confirm[s]' that focus on the question drives overthinking.",
+      "suggested_fix": "Add ablation controls that hold context perturbation constant while varying bias content: (i) replace the question with a semantically equivalent paraphrase (information preserved, surface bias cue perturbed); (ii) replace it with a different question of matched length; (iii) delete a length-matched, non-question span of earlier reasoning; (iv) mask attention to question tokens rather than deleting them. Only if removal specifically beats the length-matched and paraphrase controls does the bias interpretation follow."
+    },
+    {
+      "severity": "major",
+      "issue": "No variance, seeds, error bars, or significance tests appear anywhere in Tables 1-4 or Figure 2. Several headline claims rest on tiny samples: AIME 2024/2025 have 30 items each, so the 'performance improvements on complex tasks' in Table 2 amount to one item (63.3→66.7) and three items (36.7→46.7). The bias-injection results in Table 3 come from a single fine-tuning run per regime on 500 samples.",
+      "suggested_fix": "Report mean and standard deviation over multiple reasoning rollouts per item and multiple fine-tuning seeds; give bootstrap confidence intervals on r, R, and accuracy deltas; run paired tests (e.g., paired bootstrap or Wilcoxon on per-item lengths) for every intervention-vs-baseline comparison, and drop or explicitly qualify claims that do not survive."
+    },
+    {
+      "severity": "major",
+      "issue": "D_bias is defined against the model's own final answer a_final from the same run whose length is being measured, so the independent variable is partly an outcome of the dependent run. A trajectory that wanders extensively is more likely to terminate at an unusual a_final, mechanically inflating measured deviation for long runs.",
+      "suggested_fix": "Recompute deviation against an exogenous reference — ground truth, or the majority answer over many independent reasoning rollouts held out from the trajectory being measured — and verify the length relationship survives."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias-injection result has an untested simpler explanation. Fine-tuning on 50 declarative statements about a specific sample and then testing on that exact sample plausibly makes the answer directly retrievable; High2Correct then shortens reasoning because the answer is memorized (accuracy rises 67.0→76.6), and Low2Wrong lengthens it because the model has been taught something false that conflicts with computation (accuracy falls 89.5→83.4). This is consistent with the bias story but also with plain knowledge editing, and the Random baselines control only for the training procedure, not for content-specific memorization.",
+      "suggested_fix": "Verify that injection actually moved the measured internal bias (report post-injection direct-answer distributions), and add a regime that injects a correct answer the model already guesses correctly (no bias shift expected) and one that injects content-matched but task-irrelevant facts, to separate bias shift from answer memorization."
+    },
+    {
+      "severity": "major",
+      "issue": "The causal and interpretability sections rest on a single 14B distilled model, and the mitigation trials on essentially one dataset (CharCount-zh, 1000 samples) plus one method on AIME 2024. The abstract and contributions nonetheless claim causality and resilience of the effect 'across various complex reasoning tasks' and 'under all conditions'.",
+      "suggested_fix": "Replicate at least the question-removal intervention and the attention statistics on QwQ-32B and one non-distilled model, and run the mitigation trials on KnowLogic and AIME for all three methods, or restrict the claims to the single model and dataset actually tested."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention analysis is correlational and cannot support the mechanistic reading given to it. Elevated attention to the question at reflection points is equally consistent with reflection tokens being a generic 'restart/re-read' behavior that attends to the prompt for any reason. No causal attention intervention is performed, and the analysis is confined to a hand-defined three-way token categorization on one task.",
+      "suggested_fix": "Add an attention-knockout or activation-patching experiment that suppresses attention to question tokens specifically at reflection positions and measure the change in reflection rate and length; extend the categorization analysis beyond CharCount to KnowLogic or AIME."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reflection is quantified by counting keywords such as 'wait', which the paper itself calls a rough measure, yet reflection counts carry substantial argumentative weight in Section 4.3.",
+      "suggested_fix": "Validate the keyword proxy against human or LLM-judge annotation of reflection episodes on a sample of trajectories and report agreement."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation problems reduce clarity: the bias-injection paragraph announces 'two training regimes' then lists four (a-d); the abstract contains a broken sentence ('removing the input question after the model reduces the redundant reasoning'); there are recurring typos ('Conterfactual', 'manully', 'a overthinking', 'the the'); and Table 1 and Table 4 report slightly different numbers for the same model/dataset pair without explaining the subset difference.",
+      "suggested_fix": "Copy-edit throughout, fix the regime count, and add a footnote reconciling the Table 1 versus Table 4 CharCount figures."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work does not engage with the closest prior line: work showing that reasoning models commit to an answer early in the chain and that internal confidence probes predict answer correctness before the chain completes. The bias/unfaithfulness coverage (Turpin, Arcuschin, Paul, Ameisen) is good, but the early-answer-commitment and confidence-probing literature is where the delineation is most needed.",
+      "suggested_fix": "Add a paragraph distinguishing internal bias (pre-reasoning guess elicited by forced early termination) from early answer commitment within the chain and from confidence-based early-exit probes, ideally with an empirical comparison to a confidence-probe predictor of reasoning length."
+    }
+  ],
+  "questions_for_authors": [
+    "Does D_bias still predict reasoning length after controlling for the entropy of the 64-sample direct-answer distribution, and after controlling for an independent difficulty measure such as pass@k over full rollouts?",
+    "How does question removal compare against length-matched controls — replacing the question with a paraphrase, with a different question, or deleting an equally long non-question span? Without these, how do you separate 'bias reactivation' from 'the model can no longer verify anything'?",
+    "After bias injection, did the model's measured direct-answer distribution actually shift in the intended direction on the target samples? If injection simply makes the answer retrievable, what distinguishes your interpretation from ordinary knowledge editing?",
+    "What is the variance of the length and accuracy numbers in Tables 2-4 across rollouts and fine-tuning seeds, and which of the reported deltas are statistically significant? Specifically, is the AIME 2024 63.3→66.7 change anything other than one item?",
+    "Since D_bias is computed against a_final of the same trajectory being measured, how do you rule out reverse causation where longer, more erratic trajectories produce more unusual final answers and therefore larger measured deviation?",
+    "In Section 4.3 the first-reasoning-length control shows similar values across deviation groups within a task — can you report this quantitatively with dispersion, and does it hold on AIME where item difficulty varies far more than in CharCount?",
+    "Do the attention findings replicate on QwQ-32B and on a non-CharCount task, and does directly suppressing attention to question tokens at reflection positions reduce reflection?"
+  ],
+  "calibration_check": "Claims are moderately overscoped: the paper repeatedly uses 'causally confirming', 'rigorous evidence', and 'strong evidence' for interventions that lack the length-matched and uncertainty controls needed to isolate internal bias, and states that bias influence 'persisted under all conditions' on the basis of one model and largely one dataset, though the limitations section and the honest reporting of negative mitigation results partly offset this.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Explaining why reasoning models overthink, rather than patching it, is a question the efficient-reasoning community actively cares about, and a validated cause would plausibly redirect mitigation design."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The 'first impression' framing and the forced-direct-answer operationalization are a fresh angle, but they sit close to existing work on early answer commitment, post-hoc rationalization, and confidence probing, and the paper does not sharply delineate itself from that line."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The central correlation is confounded with uncertainty and difficulty, the deviation measure is computed against an endogenous reference, and the flagship question-removal intervention lacks length-matched or paraphrase controls that would be required to attribute the effect to bias rather than to context ablation."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, variance, or significance tests appear anywhere, and several headline claims rest on differences of one to three items on 30-question AIME sets and on single fine-tuning runs."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper reports a negative mitigation result and states a real scope limitation, but uses 'causally confirming' and 'strong evidence' for under-controlled interventions and generalizes 'under all conditions' from one model and largely one dataset."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The narrative arc from correlation to intervention to mechanism is easy to follow and the definitions in Section 3 are precise, but the prose is rough with recurring typos, a broken abstract sentence, and an internal inconsistency where 'two training regimes' are followed by four labeled regimes."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization (abstract, introduction, related work, definitions, correlational study, causal interventions, interpretability, mitigation, conclusion with discussion and limitations) at appropriate length, with details properly deferred to appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The direct-answer elicitation template, 64-sample protocol, deviation metrics, length-reduction ratio, attention normalization, datasets, models, and hardware are specified in the body with templates and training details deferred to appendices, though fine-tuning hyperparameters, the answer-position detection method, and the reflection keyword list are all described only by pointer."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Efficient-reasoning methods and the bias/unfaithfulness literature are covered accurately and the contribution is positioned against both, but the closest neighbors — early answer commitment within chains and confidence-probe predictors of reasoning termination — are not engaged."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that genuinely carry claims (Figure 2 pairs deviation bins against length, first-answer position, and reflection counts; Figure 4 separates group-level attention scores and layer-wise ratios), though Figure 1 and Figure 3 are single hand-picked qualitative examples used to motivate a general mechanism."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "The correlational study is reasonably broad across models, tasks, and languages, but every causal, interpretability, and mitigation result comes from a single 14B distilled model and mostly from one synthetic character-counting dataset, which under-supports the paper's universality claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A timely, well-motivated analysis paper with a real attempt at causal evidence and an honest negative result, but the identification confounds, missing intervention controls, and complete absence of statistical testing put it below the ICLR bar without substantial additional experiments."
+    }
+  },
+  "publishability_probability": 0.31
+}

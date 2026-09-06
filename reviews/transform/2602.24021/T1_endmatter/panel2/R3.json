@@ -1,0 +1,95 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a frozen-MLLM VAD framework that (1) selects discriminative attention heads via a Fisher-style inter/intra scatter ratio (RSA) and (2) applies a learned, context-conditioned element-wise gating to those head features before a logistic-regression scorer. The framing (manifold steering, geometric rectification) is engaging and the method is reasonably ablated with a seed-stability study, but the empirical gains over recent tuning-free baselines are marginal (~0.4-0.6% AUC/AP) with no significance testing on the main comparison, and the 'tuning-free'/'data-efficiency' narrative is misleading since the method trains parameters on labeled anomaly data while its closest baselines are zero-shot. The theoretical geometric language substantially outruns the underlying operation (a gated feature scaling).",
+  "strengths": [
+    "Clear engineering pipeline: gradient-free head selection (RSA) plus a lightweight learned modulation is simple, cheap, and plausibly practical; hyperparameters and training setup are described in enough detail to reproduce.",
+    "Includes ablations that isolate components (GSG vs LGM, additive vs multiplicative steering, expert-selection heuristics) and a 10-seed stability analysis showing identical LAE selection, which is a genuinely useful robustness check.",
+    "Data-scaling analysis (1%->100%) with runtime is a nice, honest efficiency characterization showing saturation."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The 'tuning-free' and 'data-efficient' framing is misleading. The method trains the HMC (GSG, LGM adapters) and a classifier for 1000 epochs with BCE on labeled data, and its strongest baselines (LAVAD, EventVAD, VERA) are effectively zero-shot — so SteerVAD uses MORE supervision, not less, than the genuinely tuning-free methods it claims to beat.",
+      "suggested_fix": "Re-scope claims: describe the method as 'backbone-frozen, calibration-trained' rather than 'tuning-free', and explicitly contrast the labeled-data requirement against zero-shot baselines rather than presenting 1% as a pure efficiency win."
+    },
+    {
+      "severity": "major",
+      "issue": "The SOTA claim rests on marginal margins (UCF 87.15 vs 86.72/86.55; XD 83.02 vs 82.15) with NO error bars or significance tests on the main Table 1. The reported seed variance (sigma~0.04%) is only for calibration-seed selection, not the full-pipeline train/test variance, so it cannot establish that ~0.5% gains are real.",
+      "suggested_fix": "Report mean +/- std over multiple full training runs for SteerVAD (and, where possible, re-run baselines), and add a significance test or at least confidence intervals for the head-to-head comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "Label supervision is unspecified. BCE is trained against frame-level y in {0,1}, but the UCF-Crime training split provides only video-level labels; how frame/segment targets are obtained on the 1% subset (and whether this leaks test-relevant frame annotations) is never stated and affects both fairness and reproducibility.",
+      "suggested_fix": "State exactly what supervision the 1% calibration set uses (video-level vs frame-level), how segment targets are derived, and confirm no frame-level test annotations are used at calibration."
+    },
+    {
+      "severity": "minor",
+      "issue": "The heavy geometric/topological rhetoric ('manifold rectification', 'anisotropic scaling', 'rigorous topological analysis') overstates what is operationally an element-wise gated scaling h'=h(1+s*g); the manifold framing is asserted rather than demonstrated beyond qualitative UMAP/t-SNE.",
+      "suggested_fix": "Temper the theoretical language to match the operation, and either move the Appendix-A analysis into the body with a concrete claim or drop the 'rigorous topological' framing."
+    },
+    {
+      "severity": "minor",
+      "issue": "Generality is limited: one backbone (InternVL3) and two datasets; claims of a 'powerful new direction' and 'intrinsic functional circuits' are not supported across backbones or model scales.",
+      "suggested_fix": "Add at least one additional MLLM backbone and, ideally, a third benchmark to substantiate generality claims."
+    }
+  ],
+  "questions_for_authors": [
+    "What supervision (frame-level vs video-level) is used for the BCE loss on the 1% calibration set, and how are segment-level targets derived on UCF-Crime?",
+    "Can you provide full-pipeline train/test variance (multiple training seeds) for SteerVAD and baselines, plus a significance test for the ~0.5% margins in Table 1?",
+    "Since the closest baselines are zero-shot, how does SteerVAD perform with zero labeled anomalies, and is the comparison to them fair given the added supervision?",
+    "Does the method transfer to a second MLLM backbone, and how sensitive are the selected LAE head indices to backbone choice?"
+  ],
+  "calibration_check": "Claims are over-scoped: 'tuning-free', 'data-efficient', and 'state-of-the-art' are asserted more strongly than the marginal, un-error-barred gains and the labeled-data requirement justify.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "VAD with frozen MLLMs is an active niche, but the marginal gains and narrow scope limit how much practitioners would change practice."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combines known ideas (discriminant head selection, activation/representation steering) applied to VAD; conceptually reasonable but incremental relative to representation-engineering literature."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is sound in mechanics, but the geometric claims are asserted rather than proven and the label-supervision protocol is under-specified, weakening the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main comparison lacks error bars/significance tests; the only variance reported is calibration-seed selection, insufficient to establish that ~0.5% margins are real."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The 'tuning-free', data-efficiency, and SOTA framing overclaim relative to a method that trains parameters on labeled data and beats zero-shot baselines by thin margins."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Method and equations are followable and the ablation narrative is organized, though the framing conflates simple operations with elaborate geometric terminology."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, conclusion) is present and reasonably proportioned."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, K/F, optimizer, epochs, batch, and regularization are specified, but the ambiguous label-supervision protocol is a real gap for reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Positioning against traditional, fine-tuned, and tuning-free VAD plus interpretability/model-editing is fair, though the 'first to' claims relative to activation steering are somewhat strong."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative display items (UMAP/t-SNE before/after, framework diagram, comparison and ablation tables) that support the claims, though qualitative visualizations carry a lot of the evidentiary weight."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Only two datasets and a single backbone; ablations are decent but do not support the broad 'new direction'/'intrinsic circuits' generality claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A coherent, reasonably ablated method undermined by marginal un-error-barred gains and misleading framing — borderline reject needing added statistics and re-scoped claims."
+    }
+  },
+  "publishability_probability": 0.3
+}

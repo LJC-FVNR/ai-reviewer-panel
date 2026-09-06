@@ -1,0 +1,121 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a three-component attribution method (attention-value rollout gate + Hessian sensitivity + KL-under-masking) for decoder-only LLMs and evaluates it on benchmark and a curated NarrativeQA+SciQ probe against several recent attribution baselines. The paper addresses a real gap (attribution for autoregressive generation) with a sensible decomposition, but the headline empirical gaps are implausibly large (often 3-10x the strongest baseline), the theoretical motivation for the Hessian is illustrated on a toy activation rather than shown to bite in real LLMs, and the evaluation relies on an author-designed metric (DSA) with LLM-generated 'gold' annotations. The combination of very strong claims, thin statistical treatment, an author-designed evaluation, and computational concerns for a 70B Hessian implementation puts this below the ICLR acceptance bar as written but with a plausible path via more rigorous validation.",
+  "strengths": [
+    "Addresses a substantive and timely problem: existing attribution methods are largely designed for encoders/first-order sensitivity and behave poorly on autoregressive generation.",
+    "The three-component decomposition (causal semantic gate, second-order sensitivity, information-theoretic masking) is conceptually principled and each term maps to a known failure mode of prior methods (attention-only, gradient-only, ablation-only).",
+    "Evaluation spans four decoder-only models across parameter scales (GPT-J-6B, Phi-3-14B, LLaMA-3.1-70B, Qwen2.5-3B) and three established datasets (LongRA, TellMeWhy, WikiBio) plus a curated probe, which is broader than typical attribution papers.",
+    "A concrete, interpretable probe (concatenating a semantically rich but non-diagnostic narrative segment with a diagnostic SciQ segment) is a clever design that directly stresses whether attribution mass lands on causally relevant tokens vs. superficial semantic hooks.",
+    "Ablations isolate each of the three components and a variant with uniform gating, which is the right structure to argue that all three ingredients contribute.",
+    "Robustness to decoding hyperparameters is measured explicitly (Table 2) — this is a rarely reported and useful axis for attribution stability."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The reported gaps in Table 3 (e.g., Soft-NC of 10.3 for HETA vs 1.42 for ContextCite and 3.60 for ReAgent on GPT-J/LongRA; similar 3-10x margins across models) are extraordinary for an attribution method and unexplained. Faithfulness metrics on the same input/output distribution rarely produce order-of-magnitude gaps between methods that share the same underlying model; this pattern is more consistent with a scale/normalization or evaluation-protocol mismatch (e.g., different perturbation budgets or different attribution normalizations across methods) than with a genuine 10x improvement.",
+      "suggested_fix": "Show for each baseline the exact perturbation protocol used (top-k tokens removed, mask token, sequence normalization), verify the reproduction of at least one baseline against numbers reported in its original paper on an overlapping setting, and either normalize Soft-NC/Soft-NS the same way for all methods or report a bounded metric (AUC over deletion curves) so cross-method comparability is unambiguous."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric — the main alignment result in Table 1 — is designed by the authors and 'gold' annotations are the intersection of GPT-4o and 'GPT-5 Thinking' outputs. This is close to circular: an LLM's own view of which tokens matter is used to grade an LLM attribution method, and the metric was co-designed with HETA. Reported inter-annotator F1=0.91 is between two LLMs, not humans.",
+      "suggested_fix": "Add a genuine human-annotated subset (even a few hundred instances) with reported human agreement, and show that HETA's DSA ranking is preserved against human labels. Also report DSA under an adversarial variant where the SciQ and narrative segments are swapped or paraphrased to rule out a positional/length artifact."
+    },
+    {
+      "severity": "major",
+      "issue": "The core motivation for the Hessian term is a toy activation example (log(1+exp(wx+b)) in the saturated regime). The paper never demonstrates that first-order attribution methods actually fail on LLMs *because* of vanishing gradients / dominant curvature, nor that HETA's advantage comes from the Hessian term specifically on those inputs. The ablation shows removing the Hessian hurts, but that is consistent with any complementary signal.",
+      "suggested_fix": "Provide a targeted analysis on inputs where gradients are near-zero but perturbations still move the logit (e.g., measure per-token gradient norm vs. finite-difference logit change on real prompts), and show that the Hessian term specifically recovers signal on these cases and that its contribution correlates with curvature magnitude."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical treatment is thin. The paper reports 'mean of 3 runs, std < 0.06' or '< 0.2' as a global claim but no per-cell error bars, no significance test between HETA and the closest baseline (ReAgent), and no confidence intervals despite very large claimed gaps. With only 3 seeds and DSA gaps of ~1 point, significance is not obvious.",
+      "suggested_fix": "Report per-cell mean±std, paired significance tests (bootstrap or Wilcoxon over instances) between HETA and each baseline, and increase seeds where feasible. Highlight any comparison where the gap is within noise."
+    },
+    {
+      "severity": "major",
+      "issue": "Reproducibility of the Hessian estimator at scale is under-specified. For LLaMA-3.1-70B, the paper says Hessian terms are only computed in the last six layers and uses rank-64 low-rank + windowing, but does not report: exact HVP cost per token, memory footprint, wall-clock, how the low-rank basis is chosen, how the block-diagonal restriction interacts with cross-token curvature, or what fraction of the 'true' Hessian sensitivity this recovers on a small model where full HVP is tractable.",
+      "suggested_fix": "Include a small-scale calibration study (e.g., on Qwen-3B) comparing HETA-full vs. HETA-LR+WIN sensitivities directly, plus a runtime/memory table with the exact estimator settings, and describe the low-rank basis construction algorithmically."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper claims HETA sets 'a new standard for interpretability in autoregressive language models' and produces attributions that are 'causally faithful,' but causal faithfulness is not directly tested (no counterfactual/interventional evaluation beyond masking, which is what several baselines already do). The 'causal gate' is derived from attention rollout, which the same paper earlier criticizes as not causally faithful.",
+      "suggested_fix": "Soften the causality/SOTA framing throughout, or add an actual causal evaluation (e.g., activation patching / interchange interventions on the identified tokens and check whether patching the top-HETA tokens produces the largest logit change vs. top tokens from baselines)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some baselines have negative Soft-NC/Soft-NS/DSA values while HETA is far positive; the sign convention and what a negative value means are not clearly explained, which makes cross-method interpretation opaque.",
+      "suggested_fix": "State the metric's expected range, what negative values indicate (anti-alignment, worse than random attribution baseline, etc.), and include a random-attribution reference row."
+    },
+    {
+      "severity": "minor",
+      "issue": "Weights β = γ = 0.5 are fixed without justification; no sensitivity analysis to these weights is shown in the main body.",
+      "suggested_fix": "Add a small grid over (β, γ) on a held-out subset and either show HETA is insensitive to this choice or report a principled way to select them."
+    },
+    {
+      "severity": "minor",
+      "issue": "The related-work section discusses ContextCite, TDD, PML, ReAgent well but does not cite/compare to activation patching / path-patching-style causal interpretability work, which is arguably the more direct baseline for 'causal' attribution.",
+      "suggested_fix": "Add positioning against activation/path patching and mechanistic-interpretability approaches, and clarify that HETA is complementary rather than a replacement for those interventional methods."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you reproduce a published Soft-NC/Soft-NS number for at least one baseline (e.g., ReAgent on TellMeWhy) using your evaluation harness to demonstrate that the ~3-10x gap is not a normalization artifact?",
+    "How were baseline hyperparameters selected? Were IG's steps/baseline, ContextCite's number of ablations, and PML's thresholds tuned per model/dataset, or fixed to defaults?",
+    "For the LLaMA-3.1-70B experiments, what is the actual wall-clock and peak GPU memory of one HETA attribution on a 512-token input, and how does it compare to ReAgent under the same accounting?",
+    "Is the DSA ranking of methods preserved against human annotations on a held-out subset, and does DSA correlate with Soft-NC/Soft-NS at the instance level?",
+    "How is the causal gate MT reconciled with your own claim (Section: Motivation) that attention rollout is not a faithful indicator of causal influence?",
+    "In the ablation, does the Hessian-only variant outperform the KL-only variant on inputs where gradients are near-zero, as the theoretical motivation would predict?",
+    "For the DSA construction, does swapping the position of the NarrativeQA and SciQ segments (SciQ first, narrative second) change HETA's advantage? This isolates positional/length effects."
+  ],
+  "calibration_check": "Claims are substantially over-scoped: the abstract and conclusion assert a 'new standard' and 'causally faithful' attributions, but the evidence (very large but unaudited metric gaps, an author-designed metric with LLM-generated labels, no direct causal/interchange evaluation) is not strong enough to support that framing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs is a real and active problem; if the empirical gains held under scrutiny the impact would be significant, but the current evidence leaves uncertainty about whether practitioners should switch."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The three ingredients (attention-value rollout, HVP-based curvature, KL-under-masking) are each well established; the contribution is their specific combination and the target-conditioned causal gate, which is incremental but reasonable."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The Hessian motivation is illustrated only on a toy activation, the 'causal gate' is built from a mechanism the paper itself criticizes as not causally faithful, and no counterfactual/interventional test corroborates the causal-faithfulness claim."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, global 'std < 0.2' statements rather than per-cell error bars, no significance tests between HETA and ReAgent, and unusually large gaps that would benefit from bootstrap CIs and paired tests over instances."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Abstract/conclusion overreach ('new standard', 'causally faithful'), the very large margins are not audited against reproductions of baseline numbers, and the Limitations section only discusses cost, not the evaluation-design concerns."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure is followable and the three-component story is clear, but the equations are notation-heavy and partially garbled in the extraction, and several key evaluation choices (metric normalization, sign conventions, DSA formula) require re-reading to parse."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Intro, Motivation, Background, Method, Experiments including ablations and robustness, Related Work, Conclusion + Limitations) is respected and within a reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Method components are described at algorithmic level and hyperparameters (β, γ, rank, window, layer sampling) are given, but the low-rank Hessian estimator, its basis construction, and its calibration against a full HVP baseline are under-specified enough that faithful reimplementation is non-trivial."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of gradient/attention-based methods and recent generative-attribution baselines (ContextCite, TDD, PML, ReAgent) is reasonable, but interventional/activation-patching approaches to causal attribution are missing despite the paper's causal framing."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Judging from captions: Figure 1 is a schematic; Figures 2-3 mix ablation bars, robustness plots, and qualitative distributions, which is appropriate, but the captions suggest a lot of information is compressed into small subpanels and the qualitative panels (2d, 3d) support only anecdotal claims."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four decoder-only models spanning 3B-70B and three benchmark datasets plus a curated probe is a reasonable breadth for the claimed generality; however, all datasets are English and heavily QA/biography-flavored, and no code/math/reasoning benchmarks are included despite claims about autoregressive generation broadly."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Below the ICLR acceptance bar as written: the method is sensible and the evaluation breadth is decent, but implausibly large margins, an author-designed metric with LLM 'gold', thin statistics, and overclaimed causal-faithfulness together make this a borderline-reject / major-revision paper rather than a clear accept."
+    }
+  },
+  "publishability_probability": 0.22
+}

@@ -1,0 +1,115 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a token attribution framework for decoder-only LLMs by combining causal attention rollout, Hessian-based second-order sensitivity, and KL-divergence under token masking. The problem is well-motivated and the combination of components is conceptually interesting. However, the reported performance margins—roughly 5–10× over all baselines on every metric, dataset, and model—are extraordinary and are not accompanied by the baseline implementation details, significance tests, or auditing necessary to make them credible. Additionally, the primary novel evaluation metric (DSA) is jointly designed and optimized by the same authors, raising structural circularity concerns. In its current form the experimental claims substantially exceed the evidentiary support.",
+  "strengths": [
+    "The problem formulation is well-motivated: the gap between encoder-centric attribution methods and the causal, autoregressive structure of decoder-only LLMs is real, and the paper articulates it clearly.",
+    "Combining three complementary perspectives—causal flow tracing, second-order curvature, and KL-divergence under masking—is a principled design choice with clear theoretical motivation grounded in the Taylor expansion argument.",
+    "The robustness evaluation is unusually thorough: sensitivity to Gaussian perturbations, syntactic active/passive rephrasing, and a sweep over decoding hyperparameters (temperature, top-p, top-k, repetition penalty) are all evaluated, which is richer than most attribution papers.",
+    "The curated NarrativeQA+SciQ benchmark design (distractor paragraph + answer paragraph + question) is a clever, controlled probe of target-conditioned attribution, and the high inter-annotator agreement (F1=0.91, κ=0.89 between GPT-4o and GPT-5 Thinking) lends some credibility to the annotation quality.",
+    "Ablations are present for all three components and tested across multiple dataset and metric combinations, which is good experimental practice."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Implausibly large performance margins undermine experimental credibility. HETA reports Soft-NC of 10.3 vs. the next-best ~2.0 on GPT-J/LongRA—a roughly 5× gap—and DSA scores of 4.8–5.1 vs. the best non-negative baseline at ~3.5 (ReAgent), with gradient/attention methods scoring negative. Margins of this magnitude are essentially unprecedented in the attribution literature and almost always indicate either (a) unfair or buggy baseline implementations, (b) a metric design that structurally favors the proposed method, or (c) data leakage. The paper provides no baseline implementation audit, no ablation of whether baselines were re-tuned or run with official code, and no discussion of why the gaps are so extreme.",
+      "suggested_fix": "Provide a dedicated 'baseline implementation' appendix: for each baseline, state whether official code was used, which hyperparameters were tuned and how, and include at least one sanity-check showing the baseline reproduces its originally reported performance on its original benchmark. If gaps remain this large after careful verification, include a dedicated analysis section explaining the mechanism."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Circular evaluation: the DSA metric is both introduced by the authors and used as primary evidence that HETA outperforms all baselines. The metric is defined as the difference between attribution mass on the SciQ (answer-relevant) vs. NarrativeQA (distractor) segment—which directly rewards the causal gating mechanism (MT) that is the first and dominant component of HETA's design. A method designed to assign credit along causal paths will trivially outperform methods not designed for this on a metric that scores exactly causal path credit. Using one's own metric as primary evidence of superiority is not independently confirmatory.",
+      "suggested_fix": "Either (a) use existing human annotation datasets not constructed by the authors (e.g., ERASER benchmark, HateXplain) as the primary human-alignment evaluation, or (b) include a version of DSA computed on baselines using their official, unmodified implementations and show that the metric still discriminates fairly, with a third-party replication."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Computational cost is absent from the main text. HETA requires Hessian-vector products (HVPs) via Hutchinson estimation, which are significantly more expensive than gradient-based or attention-based methods. The paper defers all cost discussion to the appendix. For a method claiming practical utility, a runtime and memory comparison table in the main text—showing wall-clock time per sample and peak memory for HETA vs. each baseline on each model—is essential for readers to evaluate the trade-off.",
+      "suggested_fix": "Add a Table or Figure to the main Experiments section reporting per-sample runtime and peak GPU memory for HETA (full, LR, LR+WIN) and all baselines on at least one representative model/dataset combination."
+    },
+    {
+      "severity": "major",
+      "issue": "Qwen2.5-3B results are relegated to the appendix 'due to space constraints,' which is unusual for one of four primary experimental models. Selectively reporting results in the main paper from three models while deferring a fourth raises concerns about cherry-picking, particularly if Qwen results are weaker.",
+      "suggested_fix": "Include Qwen2.5-3B results in the main tables alongside the other models, or provide an explicit, verifiable reason for the exclusion (e.g., identical trends to GPT-J)."
+    },
+    {
+      "severity": "major",
+      "issue": "The token masking procedure for KL-divergence (Equation 4) is underdetermined. The paper does not specify how tokens are masked: replacement with [UNK], zero-embedding, attention-mask exclusion, mean embedding, or a learned null vector all produce qualitatively different results. This is a critical implementation detail for reproducibility.",
+      "suggested_fix": "Explicitly state and justify the masking scheme in Section 4 (not the appendix). Include a small ablation over at least two masking strategies."
+    },
+    {
+      "severity": "major",
+      "issue": "The annotation source for the curated dataset uses GPT-4o and GPT-5 Thinking as 'ground truth' annotators, not human annotators. Evaluating attribution faithfulness against LLM-generated labels means the metric measures agreement with another LLM's judgments, which may reflect LLM-specific biases rather than true causal token importance. This is especially concerning given that HETA's KL-divergence component also involves the base model's output distribution.",
+      "suggested_fix": "Supplement with at least a sample of genuine human annotations (200–500 instances) to validate that the LLM-annotated labels correlate with human judgments, and report Pearson/Spearman correlation between LLM and human labels."
+    },
+    {
+      "severity": "minor",
+      "issue": "The hyperparameter weights β and γ in Equation 5 are fixed to 0.5/0.5 without ablation. Given that three components are being combined, a sensitivity analysis over β and γ is needed to establish that the combination is robust rather than brittle to this choice.",
+      "suggested_fix": "Add a 2D grid sweep (β, γ ∈ {0.1, 0.3, 0.5, 0.7, 0.9}) on one model/dataset, reported as a heatmap or table."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several grammatical and typographic errors reduce presentation quality (e.g., 'and however' in the abstract opening, formatting artifacts in Table 3 where HETA values appear as a concatenated string '10.32.319.22.04...' in the extracted text).",
+      "suggested_fix": "Proofread carefully; ensure tables are properly typeset with clear column separators."
+    }
+  ],
+  "questions_for_authors": [
+    "For each baseline in Tables 1 and 3, did you use the authors' official released code or re-implement? If re-implemented, how did you validate correctness, and can you confirm each baseline matches its originally reported performance on its original benchmark?",
+    "The Soft-NC scores for HETA (e.g., 10.3 on LongRA) are roughly 5–7× larger than baselines. Soft-NC is defined as a normalized perturbation-based metric. Can you provide the distribution of Soft-NC values across instances (mean, median, 10th/90th percentile) for HETA and the top-2 baselines to help readers understand whether the gap is driven by a few extreme instances or is uniform?",
+    "How is token masking implemented in Equation 4? Specifically, when a token is 'masked,' what is substituted for its embedding, and does the attention mask change? Please include this in the main text.",
+    "For the DSA metric, the score can in principle be negative (if a method assigns more mass to the NarrativeQA distractor than to SciQ evidence). What fraction of instances have negative DSA for HETA vs. the top baseline, and what are the per-instance standard deviations?",
+    "Why are Qwen2.5-3B main-text results omitted? If the paper has space for a full Related Work section and a separate Motivation section, condensing could accommodate a fourth model column in the main tables.",
+    "Table 2 shows only LLaMA-3.1 70B and several baseline entries appear blank for DSA. Are these results available for other models, and if so, why are they not reported?",
+    "The paper states theoretical properties and error bounds are in Appendix A2. Could you briefly state the key bound—specifically, what does the error bound on the HVP-based Hessian estimator (Equation 3) say, and under what assumptions does it hold for realistic transformer architectures?"
+  ],
+  "calibration_check": "The claims ('consistently outperforms,' 'new state-of-the-art,' 'remarkably stable') are scoped beyond what the evidence currently supports given undocumented baseline implementations, a self-designed primary metric, and performance margins of 5–10× that are unexplained and implausible without further verification.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Token attribution for decoder-only LLMs is an active, high-impact area; if the results are valid, this work would be highly significant, but the current evidentiary problems prevent a higher score."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The three-component integration is a new combination, but each component individually (attention rollout, Hessian sensitivity via HVPs, KL under masking) is adapted from prior work with incremental modifications."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "Extraordinary performance margins across all models, datasets, and metrics without baseline implementation audits, significance testing, or mechanism analysis represent a serious evidentiary gap that is the core weakness of the paper."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Three seeds and reported standard deviations are provided, but no significance tests are run, and the implausibly large margins (5–10×) are not analyzed or explained, making statistical confidence in the claimed improvements unclear."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Computational cost (a genuine practical limitation for a Hessian-based method) is honestly flagged in the conclusion, but the main-text claims of universally superior performance are not calibrated to the evidentiary concerns raised by the experimental design."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method derivation is reasonably clear, but the paper has grammatical errors (abstract 'and however'), key implementation details deferred to appendix, and table formatting issues that reduce readability."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed and the paper is at an appropriate length; the separate Motivation section is slightly redundant with the Introduction but not a major issue."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "High-level hyperparameters (β, γ, rank, batch size) are given, but the critical masking scheme for KL computation, the HVP implementation specifics, and baseline tuning procedures are not described in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The directly relevant generative attribution literature (ContextCite, TDD, PML, ReAGent) is adequately covered with clear critiques; some broader Hessian-based analysis literature for transformers could be more thoroughly positioned."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The ablation bar plots (Figure 2a–c) and robustness comparisons (Figure 3a–c) described in captions are informative and directly support the claims; the pipeline overview (Figure 1) appears well-structured based on its caption."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four models and four datasets are reasonable in scope, but selective relegation of one model to the appendix, reliance on a self-designed metric as primary evidence, and absence of any analysis on out-of-domain or few-shot settings weaken generality claims."
+    },
+    "overall_recommendation": {
+      "score": 3,
+      "justification": "The paper addresses an important problem with an interesting approach, but the combination of extraordinary unverified performance margins, a self-designed primary evaluation metric, missing implementation audits, and absent cost comparisons places it below the ICLR acceptance bar in current form."
+    }
+  },
+  "publishability_probability": 0.12
+}

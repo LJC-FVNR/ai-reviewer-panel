@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CDAS, a steering method combining Distributed Interchange Interventions (DII) with a Jensen-Shannon divergence distribution-matching objective. The safety case studies (refusal override, backdoor neutralization) are compelling and the paper is notably honest about its limitations. However, AXBENCH performance is mixed and often worse than baselines without factor tuning, the statistical grounding for faithfulness claims is thin, and critical ablations (JSD vs KL, DII protocol vs. addition intervention) are absent.",
+  "strengths": [
+    "Genuinely novel combination of DII with a JSD-based 'weak supervision' objective, with clear mechanistic motivation distinguishing it from LM and PO baselines.",
+    "The safety case studies are well-designed: refusal override on three models at different scales and backdoor neutralization provide ecologically valid tests where CDAS's utility-preservation advantage is important and measurable.",
+    "Unusually honest calibration: the paper openly acknowledges when CDAS underperforms, concedes factor tuning is still required for general steering, and lists concrete limitations in the conclusion.",
+    "The bi-directional framing (concept elicitation AND suppression from a single learned vector) is a clean and useful organizing principle that differentiates the work from purely uni-directional Lang. objectives."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central empirical claim—that CDAS provides 'faithful, stable control'—rests partly on faithfulness metrics computed over 100-instance tinyBenchmarks (Table 4). This sample size is too small to distinguish meaningful accuracy changes (e.g., −3.0 vs −2.0 on tinyARC) from noise, and no confidence intervals are reported for these entries.",
+      "suggested_fix": "Replace or augment tinyBenchmarks evaluations with full MMLU/TruthfulQA (as already done in Table 3 for Case Study 1) and report standard errors; alternatively, increase N and report bootstrap CIs."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No ablation isolates the contribution of the JSD objective from the DII protocol. The 'DAS' baseline replaces only the training objective (keeping DII, using Lang.), but there is no baseline that uses the JSD objective with standard addition interventions (no DII). Without this, the source of gains—objective vs. protocol—cannot be attributed.",
+      "suggested_fix": "Add a 2×2 ablation: {JSD, Lang.} × {DII, addition intervention}, at minimum on the refusal case study and one AXBENCH layer/model combination."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2 (refusal case study) has visually truncated entries for Llama-3.1-70B—only partial suppression and harmonic-mean scores appear in the extracted text. If data is missing for the largest model it materially undermines the scale-benefit claim.",
+      "suggested_fix": "Verify Table 2 is complete for all three models and all four metrics; if 70B suppression results are unavailable or negative, state this explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'unit factor' variant of CDAS (β=1) is dramatically weaker than baselines on AXBENCH (0.121 vs. 0.756 at 2B/L10), while the 'tuned factor' (β>1 via grid search) is the practical mode. This makes the claimed tuning-free advantage in Case Studies 1 and 2 applicable only to the specific binary-concept regime, limiting the generality of the paper's contribution.",
+      "suggested_fix": "Clarify the scope of the tuning-free claim in the abstract and introduction (it applies to structured, single-concept suppression tasks, not general steering), and provide guidance on when unit vs. tuned factors should be used."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'one-to-many' DII protocol—intervening all positions using a single source token from the <model> template prefix—is a significant and non-obvious design choice. The choice of source token position is determined by grid search but is not ablated or analyzed. The referenced Figure 2 (illustrating the protocol) is absent from the text, and without it the method description is incomplete.",
+      "suggested_fix": "Include a table or figure ablating the source-token position selection and quantifying its sensitivity; clearly describe or re-render the intervention protocol schematic in the text."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work omits Representation Engineering (RepE; Zou et al. 2023a is cited for a different purpose) and Contrastive Activation Addition (CAA), which are direct antecedents of optimized steering and should be compared or clearly positioned against.",
+      "suggested_fix": "Add a paragraph in Related Work contrasting CDAS's objective and protocol against RepE and CAA; if not benchmarked, explain why."
+    }
+  ],
+  "questions_for_authors": [
+    "In Table 1, the unit-factor CDAS scores (e.g., 0.121 on 2B/L10) are far below DIM (0.297). Can you explain why the distribution-matching objective with unit factor underperforms an optimization-free baseline, and does this indicate that DII with β=1 is not capturing sufficiently strong concept features?",
+    "For Case Study 1 on Llama-3.1-70B, can you provide the full row of Table 2? Specifically, what are the suppression score and harmonic mean for CDAS and RePS on the 70B model?",
+    "What happens if the JSD objective is applied with standard addition interventions (no DII)? This ablation is needed to separate the effect of the training objective from the intervention protocol.",
+    "The paper claims CDAS 'implicitly samples steering factors from the model's own factor distribution' via DII. Can you provide evidence (e.g., probing, feature norms, or distribution overlap metrics) that the resulting steering vectors are more in-distribution than those produced by PO or Lang. objectives?",
+    "In Case Study 2, red-teaming instructions were partially hand-crafted and then augmented with GPT-4.1-mini. How diverse are these 272 instructions relative to the true trigger? Could the relatively low ASR of CDAS on the true trigger (6.68% vs. 0.58% on red-teaming) indicate overfitting to the red-teaming prompt style rather than genuine backdoor neutralization?"
+  ],
+  "calibration_check": "The paper is generally well-calibrated in the body—it explicitly hedges CDAS as 'complementary' and lists conditions under which it is preferred—but the title's claim of 'faithful' steering and the abstract's framing of 'systematic control' are stronger than the mixed AXBENCH results and the unit-factor performance gap warrant.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Model steering and LLM safety are high-priority areas, but the empirical gains over existing strong baselines are inconsistent across settings, limiting immediate practical impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining DII (from DAS) with a JSD distribution-matching objective for steering is a non-trivial and original contribution, though both components are adapted directly from prior work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is internally consistent and correctly formulated, but the absence of an ablation separating the JSD objective from the DII protocol is a significant methodological gap that prevents attributing the observed effects."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "AXBENCH fair scores use 10 splits (reasonable), but faithfulness claims in Table 4 rely on only 100-instance tinyBenchmarks with no confidence intervals, and Table 1 reports no error bars for steering scores."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper is notably honest about failure modes, mixed AXBENCH results, and the factor-tuning requirement; the conclusion's limitations section is unusually candid for a conference submission."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method section is dense and the 'one-to-many' DII protocol is inadequately described without Figure 2; the naming of the 'DAS' ablation baseline is confusing given the existing DAS literature."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard ICLR structure with appropriate section organization; benchmark and case-study separation is logical and well-motivated."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core hyperparameters and data curation steps are described, but the source-token grid search, layer selection procedure, and factor tuning protocol are deferred to appendices not fully extractable from this submission."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of DAS, PO-based steering, and SAEs is adequate, but Representation Engineering and CAA—direct predecessors to optimized steering—are not compared or clearly positioned against."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "From captions, Figure 1's layer-wise ASR plots with standard error shading are appropriate; Table 1's oracle/fair score structure is informative but complex; Table 2's partial 70B data is a presentation deficiency."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH covers only Gemma-2 at two sizes; no ablation over JSD vs. other divergences or DII vs. addition interventions; the tuning-free advantage demonstrated in case studies does not transfer to the general steering benchmark."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The core idea is interesting and safety applications are well-motivated, but mixed empirical results, missing ablations, and thin statistical grounding for faithfulness claims collectively place this below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.17
+}

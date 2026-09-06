@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper introduces Neighbor Distance Minimization (NDM), an unsupervised method to learn a non-basis-aligned orthogonal partition of a model's representation space into interpretable subspaces, justified via a feature-group / total-correlation argument. It offers a toy-model sanity check, a quantitative evaluation against known GPT-2 Small circuits (IOI and greater-than) using subspace patching with Gini-coefficient concentration, qualitative InversionView-style interpretation, and a knowledge-conflict experiment on 1.5B–2B models. The direction is novel and the results are suggestive, but experimental breadth is thin (5 tests based on two known circuits, two small LMs), statistical reporting is weak (no seeds/CIs), and several methodological choices (Gini > 0.6 threshold, MI-based merging schedule, distance metric, initial dimensionality) are only partially justified.",
+  "strengths": [
+    "Genuinely novel angle: unsupervised decomposition of representation space into orthogonal subspaces, in contrast to supervised DAS-style methods that require a hypothesized causal model.",
+    "The feature-group / mutual-exclusiveness motivation is intuitive and is tied to a total-correlation interpretation, giving the method a principled objective beyond the toy setup.",
+    "The GPT-2 Small evaluation compares against reasonable unsupervised baselines (Identity, Random, two PCA orderings, SAE-feature clustering), and NDM outperforms them on average (0.71 vs. 0.56 for the strongest baseline).",
+    "The knowledge-conflict experiment on Qwen2.5-1.5B and Gemma-2-2B is a clever way to test scalability without ground-truth circuits: showing that NDM finds subspaces that selectively mediate parametric vs. context knowledge is a striking result.",
+    "Qualitative InversionView analyses provide independent, human-readable evidence that the discovered subspaces correspond to coherent aspects (current token, position, prior token, topic)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin: no seeds, no confidence intervals, no significance tests reported for the main Table 1 or for the 2B knowledge-conflict results. Given that Gini is sensitive to dimension configuration and to the training run of R, the reader cannot tell whether NDM's improvements are robust or run-to-run noise.",
+      "suggested_fix": "Run NDM with multiple random initializations of R and multiple sampled activation sets, and report mean ± std (and ideally paired tests vs. baselines) for every entry in Table 1 and every bar in Fig. 5."
+    },
+    {
+      "severity": "major",
+      "issue": "Experimental breadth is narrow relative to the paper's claims of general 'representation-space decomposition.' The quantitative circuit evaluation reduces to 5 tests drawn from only two known circuits in a single small model (GPT-2 Small), and the 2B evaluation is a single knowledge-conflict setup on two models. This is insufficient to support the strong 'natural subspaces in real-world models' framing.",
+      "suggested_fix": "Add at least one more circuit family (e.g., indirect-object identification variants, docstring, colored objects, or attention-head-composition tasks in Pythia/GPT-2 Medium) and evaluate NDM on at least one additional site (attention outputs / MLP outputs, not only residual stream). Consider a synthetic-DAS-style ground truth where the correct subspace is known."
+    },
+    {
+      "severity": "major",
+      "issue": "Comparison to the most relevant prior art (DAS/Boundless-DAS and SAE-based feature circuits) is treated only descriptively. Because DAS is the closest supervised counterpart, and SAEs are the dominant unsupervised interpretability tool, the paper needs a head-to-head where NDM's unsupervised subspaces are matched against DAS-found subspaces on the same targets and against SAE-feature-cluster subspaces beyond the single 'Feature' baseline.",
+      "suggested_fix": "For each of the 5 GPT-2 tests, report the Gini score attained by (a) DAS trained on the ground-truth variable (upper bound), and (b) a properly tuned SAE-based subspace, alongside NDM. This lets reviewers see how close NDM gets to the supervised ceiling and whether it beats standard SAE-cluster pipelines."
+    },
+    {
+      "severity": "major",
+      "issue": "Hyperparameter dependence is underexplored. The method has an MI threshold, an initial subspace size (32), a KSG estimator, a distance metric (Euclidean), and a merging schedule; the appendix is invoked repeatedly but the main text does not quantify sensitivity. This is a red flag because the qualitative subspaces in Sec. 5.2 are chosen using the 'best configuration' according to the same test suite that is reported in Table 1, risking selection bias.",
+      "suggested_fix": "Add a sensitivity table (MI threshold, initial d, distance metric, N activations) and clearly separate model-selection data from test data — do not pick configurations by peeking at the Table 1 metrics that are then reported as the headline result."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Gini > 0.6 'satisfactory' threshold is asserted from qualitative examples in App. D.4 rather than derived. Because the whole quantitative story hinges on this cutoff, its choice is fragile.",
+      "suggested_fix": "Provide a calibration analysis: for DAS-found ground-truth subspaces on the same tests, what Gini values are obtained? Use that empirical distribution to justify (or replace) the 0.6 threshold."
+    },
+    {
+      "severity": "minor",
+      "issue": "Notation in Sec. 3 (Eqs. 2–4) is mangled in the extracted text; even accounting for extraction artifacts, the objective and its optimization procedure are only sketched. The orthogonal-matrix parametrization is deferred to a footnote, and the merging algorithm is deferred to the appendix.",
+      "suggested_fix": "Rewrite Sec. 3 with a clean statement of the loss, the constraint on R, the merging step as inline pseudo-code, and an explicit statement of what is stochastic vs. deterministic."
+    },
+    {
+      "severity": "minor",
+      "issue": "Calibration slips in a few places: 'strong performance,' 'strongly show,' 'strong evidence' — while limitations are acknowledged, the abstract and intro over-imply that the method reliably recovers 'natural' subspaces, which the mixed per-test Gini values (e.g., 0.38, 0.50) do not fully support.",
+      "suggested_fix": "Temper claims in the abstract/intro and quote the average Gini and its variance rather than the qualitative 'strong'."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable is the learned partition (both R and the dimension configuration c) across random seeds and across resamples of the 1M activations? What fraction of the 'best' subspaces from one run are recovered in another?",
+    "What upper bound on Table 1's Gini do you obtain if you use DAS to find the target-variable subspace directly? Without this ceiling, it is hard to interpret 0.71 as good vs. mediocre.",
+    "How were hyperparameters (MI threshold, initial subspace size, N neighbors, KSG k) chosen? Is there a held-out selection procedure, or were they tuned on the same 5 tests reported in Table 1?",
+    "On the 2B knowledge-conflict experiment, how do you rule out that the subspace 'mediating context knowledge' is not simply the token-copying subspace induced by the RAVEL template? Do the effects survive when template surface form is randomized?",
+    "The method assumes an orthogonal partition. What happens when features live in non-orthogonal but low-mutual-information manifolds, as suggested by Engels et al.'s multi-dimensional features? Does NDM merge them, split them, or produce spurious subspaces?",
+    "How does NDM compare quantitatively to SAE-based subspaces beyond the single 'Feature' clustering baseline — e.g., taking the top-k SAE features causally implicated in each target and using their span as the subspace?"
+  ],
+  "calibration_check": "Claims about interpretability and scalability are mostly hedged, but the abstract's 'strong connection' and 'scalability to 2B models' framing is stronger than the actual evidence (5 GPT-2 tests + one knowledge-conflict setup on two models with mixed per-test Gini values) really licenses.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Unsupervised subspace decomposition is a genuinely useful primitive for the interpretability community, and the parametric-vs-context knowledge result would interest circuits researchers; but with only two small models and two circuits, immediate impact on practice is uncertain."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Learning an orthogonal rotation via a neighbor-distance objective — reinterpreted as total-correlation minimization — as an unsupervised counterpart to DAS is a fresh combination that I have not seen framed this way in prior interpretability work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The claim–evidence link is reasonable in the toy setup and for the qualitative results, but on GPT-2 the choice of 'best config' via the same test suite that is reported, plus the reliance on a single ad-hoc concentration threshold, weakens the causal argument."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, no error bars, no significance tests are reported in Table 1 or Fig. 5; sample-size choices (2000 MiniPile + 2000 circuit sequences; ~500 RAVEL prompts) are given but variance is not, so it is unclear whether NDM's margins over baselines are statistically real."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations (uninterpretable small subspaces, LRH reliance, coarse partitions) are stated, but abstract/intro framing ('strong connection,' 'scalability to 2B') is somewhat stronger than the per-test numbers and the two-model 2B evaluation warrant."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The motivation is well-paced, but Section 3's math is compressed and partially obscured in the extraction; the merging schedule, the role of MI normalization by dimension, and the Sec. 5 counterfactual construction are all deferred to appendices that a reviewer must reconstruct."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure with a clear separation of motivation, methodology, toy validation, quantitative evaluation, qualitative analysis, and scalability, within a plausible page budget."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The algorithm and datasets are described in enough detail (KSG estimator, orthogonal parametrization, RAVEL-derived prompts, Gini metric, activation sites) that a diligent implementer could reproduce results if hyperparameter selection is fully specified; sensitivity data is largely missing."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior subspace work (DAS, gender/refusal/greater-than/day-of-week subspaces), SAEs, and multi-dimensional feature hypotheses are cited and connected, but the head-to-head positioning against DAS and SAE-cluster subspaces on the same tasks is not quantitative."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Fig. 1 clearly conveys the toy validation and geometric intuition, Fig. 3 concretely illustrates per-subspace preimages, and Fig. 5 supports the parametric-vs-context claim; captions are informative and directly tied to claims."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Generality claims ('representation space of real-world models') rest on a single small model for quantitative evaluation (GPT-2 Small, 5 tests, 2 circuits) plus two 1.5–2B models on one knowledge-conflict setup — insufficient to support broad applicability."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a novel and promising idea with encouraging but not conclusive evidence. Needs more circuits, seeds/variance, and honest hyperparameter selection before the paper crosses the ICLR acceptance bar."
+    }
+  },
+  "publishability_probability": 0.32
+}

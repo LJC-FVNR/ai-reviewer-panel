@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes a Toeplitz-based analytical framework to classify positional encoding schemes into additive and multiplicative categories, and empirically identifies a 'single-head deposit pattern' in RoPE using controlled synthetic tasks. The framework is conceptually clean and the synthetic experiments are well-designed for hypothesis testing. However, the central claim—that this pattern mechanistically explains RoPE's known performance trade-offs in practice—is asserted but never validated on real language tasks or at scale, leaving the paper's significance substantially under-supported. Several structural and statistical presentation issues further weaken the submission.",
+  "strengths": [
+    "The Toeplitz decomposition of attention logits into additive vs. multiplicative PE modes is a principled and pedagogically useful unification that cleanly separates prior PE families along a meaningful structural axis.",
+    "The synthetic task pair (position-sensitive relative distance classification vs. position-agnostic counting) is well-motivated by the theory and allows clean isolation of content–position coupling effects with appropriate controls.",
+    "The four ablation studies (inject absolute PE, reduce RoPE heads, MLA hybrid, activation-level pi ablation) are logically sequenced and each tests a distinct mechanistic hypothesis, providing converging evidence for the deposit pattern.",
+    "The gradient analysis (Propositions 6.1–6.2 and Theorem 6.1) provides a plausible formal explanation for why exponential amplification leads to head specialization, and the contrast with ALiBi's gradient cancellation is illuminating.",
+    "The MLA comparison (Table 1) is a useful and concrete architectural takeaway: hybrid positional pathways mitigate over-specialization while retaining most of RoPE's gains."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All experiments are conducted on a 6-layer Transformer with synthetic tasks. The paper's primary claim is that the deposit pattern 'is a primary cause of the gap between RoPE's theoretical promise and its practical performance,' yet no experiment on real language tasks, real data, or larger model scales appears. The synthetic setting is appropriate for mechanism discovery but insufficient to support the causal attribution to practical performance gaps.",
+      "suggested_fix": "Add at least one experiment connecting the deposit pattern to observed performance differences on a real NLP task (e.g., length generalization benchmarks from Kazemnejad et al. 2023, or perplexity on a standard corpus). Even a moderate-scale model with character-level or small-vocabulary language modeling would substantially strengthen the claim."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The theoretical results (Propositions 6.1–6.2, Theorem 6.1) rest on Assumptions A1–A3 (Jacobian stability, monotone anchor path, projection separability) described as 'empirically plausible' but never empirically verified in the paper. The exponential amplification bound in Theorem 6.1 relies on gain factors γk > 1 that are asserted without measurement. Without verifying these assumptions hold in the trained models, the proofs are formal but of unknown applicability.",
+      "suggested_fix": "Measure singular value bounds of inter-layer Jacobians and empirically estimate the margin growth rate during training. If the assumptions cannot be verified, scope the theoretical claims accordingly as motivation/intuition rather than formal guarantees."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is inadequate. 'Variance is less than 5%' across 5 seeds is insufficiently informative: it is unclear whether this refers to absolute accuracy percentage points or relative variance, and no error bars appear in any figure. For a paper whose primary empirical claims rest on accuracy differences of a few percent (e.g., RoPE 92.64 vs. MLA 88.34 in Table 1), proper confidence intervals or standard deviations are essential to assess whether differences are statistically meaningful.",
+      "suggested_fix": "Report mean ± standard deviation or 95% CIs in all figures and tables. For Table 1 in particular, include uncertainty bounds. If differences are significant even under conservative estimates, this actually strengthens the paper."
+    },
+    {
+      "severity": "major",
+      "issue": "There is a duplicate Limitations section: a brief one at the end of the Conclusion and a near-identical, slightly expanded version appearing separately afterward. This is a copy-paste artifact that signals the paper was not carefully reviewed before submission and may reflect more broadly incomplete editing.",
+      "suggested_fix": "Merge into a single Limitations section; also audit the rest of the paper for similar editing artifacts."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper's generality claims are not well-supported by the experimental scope. The 6-layer decoder with a vocabulary of 1,000 tokens is a narrow setting. Deposit pattern behavior at larger head counts, deeper networks, or longer sequences is entirely untested. Yet the paper implies the finding is broadly relevant to modern LLMs using RoPE (e.g., DeepSeek-V3 is cited as a motivating application).",
+      "suggested_fix": "Either explicitly scope claims to 'shallow Transformers trained on synthetic relative-distance tasks,' or add experiments varying depth, head count, or sequence length to characterize when the deposit pattern emerges/disappears."
+    },
+    {
+      "severity": "minor",
+      "issue": "The anonymized references '[Author] et al., 2024a;b' appear in the Related Work section. While double-blind anonymization is expected, these references cannot be evaluated for relevance or completeness, and their placement in the sliding-window/length-generalization paragraph suggests they may be directly relevant to the paper's positioning.",
+      "suggested_fix": "No action needed under double-blind review, but authors should ensure the camera-ready version restores these and that the related work is complete."
+    },
+    {
+      "severity": "minor",
+      "issue": "The MLA formulation (Eq. 3–4) treats MLA as a pure hybrid positional architecture, but MLA was designed primarily as a KV-cache compression mechanism. The paper does not acknowledge this distinction, which could mislead readers about MLA's design motivation and whether its deposit-pattern mitigation is intentional or incidental.",
+      "suggested_fix": "Add a sentence clarifying that MLA's architectural structure incidentally creates the hybrid positional pathway and that deposit-pattern mitigation may be a secondary effect, not the design goal."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide evidence that the deposit pattern persists (or changes character) in models with more than 8 attention heads or more than 6 layers? The current setup is quite small and it is unclear if one head out of many is analogously specialized in a 32-head, 32-layer model.",
+    "Theorem 6.1 asserts that gain factors γk > 1 for all layers. Were these actually measured in the trained networks? If so, what were the empirical gain values and how stable were they across seeds?",
+    "The paper claims the deposit pattern explains why RoPE underperforms on certain tasks relative to simpler PEs (Kazemnejad et al. 2023). Is there any direct evidence—even a correlation—between the degree of deposit concentration and out-of-distribution generalization failure in length extrapolation settings?",
+    "Ablation 4 shows that RoPE suppresses activation-level positional directions by Layer 2 of the hybrid model. Does a purely absolute PE model exhibit the same suppression, or does this only happen when RoPE attention is present in subsequent layers?",
+    "The variance is reported as 'less than 5%'—is this 5 percentage points of absolute accuracy (very large) or 5% relative variance? For some conditions where accuracy is around 90%, even ±2 percentage points of absolute variance would make several comparisons statistically inconclusive."
+  ],
+  "calibration_check": "The core mechanistic finding (deposit pattern under RoPE on synthetic content-position tasks) is well-supported by the evidence, but the claim that this explains RoPE's practical performance paradox in language modeling is substantially overclaimed relative to the synthetic-only experimental scope.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The deposit pattern is an interesting mechanistic finding for the PE community, but its practical implications are undemonstrated—the paper's relevance to real LLM behavior remains speculative."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Toeplitz unification and the single-head deposit pattern are genuinely novel observations, though the content+position decomposition and synthetic-task methodology follow established precedents in the PE analysis literature."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theoretical framework is internally consistent and the ablation designs are sound, but the key causal claim linking the deposit pattern to practical RoPE failures is never directly tested, and the formal proofs rest on unverified assumptions."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Five seeds is minimal, variance reporting is ambiguous ('less than 5%'), no error bars appear in figures, and several central comparisons (e.g., RoPE 92.64 vs. MLA 88.34) lack uncertainty estimates needed to assess significance."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper acknowledges that the deposit-to-length-extrapolation link needs validation, but repeatedly frames the deposit pattern as explaining RoPE's 'performance paradox' without the real-task evidence to support that framing."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The prose is generally clear and the framework is well-introduced, but the duplicate Limitations section and occasional imprecise claims ('variance less than 5%') reflect incomplete editing."
+    },
+    "structure_compliance": {
+      "score": 5,
+      "justification": "Standard conference sections are present and reasonably ordered, but the duplicate Limitations section is a clear structural defect that should have been caught before submission."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Synthetic tasks are clearly specified (vocabulary size, dataset sizes, task logic), PE configurations are named, and implementation details are deferred to appendices; no obvious blockers to reproduction given the appendix material."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of the PE and mechanistic analysis literature is reasonable, and the Toeplitz/spectral theory citations are appropriate, but anonymized self-citations prevent full assessment and the gradient-analysis literature is only lightly engaged."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe violin plots, per-head curves, and layer-wise comparisons that are well-chosen for the claims; the three-inset design of Figure 4 (deposit/average/shock shapes) is particularly informative for communicating the pattern."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "A single 6-layer decoder on two synthetic tasks with a 1,000-token vocabulary is a narrow experimental scope; no real language tasks, no scale variation, and no architectural variants beyond MLA are tested, yet claims are framed as broadly applicable to modern RoPE-based LLMs."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper contains a genuinely interesting mechanistic hypothesis with converging synthetic evidence, but the gap between the claimed significance (explaining RoPE's practical paradox) and the experimental support (small synthetic models only) places it at borderline reject; substantial additional experiments are needed."
+    }
+  },
+  "publishability_probability": 0.15
+}

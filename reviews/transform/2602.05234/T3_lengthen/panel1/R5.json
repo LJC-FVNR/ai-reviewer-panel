@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CDAS, a steering method that combines a Jensen-Shannon divergence distribution-matching objective with distributed interchange interventions (DII) to enable faithful, bi-directional model steering. The conceptual framing — treating steering as causal variable localization rather than policy imposition — is interesting and well-motivated, and the paper is commendably honest about mixed results. However, the experimental evidence is unevenly rigorous: Tables 1–3 report no variance or error bars, the safety-case-study evaluation sets are small, an important baseline (BiPO) is omitted from the case studies without adequate justification, and Table 2 appears to contain truncated results for the 70B model. These gaps leave the core empirical claims under-supported for acceptance at ICLR.",
+  "strengths": [
+    "The JSD distribution-matching objective is a principled and novel training signal for steering; the motivation distinguishing it from likelihood-maximization and preference-optimization objectives is clear and technically sound.",
+    "The DII protocol naturally gives bi-directional steering as a structural property rather than requiring separate loss terms, which is an elegant design choice.",
+    "The paper is unusually honest: it explicitly scopes when CDAS is and is not competitive, acknowledges factor-tuning dependence, and names three concrete limitations in the conclusion — calibration that is rare among conference submissions.",
+    "The safety case studies (refusal override and backdoor neutralization) are practically motivated and the utility-preservation evaluation via KL divergence and benchmark accuracy is a valuable addition to the standard ASR-only evaluation protocol.",
+    "The comparison of intervened output distributions via KL divergence across methods provides a dimension of faithfulness evaluation not commonly seen in steering papers."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Statistical rigor is insufficient throughout. Table 1 (AXBENCH, the primary benchmark) reports single-point steering scores with no variance, error bars, or confidence intervals across the four model/layer settings. Table 3 (benchmark accuracy changes) similarly lacks uncertainty estimates. Table 4 uses tinyBenchmarks with exactly 100 instances each — far too small for reliable accuracy estimates (±10 pp noise at that scale). Case Study 2 uses only 3 random initializations, and error shading in Figure 1 appears only for that experiment. Under ICLR standards, results at this variance level cannot be distinguished from noise, particularly for the modest improvements claimed (e.g., AXBENCH score differences of ~0.02–0.05).",
+      "suggested_fix": "Report mean ± standard deviation (or 95% CI) for all tables using ≥5 seeds; for tinyBenchmarks, either use full MMLU/ARC or substantially increase the subsample size (≥500 instances); add significance tests (bootstrap or t-test) for the primary comparisons."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Table 2 (refusal override results) appears to have truncated or missing entries for Llama-3.1-70B: only the refusal scores are fully legible (100/100/100/83), while DIM's suppression score and all four harmonic-mean scores for 70B are absent or garbled in the presented text. Even accounting for extraction artifacts, the 70B row is materially incomplete, which makes it impossible to verify the headline claim that CDAS outperforms RePS on larger models.",
+      "suggested_fix": "Verify and provide complete numerical results for all models in Table 2, including DIM suppression score and all harmonic-mean scores for Llama-3.1-70B."
+    },
+    {
+      "severity": "major",
+      "issue": "BiPO is excluded from both case studies with the sole justification of 'consistent suboptimal performance on AXBENCH.' This conflates benchmark and case-study settings — the two safety tasks differ substantially from AXBENCH's general-concept setup, and BiPO's bi-directional formulation is directly relevant to the refusal-suppression task. Omitting a named competitor without testing it in the target setting reduces comparability.",
+      "suggested_fix": "Include BiPO results in Tables 2–4, or provide a compelling argument (e.g., preliminary results showing near-zero suppression) for why its omission does not affect the conclusions."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'DAS' baseline introduced in Section 5 is actually CDAS with a language-modeling (Lang.) objective substituted for the JSD objective — it is not the original DAS method (Geiger et al., 2024). Naming it 'DAS' is misleading and obscures which component is responsible for observed performance differences (DII vs. JSD objective).",
+      "suggested_fix": "Rename this baseline (e.g., 'CDAS-Lang.' or 'DII-LM') and update all tables and discussion accordingly; briefly explain the renaming to avoid reader confusion."
+    },
+    {
+      "severity": "major",
+      "issue": "Layer sensitivity is a documented but unaddressed weakness: CDAS drops from 0.992 to 0.518 on Gemma-2-9B across two evaluated layers (a 0.47-point swing), larger than the gap separating it from competing methods. The paper notes this sensitivity but provides no ablation, theoretical account, or practical guidance for layer selection beyond grid search, limiting deployability.",
+      "suggested_fix": "Add a layer-sensitivity ablation (performance vs. layer across the full layer range for at least one model/concept subset) and discuss what architectural or representational features predict effective intervention layers."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'one-to-many' DII token-position selection (choosing from <model> tokens via grid search) is central to the method but described in only two sentences; the impact of token-position choice on performance is not ablated.",
+      "suggested_fix": "Add a small ablation showing performance sensitivity to token-position choice, or at minimum report variance across positions."
+    },
+    {
+      "severity": "minor",
+      "issue": "The unit-factor setting consistently underperforms the tuned-factor setting on AXBENCH (0.631 vs. 0.756 on 2B-L10), yet unit factors are used for case studies. The paper frames this as 'tuning-free advantage,' but it is also possible that unit factors simply produce weaker steering that coincidentally avoids benchmark degradation. The two uses of unit factors (principled avoidance of off-distribution steering vs. implicit regularization) are conflated.",
+      "suggested_fix": "Discuss explicitly whether unit factors are expected to be principled (causally motivated) or merely regularizing, and whether tuned-factor CDAS with comparable benchmark performance to RePS is feasible in the safety setting."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 2 appears to be missing DIM's suppression score and all harmonic-mean scores for Llama-3.1-70B. Could you confirm and provide the complete table?",
+    "The steering score gap between unit-factor (0.631) and tuned-factor (0.631) CDAS on 2B-L10 is smaller than on 2B-L20 (0.608 vs. 0.652). Is there a principled explanation for why the unit factor is more competitive at shallower layers? Does this relate to the magnitude of αc at different depths?",
+    "For the backdoor neutralization task, DAS (DII + Lang. objective) defends successfully against red-teaming instructions but fails entirely on the true trigger (100% ASR), while CDAS (DII + JSD objective) achieves 6.68% ASR on the true trigger. This is a large qualitative difference attributable solely to the objective. Could you provide intuition or an analysis of why the JSD objective is specifically more robust to distributional shift between red-teaming and true-trigger inputs?",
+    "Why is the grid-searched layer for DIM used as the shared intervention layer for all methods in Case Study 1 (refusal), rather than independently optimizing per method? This choice potentially disadvantages methods that would perform better at a different layer.",
+    "The method section states that contrastive data triples require concept-eliciting instructions (xc), which is a stricter data requirement than Lang. For the AXBENCH augmentation, GPT-4o-mini is used to generate neutral responses and modify instructions. How sensitive is CDAS performance to the quality of this augmentation, and what happens when augmentation is noisy?"
+  ],
+  "calibration_check": "Claims are generally well-scoped — the paper explicitly acknowledges when CDAS underperforms RePS and Lang., restricts strong claims to specific settings (larger models, utility preservation), and lists concrete limitations — though the headline framing of 'faithful' and 'causally grounded' steering slightly outpaces the rigorous causal grounding the authors themselves disclaim in the conclusion.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The paper addresses a real problem (faithful, stable model steering) with safety-relevant applications, but mixed AXBENCH results and narrow evaluation scope limit the subfield impact relative to accepted ICLR papers in the steering/interpretability space."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Applying a JSD distribution-matching objective to intervention-based steering and repurposing DII from causal localization to bi-directional control are non-trivial adaptations; the conceptual reframing (steering as causal localization) adds originality beyond the technical components."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The mathematical formulation is sound and the experimental setup is mostly sensible, but exclusion of BiPO from case studies, the misleadingly named 'DAS' baseline, and grid-search-dependent layer selection without ablation reduce experimental rigor."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Error bars are absent from Tables 1–3, tinyBenchmarks evaluations use only 100 instances each (insufficient precision), the backdoor experiment uses only 3 seeds, and no significance tests are reported for any primary comparison."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper is unusually honest — it explicitly names when CDAS does not outperform baselines, restricts its recommendation to specific regimes, and lists four concrete limitations in the conclusion; this calibration is notably above average for conference submissions."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method description is generally clear, but the one-to-many DII protocol is underdescribed, the 'DAS' baseline naming is confusing, and Table 2 contains garbled or truncated entries for the 70B model."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Related Work, Method, Experiments, Conclusion) at an appropriate length; section ordering and labeling are clear."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Training objectives, hyperparameters, data curation procedures, and model choices are mostly described with sufficient detail; the DII token-position grid search is mentioned but not fully specified, and the GPT-4o-mini augmentation prompt is reportedly in an appendix."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Key related methods (DAS, RePS, BiPO, LoReFT, DIM, SAEs) are covered and the contribution is delineated; the treatment of concurrent work on refusal directions and backdoor probing is adequate, though the comparison table in related work could better distinguish design axes."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Figure 1 (ASR vs. layer with error shading) is informative and appropriately supports the primary case-study claim; however, Table 2 contains truncated or missing entries for the 70B model, and Table 1 would benefit from variance columns given the scale of differences being discussed."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH evaluation covers only the Gemma-2 family across two sizes and at most two layers each; BiPO is excluded from both case studies; evaluation is restricted to rank-1 interventions; tinyBenchmarks consist of 100 instances each — together these limit the generality of the conclusions beyond the specific settings tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper presents a principled and honest contribution to intervention-based steering, but the combination of missing variance estimates throughout, incomplete Table 2, excluded BiPO baseline, and narrow evaluation scope places it below the ICLR acceptance bar without revisions."
+    }
+  },
+  "publishability_probability": 0.18
+}

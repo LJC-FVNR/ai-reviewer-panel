@@ -1,0 +1,146 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "The paper proposes HETA, a token-attribution score for decoder-only LLMs formed as a target-conditioned attention-rollout gate multiplied by a weighted sum of a Hutchinson-estimated Hessian block sensitivity and a KL-under-masking term, plus a new curated NarrativeQA+SciQ probe dataset and a DSA alignment metric. The problem is real and the evaluation suite (4 models, 3 benchmarks + curated set, ~9 baselines, ablations, decoding-robustness sweep) is superficially broad. However, the core contribution is a heuristic combination of three well-known signals with an undefined estimation target, the motivating mathematical example is incorrect, the reported numbers contain internal inconsistencies that undermine trust (DSA values far outside the range its own definition permits, baseline scores identical to two decimals across three unrelated datasets, HETA outperforming baselines by 5-7x on a perturbation metric with no explanation), and 'alignment with human annotations' is in fact alignment with GPT-4o/GPT-5 labels. These are substantive evidentiary problems rather than presentational ones.",
+  "strengths": [
+    "The motivating problem is genuine and timely: most attribution machinery was built for encoder models and single-label outputs, and per-position attribution for autoregressive generation is under-served.",
+    "The baseline suite is unusually current for this subfield, including ContextCite, TDD, Peering into the Mind of LMs, ReAgent, SEA-CoT, Progressive Inference and fAML alongside classical IG and attention rollout, and each is discussed with a specific stated weakness rather than dismissed generically.",
+    "The curated evaluation construction is a genuinely nice idea: concatenating a semantically rich but non-diagnostic NarrativeQA segment with an answer-bearing SciQ segment creates a controlled distractor probe where the correct attribution target is known by construction.",
+    "The paper attends to scalability concretely (Hessian-vector products via Pearlmutter's trick, Hutchinson estimation, optional Gauss-Newton/Fisher surrogate, low-rank and windowed variants HETA-LR+WIN and HETA-LS reported as separate ablated configurations).",
+    "The decoding-hyperparameter robustness study (temperature/top-p/top-k/repetition penalty grid across seeds) is a dimension most attribution papers ignore, and the mechanistic explanation offered for why HETA should be stable is at least coherent with the method's design.",
+    "Limitations regarding runtime, memory and long-context cost are acknowledged in the conclusion."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Table 1 reports DSA values that are impossible under the paper's own definition of the metric. DSA is defined as the attribution mass on annotated SciQ tokens minus the mass on the NarrativeQA segment, 'with attributions normalized so the total mass over the paragraph sums to one', which bounds DSA in [-1, 1]. Baselines are reported in that range (-0.52 to -0.09), but fAML through HETA are reported at 2.10 to 5.10. Either the normalization is not applied uniformly across methods, or two different metrics are being reported in one table; in either case the headline alignment comparison is not interpretable as stated.",
+      "suggested_fix": "State the exact DSA computation actually used (including how S_SciQ and S_NarrQA are selected, whether a top-k cut is applied, and whether normalization is per-method), verify that all rows are on a common scale, and either recompute the table or explicitly define the scaling that produces values above 1."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Table 3 contains patterns that are very hard to reconcile with an honest independent evaluation. For LLaMA-3.1-70B, Integrated Gradients scores exactly 0.13 on Soft-NC for LongRA, TellMeWhy and WikiBio; Peering scores exactly 0.15 on all three; fAML scores exactly 0.46 on all three; and TDD-backward and Attention Rollout show sign-flipped duplicates (-1.48 / 1.48 / -1.48). Three datasets with very different structure producing bit-identical baseline scores suggests copied cells, a broken evaluation path for baselines, or fabrication. Table 1 similarly lists TDD-backward as +0.31 for GPT-J while every other entry in that block is negative, consistent with a dropped minus sign.",
+      "suggested_fix": "Re-run the baseline evaluations end-to-end, report per-cell means with standard deviations over seeds, and audit the reporting pipeline for copy errors; if the duplicated values are real, explain the mechanism that makes three datasets yield identical scores."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The magnitude of HETA's advantage is unexplained and implausible on its face. HETA reports Soft-NC of 10.3 / 9.2 / 3.80 where every one of nine baselines sits between roughly -1.5 and 2.2. The text describes this as 'exceeding ReAgent by over 2x' when the tabulated ratio is closer to 6x, and no diagnostic is offered. Because HETA is nonnegative by construction (a simplex-normalized gate times nonnegative curvature and KL terms) while several baselines are signed, the comparison may be measuring a sign/scale convention rather than faithfulness.",
+      "suggested_fix": "Report Soft-NC/Soft-NS under an identical normalization and perturbation budget for all methods, add a control where signed baselines are converted to magnitudes (and HETA is given a signed variant), and show the perturbation curves rather than only summary scalars so readers can see where the gap originates."
+    },
+    {
+      "severity": "major",
+      "issue": "The motivating example for needing second-order information is mathematically wrong. For f(x) = log(1 + exp(w'x + b)) in the claimed saturated regime w'x + b << 0, the first AND second derivatives are both proportional to exp(w'x+b) and vanish together, and f itself is near zero, so the function does not 'change significantly for finite perturbations' and the Hessian does not rescue attribution there. The generic claim that a zero partial derivative can coexist with nonzero finite-difference response is true of any nonlinear function but establishes nothing about LLMs specifically.",
+      "suggested_fix": "Replace the softplus example with one where the gradient vanishes but curvature does not (e.g., a symmetric extremum), and add empirical evidence that near-zero-gradient, high-curvature tokens actually occur at attribution-relevant positions in the studied models, e.g., a histogram of per-token gradient norm versus Hessian block norm."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian sensitivity estimator has no stated estimand. Equation 3 averages the L1 norm of Pi_i H_T (Pi_i r_k) over Rademacher probes, but the paper never says what population quantity this converges to, gives no bias or variance characterization in the main text, and never reports m (the number of probes) despite promising 'we report m, runtime, and memory in our experiments'. Since the log-likelihood Hessian is indefinite, a norm-of-products average is not a Hutchinson trace estimator, and its relationship to 'token influence' is asserted rather than derived.",
+      "suggested_fix": "Define the target quantity explicitly (e.g., a block Frobenius or spectral norm), prove or cite the concentration result, report m and a convergence study of the score as m grows, and state whether the Gauss-Newton/Fisher surrogate was used in the reported numbers, since that changes the estimand from curvature to a positive-semidefinite proxy."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'causal gating' claim is close to vacuous. Under a decoder causal mask with L layers of dense attention, essentially every position i <= T has an attention-value path terminating at T, so the gate does not exclude tokens; it only reweights them by a rollout score. The paper's stated motivation (that post-hoc attention aggregations 'may inadvertently assign importance to tokens that are not causally connected') therefore does not describe a problem the gate solves, and the gate is functionally a rollout prior, which the paper elsewhere argues is an unfaithful signal.",
+      "suggested_fix": "Report what fraction of tokens the gate actually zeroes out, and reconcile the use of attention rollout as the causal component with the paper's own Section 2 argument that attention is not a faithful causal signal; a causal-intervention gate (activation patching) would be the natural comparison."
+    },
+    {
+      "severity": "major",
+      "issue": "The abstract and Section 5.3 claim 'alignment with human annotations' and refer to a 'gold-annotated set', but the curated dataset labels are produced by two LLMs (GPT-4o and GPT-5 Thinking) with their intersection taken; the reported F1 = 0.91 / kappa = 0.89 is inter-model, not inter-human, agreement. Evaluating an LLM-attribution method against LLM-generated evidence labels with no human-validated subset is a material calibration problem, and the F1 (Alignment) metric in Section 5.3 inherits it.",
+      "suggested_fix": "Either relabel a random subset with human annotators and report agreement between the LLM labels and humans, or rename the claim throughout to 'LLM-annotated evidence spans' and remove 'human alignment' from the abstract and contributions."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical support is thin relative to the strength of the claims. Everything rests on 3 runs with blanket statements ('std < 0.2', 'std < +/-0.06') rather than per-cell variance, there are no confidence intervals or significance tests anywhere, and the ablation results in Figure 2(a-c) exist only as bar plots with no numeric table or error bars described in the caption. A paper claiming to 'set a new state-of-the-art' and 'establish a new standard' needs per-condition variance and paired tests against the strongest baseline.",
+      "suggested_fix": "Report per-cell mean and standard deviation over at least 5 seeds, add paired significance tests (e.g., bootstrap or Wilcoxon over instances) against ReAgent, and provide the ablation numbers in a table with error bars."
+    },
+    {
+      "severity": "major",
+      "issue": "Key method components are left unspecified, blocking reproduction. The KL term says only 'for a chosen scheme' without defining the masking operation (attention mask, embedding zeroing, or token replacement), which materially changes the result. The target-conditioned rollout Phi^(l,h)(i->T) is cited as 'e.g., Abnar and Zuidema (2020)' rather than defined, and per-head target-conditioned rollout is not a standard object. The top-attributed set A_model used for F1 and DSA has no stated cutoff. The weights beta = gamma = 0.5 are fixed with no sensitivity analysis, even though they trade off two terms on entirely different scales (a curvature norm and a KL in nats).",
+      "suggested_fix": "Write the rollout aggregation and the masking scheme out explicitly, give the top-k rule for A_model and S_SciQ, and add a sweep over beta and gamma including a normalization study showing the two terms are commensurate."
+    },
+    {
+      "severity": "major",
+      "issue": "The compute description appears infeasible as written. All experiments are said to run on a single NVIDIA A100 (80 GB), yet LLaMA-3.1-70B is evaluated with Hessian-vector products; a 70B model does not fit in 80 GB even in fp16 for inference, let alone with the activation storage that Pearlmutter double-backward requires. The mitigation described (second-order terms in the last six layers only) reduces HVP cost but not the base memory footprint.",
+      "suggested_fix": "State the actual precision, offloading/sharding strategy, and peak memory for the 70B runs, and report wall-clock cost per attribution against each baseline in the main text rather than only in an appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is incremental. Attention rollout, Hessian/second-order attribution, and leave-one-out KL are each established; HETA is their product-and-sum composition with two fixed scalar weights. The paper does not show that the specific composition is better than simpler combinations (e.g., rollout x KL alone, which the ablation labels 'No Transition Gating' inverts but does not cover), nor does it position against the causal-mediation / activation-patching literature that is the natural competitor for 'causally faithful' attribution.",
+      "suggested_fix": "Add combination baselines (rollout x KL, rollout x gradient magnitude, additive rather than multiplicative composition) and discuss activation patching / causal tracing as attribution baselines, not only as 'global' interpretability."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation problems compound the above: Related Work appears after the Experiments and largely restates Section 2 verbatim; the Background section is two paragraphs and does not formally set up the rollout; appendix cross-references are inconsistent (A3 is cited for the algorithm, the Qwen results, and 'further details', A4 for both ablations and decoding details); Section 5 is referenced as the location of the curated dataset from within Section 5; and Figures 2(d) and 3(d) appear to be near-duplicate qualitative panels.",
+      "suggested_fix": "Move Related Work before the Method, merge the duplicated prior-work discussion, fix appendix pointers, and replace one qualitative panel with the missing runtime/memory comparison."
+    },
+    {
+      "severity": "minor",
+      "issue": "Baseline tuning is never discussed. IG's baseline point and step count, ContextCite's ablation budget, TDD's target-alternative pairing, and Peering's layer thresholds are all decisive hyperparameters that the paper itself identifies as weaknesses of those methods, yet no tuning protocol is reported, so the comparison cannot be called fair.",
+      "suggested_fix": "Report the hyperparameter search performed for each baseline and use the best per-dataset configuration."
+    }
+  ],
+  "questions_for_authors": [
+    "Given that DSA is defined as a difference of masses under a distribution normalized to sum to one, how can HETA score 4.80 and fAML score 2.10 in Table 1 while baselines fall in [-0.52, -0.09]? Please give the exact formula and normalization actually used to produce each row.",
+    "Why do Integrated Gradients (0.13), Peering (0.15) and fAML (0.46) yield bit-identical Soft-NC scores on LongRA, TellMeWhy and WikiBio for LLaMA-3.1-70B? Are these separately computed numbers?",
+    "Is the +0.31 entry for TDD-backward on GPT-J in Table 1 a sign error?",
+    "What population quantity does the estimator in Equation 3 converge to, what value of m was used, and were the reported numbers computed with the exact Hessian or the Gauss-Newton/Fisher surrogate?",
+    "In the saturated regime of softplus, the second derivative vanishes at the same exponential rate as the first. Can you give a corrected motivating example, and empirical evidence that near-zero-gradient / high-curvature tokens are actually common at attribution-relevant positions?",
+    "What fraction of context tokens receive exactly zero mass from the gate M_T in practice? If the answer is near zero, in what sense does the gate enforce causality beyond reweighting?",
+    "Since HETA is nonnegative by construction while several baselines are signed, how do Soft-NC/Soft-NS treat sign, and how do the rankings change if all methods are compared on attribution magnitude?",
+    "Exactly how is a token 'masked' in the KL term (attention mask, embedding zeroing, or replacement with a pad/unk embedding), and how sensitive are the results to that choice?",
+    "How were LLaMA-3.1-70B Hessian-vector products executed on a single 80 GB A100? Please report precision, offloading, and peak memory.",
+    "Was any subset of the curated dataset validated by human annotators, and if not, will the 'human alignment' claim in the abstract be revised?",
+    "How sensitive are the results to beta and gamma, and are the curvature and KL terms rescaled to comparable magnitudes before summation?",
+    "What hyperparameter search was performed for each baseline, particularly IG's baseline/steps and ContextCite's ablation budget?"
+  ],
+  "calibration_check": "Claims are substantially over-scoped relative to the evidence: the abstract asserts alignment with human annotations when labels are LLM-generated, the results section declares a 'new state-of-the-art' and the abstract 'a new standard for interpretability' on the basis of tables containing values that violate the paper's own metric definition and baseline entries that repeat identically across unrelated datasets, while the limitations section discusses only compute cost and no methodological or evaluative caveats.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 4,
+      "justification": "Attribution for decoder-only generation is a problem the community cares about and the curated distractor probe could be reused, but the method's advantage as reported is not credible enough for researchers to adopt or build on it."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Each of the three ingredients (attention rollout, Hessian/second-order sensitivity, leave-one-out KL) is established prior art, and the contribution is a fixed-weight multiplicative-plus-additive composition whose specific form is never shown to beat simpler combinations."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The central motivating example is mathematically incorrect, the Hessian estimator has no defined estimand, the 'causal gate' is near-vacuous under a dense causal mask, and a nonnegative-versus-signed confound between HETA and its baselines is left uncontrolled."
+    },
+    "statistical_soundness": {
+      "score": 2,
+      "justification": "Three runs with blanket variance statements, no confidence intervals or significance tests, no error bars described for the ablation figures, and headline tables containing out-of-range DSA values plus bit-identical baseline scores across three distinct datasets."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "LLM-generated labels are presented as human annotations and 'gold', a 6x tabulated gap is described as 'over 2x', and 'new state-of-the-art' / 'new standard' claims are made while the limitations section confines itself to runtime and memory."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level story and the three components are easy to follow, but key operators (rollout aggregation, masking scheme, top-k selection) are left undefined, Related Work duplicates the Motivation section verbatim, and internal cross-references to sections and appendices are inconsistent."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "All expected sections are present at a reasonable ICLR length, though Related Work is placed after the experiments and overlaps heavily with Section 2, and Background is too thin to set up the method's notation."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Models, datasets, dataset construction, beta/gamma, sequence lengths and batch sizes are given, but the Hutchinson sample count m is never reported despite being promised, the KL masking scheme and rollout definition are unspecified, top-k cutoffs for DSA/F1 are missing, and the single-A100 claim for a 70B model with HVPs is not explained."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Recent generative-attribution methods (ContextCite, TDD, Peering, ReAgent) are discussed with specific and largely fair criticisms, but the causal-mediation and activation-patching line most relevant to 'causally faithful' attribution is only mentioned in passing under global interpretability and never used as a baseline."
+    },
+    "figure_quality": {
+      "score": 4,
+      "justification": "Figure 1's pipeline caption maps cleanly onto the three method components, but the ablation and robustness evidence exists only as bar plots with no accompanying numbers or stated error bars, Figures 2(d) and 3(d) are near-duplicate qualitative panels, and the promised runtime/memory display items are relegated to the appendix."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models spanning 3B to 70B, three benchmarks plus a curated set, and nine baselines constitute good nominal coverage, but the Qwen results are pushed to the appendix, baseline tuning is undocumented, and the internally inconsistent numbers undercut the generality the breadth is meant to establish."
+    },
+    "overall_recommendation": {
+      "score": 3,
+      "justification": "A reasonable idea and a genuinely useful evaluation construction are undermined by an incorrect motivating derivation, an undefined estimator, and result tables whose values contradict the paper's own metric definition and repeat identically across unrelated datasets, which together require re-running and re-reporting the empirical core rather than a revision."
+    }
+  },
+  "publishability_probability": 0.06
+}

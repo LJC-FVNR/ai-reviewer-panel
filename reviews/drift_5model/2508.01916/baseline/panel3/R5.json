@@ -1,0 +1,105 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper proposes Neighbor Distance Minimization (NDM), an unsupervised method for decomposing neural network residual-stream activations into interpretable orthogonal subspaces. The core motivation—that mutually exclusive feature groups naturally form orthogonal subspaces and that minimizing intra-subspace nearest-neighbor distances recovers these groups—is original and well-articulated. Validation on GPT-2 Small using known circuits (IOI, greater-than) is quantitatively promising, and qualitative results using InversionView are illustrative. The main weaknesses that prevent a clear accept are: (1) no error bars or seed-level variance anywhere in the experimental section, (2) an absence of ICA and other established unsupervised decomposition baselines, (3) the 2B-model scalability claim rests on a single knowledge-conflict test without circuit-level controls, and (4) the MI-threshold-driven dimension configuration procedure is ad hoc and sensitivity analysis is deferred to the appendix.",
+  "strengths": [
+    "The problem framing—fully unsupervised decomposition of representation space into interpretable subspaces—is a genuinely fresh angle in mechanistic interpretability that complements both SAE-based feature circuits and supervised DAS-style subspace identification.",
+    "The motivation through mutual exclusiveness and feature group theory is cleanly connected to the Elhage et al. toy model and to the multi-dimensional superposition hypothesis (Engels et al., 2024), giving the method a principled theoretical grounding.",
+    "The NDM algorithm is clearly described, and the equivalence to total-correlation minimization provides an additional justification beyond the feature-group story.",
+    "The GPT-2 Small quantitative evaluation using Gini coefficient over subspace patching effects is a well-designed, principled metric, and NDM's outperformance of all five baselines on average (0.71 vs. the 0.6 satisfactory threshold) is convincing.",
+    "The paper is honest about limitations: fine-grained partitions are missed, some small subspaces remain uninterpretable, and the linear representation hypothesis underpins the qualitative interpretations.",
+    "Scalability to Qwen2.5-1.5B and Gemma-2-2B, with separate subspaces found for context vs. parametric knowledge routing, is an encouraging proof-of-concept for larger models."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No error bars, confidence intervals, or seed-level variance are reported anywhere in the experimental section. Table 1 shows single Gini coefficients; Figure 5 shows single patching-effect curves. NDM involves non-convex orthogonal matrix optimization that can converge to different local optima, making run-to-run variance crucial to understand.",
+      "suggested_fix": "Report mean ± standard deviation across at least 5 random initializations for all quantitative results in Table 1 and Figure 5. If the method is stable, this will strengthen the paper; if not, it is critical information."
+    },
+    {
+      "severity": "major",
+      "issue": "The baseline suite is weak. Identity, Random, and PCA are trivial; 'Feature' (SAE clustering) is the only non-trivial baseline but is architecture-dependent. Independent Component Analysis (ICA) is the canonical unsupervised method for decomposing a linear mixture into independent components and is a direct competitor that the paper never mentions or compares against.",
+      "suggested_fix": "Add ICA (e.g., FastICA applied to the same activation set) and, if feasible, a VAE/nonlinear ICA baseline. Even if NDM outperforms ICA, its omission will be the first question from reviewers and program chairs."
+    },
+    {
+      "severity": "major",
+      "issue": "The scalability claim ('finding separate subspaces mediating context and parametric knowledge routing' in 2B models) is underevaluated. Unlike GPT-2 Small, there is no circuit-level ground truth, the patching is over all token positions simultaneously, and caveats about interpretation are deferred to an appendix. The evidence supports 'NDM finds a partition that correlates with one behavioral distinction in one layer' but not strong scalability.",
+      "suggested_fix": "Either narrow the claim in the abstract and introduction to match the evidence (e.g., 'we demonstrate applicability to 2B models in a preliminary knowledge-conflict experiment'), or strengthen the 2B evaluation by (a) testing at multiple layers, (b) reporting per-entity variance, and (c) including a simple supervised probe baseline to bound how well the circuit can be localized at all."
+    },
+    {
+      "severity": "major",
+      "issue": "The dimension configuration (number of subspaces and sizes) is determined by an MI-threshold merging procedure starting from 32-dimensional subspaces, but the sensitivity to the MI threshold and starting size is relegated to App. G.4. Different thresholds could yield qualitatively different partitions, which is important for reproducibility and for understanding what the method is actually measuring.",
+      "suggested_fix": "Include at minimum a 2x2 sensitivity table in the main paper showing how average Gini coefficient on the GPT-2 suite changes as a function of the MI threshold and starting subspace size."
+    },
+    {
+      "severity": "minor",
+      "issue": "The five GPT-2 Small tests all derive from only two circuits (IOI and greater-than). This limits the generality of the quantitative claim. Three of the five tests also target overlapping information types (subject position in tests 2–3).",
+      "suggested_fix": "Add at least one test from an independent circuit (e.g., successor heads, modular arithmetic) to broaden the quantitative evaluation."
+    },
+    {
+      "severity": "minor",
+      "issue": "The qualitative interpretability claim ('subspaces are interpretable in many cases') is not quantified. The presented examples (Figures 3, 22, 29, 30) are cherry-picked by design ('best configuration' + 'highest effect'), and the fraction of all subspaces that yield clear interpretations is never reported.",
+      "suggested_fix": "Provide a simple audit: for the best NDM partition, report the fraction of subspaces that two annotators independently rate as 'clearly interpretable,' 'ambiguous,' or 'uninterpretable,' using the preimage procedure."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the run-to-run variance of Table 1 results across different random initializations of R? Does NDM reliably converge to the same partition?",
+    "Why was ICA not included as a baseline? ICA is designed precisely to find statistically independent directions and is the most natural unsupervised competitor. Can you add it?",
+    "The Gini coefficient for NDM in Test 3 (subject position, layer 6) is 0.38 on the raw '-' metric, below the 0.6 threshold. How do you explain this failure case, and does it suggest a structural limitation of NDM or a mismatch with the circuit's actual geometry?",
+    "What fraction of all subspaces obtained by NDM on GPT-2 Small (not just the highest-effect ones) receive interpretable preimages under the InversionView procedure? The paper claims 'interpretable in many cases' but never quantifies 'many.'",
+    "For the 2B model experiments, patching is done across all token positions simultaneously. Did you test position-specific patching to rule out that the subspace effect is dominated by a small subset of positions, which would complicate causal attribution?",
+    "Is the orthogonal matrix R trained on a fixed set of activations (e.g., the 1M collected for preimage search), and does the choice of training data distribution affect which subspaces are found?"
+  ],
+  "calibration_check": "The abstract-level claim that NDM finds 'interpretable subspaces' and 'variables used by the model' is moderately overclaimed given that the quantitative evidence is limited to 5 GPT-2 Small tests (average Gini 0.71 with notable individual failures), the qualitative examples are selected by highest-effect criterion, and the 2B model results are exploratory; the paper would be better calibrated by scoping its interpretability claims to 'in many tested cases' and its scalability claim to 'preliminary evidence.'",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Unsupervised decomposition of representation space is a genuinely useful tool for mechanistic interpretability, and the demonstrated connection to known circuit variables in GPT-2 makes this work of concrete interest to the subfield."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Using neighbor distance minimization as a proxy for total correlation to find orthogonal subspace partitions is a fresh combination; the prior DAS work requires supervision, and ICA/PCA approaches have not been applied in this way to residual streams, though the information-theoretic motivation is somewhat standard."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is internally consistent and the GPT-2 evaluation is designed thoughtfully with a principled metric, but the complete absence of variance estimates across runs, combined with non-convex optimization and ad hoc dimension-configuration merging, makes it impossible to assess whether results are robust."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, confidence intervals, or significance tests appear anywhere in the experimental section despite the use of a non-convex optimizer with random initialization; this is a serious deficiency by current conference standards."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper acknowledges several limitations (fine-grained partitions missed, some subspaces uninterpretable, linear representation hypothesis dependency) but the abstract and introduction overstate scalability and the frequency of interpretability without quantification."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is generally well-written with good intuition (the 3D geometric illustration is helpful), though the dimension-configuration determination procedure is dense and the notation in Equations 2–4 requires careful parsing."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure; length appears appropriate for an ICLR submission, with heavy use of appendices that is typical for the venue."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The core algorithm (Algorithm 1) and evaluation protocol (Gini over subspace patching effects) are described in enough detail to reimplement, but key hyperparameters (MI threshold, starting subspace size, KSG estimator parameters) are scattered across appendices and the dataset construction for 2B experiments references an anonymized citation."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of the mechanistic interpretability subspace literature is comprehensive and fair, correctly positioning NDM relative to DAS, SAE-based circuits, and the multi-dimensional superposition hypothesis; however, the absence of ICA and related blind source separation literature is a notable gap."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the figures are well-chosen: Figure 1 illustrates both the toy model validation and the geometric intuition cleanly, Figure 3 concretely demonstrates multi-aspect decomposition, and Figure 5 directly supports the 2B scalability claim with a before/after patching comparison."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Quantitative evaluation is limited to 5 tests from 2 circuits in a single model (GPT-2 Small), the 2B experiments cover only a single behavioral distinction at a single layer per model, and the absence of ICA or other decomposition baselines leaves the generality of NDM's advantage unclear."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A genuine and well-motivated contribution to mechanistic interpretability with a novel unsupervised angle, solid GPT-2 Small results, and promising qualitative evidence, but the statistical reporting gaps and absent ICA baseline need to be addressed before the work can be accepted at ICLR 2026."
+    }
+  },
+  "publishability_probability": 0.35
+}

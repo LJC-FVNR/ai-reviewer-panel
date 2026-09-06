@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes CDAS, a method for bi-directional LLM steering that combines Distributed Interchange Intervention (DII) with a Jensen-Shannon divergence distribution-matching objective. The core motivation—that faithful identification of concept features is preferable to imposing external preferences—is well-articulated, and the safety case studies (refusal suppression, backdoor neutralization) are genuinely interesting, showing strong utility preservation relative to baselines. However, AXBENCH results are mixed and the primary technical claims lack the ablation support expected at ICLR; specifically, the design choices of JSD over KL, DII over standard clamping, and the one-to-many protocol are never individually isolated. Statistical reporting is insufficient in Tables 1–3 and the factor-tuning dependence in general-purpose steering partially undermines the tuning-free narrative.",
+  "strengths": [
+    "The distribution-matching training objective is well-motivated as a softer alternative to language modeling and preference optimization objectives, with a clear conceptual argument for why it should produce more faithful interventions.",
+    "The faithfulness evaluation (KL divergence + benchmark accuracy deltas) is a thoughtful addition to effectiveness metrics; the data in Table 3 showing RePS degrading TruthfulQA by −26.99 pp on Llama-3.1-8B versus CDAS at +0.61 pp is a compelling differentiator.",
+    "The backdoor neutralization case study (Section 5.2) is methodologically sound—trained on red-teaming proxies, tested on the true trigger, evaluated under a strict CoT-aware ASR definition, and averaged over three random seeds.",
+    "The paper honestly acknowledges negative results: unit-factor CDAS underperforms on AXBENCH, results are sensitive to intervention layer, and CDAS does not universally surpass strong-supervised methods.",
+    "Scaling to Llama-3.1-70B in the refusal case study is a meaningful contribution that distinguishes this work from purely small-model steering papers."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No ablation isolating the two core design choices: (1) JSD vs. KL in the distribution-matching objective; (2) DII vs. standard clamping intervention with the CDAS objective. The main claimed innovation is the CDAS objective (Eq. 3), but it is never tested without DII, nor is the specific choice of JSD over KL validated. Without these ablations, it is impossible to attribute observed improvements to either component.",
+      "suggested_fix": "Add a 2×2 ablation table (JSD/KL × DII/clamp) on at least one experimental setting (e.g., AXBENCH Gemma-2-9B or the refusal case study) to show the marginal contribution of each design decision."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Tables 1, 2, and 3 report point estimates with no variance, confidence intervals, or statistical tests despite comparison differences often being small (e.g., CDAS 0.731 vs. RePS 0.606 on 2B L20, a 0.125 gap; CDAS 61% vs. harmonic-mean variants in Table 2). The 'consistency across layers' claim (absolute change of 0.023 for CDAS vs. 0.150 for RePS) is presented as a key finding but is supported by exactly two data points per method with no uncertainty estimate.",
+      "suggested_fix": "Report standard deviation over multiple seeds or data splits for all tables (AXBENCH already uses ten random splits for fair scoring—report variance). For the layer-consistency claim, at minimum note whether the difference in score change is statistically distinguishable."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'unit factor' variant of CDAS performs very poorly on AXBENCH (e.g., 0.121 on Gemma-2-2B L10 vs. 0.756 for RePS), and the 'tuned factor' version closes the gap substantially. The paper argues that CDAS is 'tuning-free' in the safety case studies but requires tuning for general-purpose steering. This conditional claim—CDAS avoids tuning only when safety-concept factors are available—should be stated prominently in the abstract and introduction, not discovered mid-paper.",
+      "suggested_fix": "Revise the framing so that the tuning-free advantage is clearly scoped to settings where concept-eliciting instructions are available; do not position it as a general property of CDAS."
+    },
+    {
+      "severity": "major",
+      "issue": "The AXBENCH evaluation covers only two Gemma-2 model families and does not include Llama or Phi models, while the safety case studies use Llama and Phi but not Gemma. This creates a disconnect: it is unclear whether the favorable safety-case results for CDAS are model-family-specific.",
+      "suggested_fix": "Run at least one of the safety case studies on a Gemma model, or run AXBENCH on a Llama model, to establish cross-family consistency."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'one-to-many' DII protocol—using a single token from the <model> delimiter to intervene on all positions—is described but never ablated against alternatives (e.g., last-instruction-token, mean of source tokens, or the full-sequence DII used in DAS). Token position is selected via grid search, which is a hyperparameter tuning step that should be reported with its sensitivity.",
+      "suggested_fix": "Include a brief ablation or sensitivity table showing ASR or steering score across a few representative token positions and intervention-coverage choices."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper motivates refusal suppression as 'disabling safety guardrails to improve quality-of-service of local LLMs,' which is a dual-use framing that ICLR reviewers will flag. The experimental contribution (concept suppression as a stress test) is scientifically valid but the applied motivation should be stated more carefully.",
+      "suggested_fix": "Frame the refusal case study primarily as a rigorous test of suppression capability and faithfulness, with the quality-of-service application presented as one potential use rather than the primary one."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 2 and Table 3 data appear inlined within the main text in the manuscript as submitted (a PDF extraction artifact visible in rows like 'Phi-3.5-mini10010010098306842346119137'), suggesting layout or compilation issues. While these are likely extraction artifacts rather than submission defects, the table for the 70B model in Table 2 appears truncated.",
+      "suggested_fix": "Verify camera-ready typesetting and ensure all rows of Table 2 (including Llama-3.1-70B full row) are present and legible."
+    }
+  ],
+  "questions_for_authors": [
+    "How does the CDAS objective perform if KL divergence replaces JSD in Equation (3)? The choice of JSD is motivated by its symmetry and boundedness but is never empirically validated against KL.",
+    "What is the performance of standard clamping intervention (without DII) trained with the CDAS JSD objective? This ablation is necessary to separate the contribution of the intervention protocol from the training objective.",
+    "For the Phi-3.5-mini refusal suppression result (CDAS suppression score = 30%), is this a fundamental limitation of CDAS on small models, or is it recoverable with factor tuning? The paper shows CDAS without tuning here but does not test tuned CDAS on this model.",
+    "The backdoor experiment trains on red-teaming proxy instructions (not the true trigger) and tests on both. How sensitive is the 6.68% ASR at L16 to the quality of red-teaming instructions? If only 7 hand-crafted instructions were used to bootstrap augmentation, could a less targeted red-teaming set substantially worsen the result?",
+    "In Table 3, RePS incurs −26.99 pp TruthfulQA degradation on Llama-3.1-8B. Is this due to the steering factor being too strong, or is this at the RePS-optimal factor used for suppression? If the former, a fairer RePS comparison might use a factor tuned for the faithfulness-suppression tradeoff.",
+    "How does CDAS perform under the 'oracle' (not fair) AXBENCH evaluation protocol, analogous to the oracle scores shown in parentheses for tuned CDAS? Does the oracle gap reveal that the fair factor selection procedure is the bottleneck rather than the learned steering direction?"
+  ],
+  "calibration_check": "The paper is broadly well-calibrated—it explicitly lists limitations, acknowledges that CDAS does not universally outperform baselines, and scopes its recommendations to specific regimes (large models, utility-critical settings)—but the abstract and introduction slightly overstate the generality of the tuning-free advantage, which holds only in the safety case studies, not in general-purpose steering.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The faithfulness-preserving suppression results (especially Table 3 and the backdoor case) address a real gap in steering literature and would be cited by practitioners, but the contribution is incremental relative to DAS and existing PO methods, and the AXBENCH improvements are model- and layer-dependent."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "DII is adopted from Geiger et al. (2024) and JSD distribution matching is a standard tool; the primary novelty is the specific combination and reframing of DAS objectives for steering rather than causal localization, which is a meaningful but modest conceptual step."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method is internally consistent and the math is correct, but the absence of ablations on the two core design choices (JSD vs. KL, DII vs. standard clamping) means the claim–evidence link for the main technical contributions is incomplete."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Error bars appear only in Figure 1 (backdoor ASR curves); Tables 1–3 report point estimates without variance despite covering multi-seed or multi-split settings, and the key 'consistency across layers' claim is unsupported by significance testing."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper clearly states when CDAS underperforms, provides a limitations section, and avoids SOTA overclaiming; minor issue is that the tuning-free framing in the introduction is broader than the evidence supports."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method description is dense but followable, and the distinction between CDAS and DAS is clarified by a helpful remark; the manuscript has apparent compilation/layout issues (inline table data, truncated rows) and the factor-selection procedure for CDAS requires reading across multiple sections to fully understand."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows the standard conference structure with appropriate section delineation; appendix is referenced for hyperparameter details; length appears reasonable for an ICLR submission."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Training procedures, data curation steps (including GPT-4o-mini augmentation templates), and intervention details are described at sufficient level for the main experiments; hyperparameters are stated to be in appendices, which are not included in the review copy but are referenced specifically enough to be locatable."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Covers intervention-based steering, causal abstraction, SAEs, and distribution matching with accurate characterizations; fairly positions CDAS as a complement rather than a replacement for strong-supervised methods; no obvious omissions in the core subfields."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "From captions: Figure 1 (ASR across layers with standard error shading) directly supports the main backdoor claim and is informative; the four tables use appropriate metrics; however, no visualization of learned steering vectors or intervention geometry is provided, which would strengthen mechanistic interpretability claims."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH covers only Gemma-2 models; safety case studies cover Llama/Phi but not Gemma; only rank-1 vectors are tested; no ablation of design choices; the two safety scenarios are interesting but both are binary-mode suppression tasks, limiting generalization evidence for the broader steering claim."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the safety case study results (particularly backdoor neutralization and faithfulness preservation) are a genuine contribution, but the missing ablations on core design choices, absent statistical reporting across most tables, and mixed general-purpose results fall below the evidentiary standard expected at ICLR for the claims made."
+    }
+  },
+  "publishability_probability": 0.22
+}

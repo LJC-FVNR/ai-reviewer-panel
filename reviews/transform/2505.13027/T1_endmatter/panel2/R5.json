@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-matrix framework for unifying additive and multiplicative positional encodings and uses it to predict and then empirically uncover a 'single-head deposit pattern' in RoPE-trained models. The theoretical decomposition is elegant and the core empirical finding is genuine and interesting. However, every experiment is conducted on a 6-layer decoder with small synthetic tasks, and the critical link between the deposit pattern and RoPE's known real-world weaknesses (length generalisation, perplexity gaps) is explicitly deferred to future work, leaving the paper's central motivating claim unsupported. The gradient-amplification theory rests on strong, partially unjustified assumptions whose realism is not validated. In current form the contribution is a compelling hypothesis study rather than an established mechanistic account.",
+  "strengths": [
+    "The Toeplitz framework cleanly partitions additive and multiplicative PE into first-principles algebraic cases (Equations 1–2), providing a reusable analytical vocabulary for the field.",
+    "The 'single-head deposit pattern' is a concrete, reproducible empirical phenomenon supported by three complementary ablation angles (Ablations 1–3) and a matching theoretical mechanism (Theorem 6.1).",
+    "The MLA analysis (Ablation 3) is insightful: connecting DeepSeek-V3's architectural choice to the deposit pattern diagnosis provides immediate, testable practical relevance.",
+    "The paper's honesty about the length-generalisation link being unvalidated and deferred is commendable calibration.",
+    "Two-task synthetic design is well-controlled: a position-sensitive task and a position-agnostic task cleanly operationalise the theoretical distinction and isolate the variable of interest."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All experiments use a 6-layer decoder on two simple synthetic tasks (100k / 50k samples). There is no experiment on a real language-modeling objective, a pre-trained model, or a task with natural-language structure. The paper's motivating claim—that the deposit pattern explains RoPE's real-world performance paradoxes—therefore has no direct empirical support in the manuscript.",
+      "suggested_fix": "Run at least one experiment on a small but real language-modeling setup (e.g., 100M-parameter model trained on a text corpus with a held-out perplexity or downstream task) or on a publicly available RoPE-based checkpoint. Even negative results ('the deposit pattern appears in trained LLMs') would strongly strengthen the paper."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Theorem 6.1's exponential-amplification result depends on Assumption 6.1, whose three parts are strong: (A1) Jacobian singular values bounded uniformly in [1-α, 1+α] (empirically implausible for non-trivial depths without LN), (A2) a 'monotone anchor path' for every sample, and (A3) projection-matrix separability for ALiBi. None of these are verified empirically (e.g., via Jacobian spectrum measurements during training), so the theorem's applicability to the observed phenomenon is unclear.",
+      "suggested_fix": "Either measure Jacobian spectra during training to verify (A1), or replace the deterministic bound with a weaker probabilistic statement under more defensible conditions. At minimum, add a paragraph explicitly discussing under what realistic training regimes the assumptions hold."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is inadequate: 'variance is less than 5%' is stated in text but error bars do not appear in the main figures (based on captions). It is also unclear whether '5%' refers to absolute accuracy points or relative variance. No significance tests are reported for any comparison.",
+      "suggested_fix": "Add mean ± standard deviation (or 95% CI) error bars to all accuracy curves and ablation plots for all five seeds. Report effect sizes for the key comparisons (RoPE vs. next-best on Task 1; deposit ablation accuracy drop)."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper offers no ablation over model scale, depth, or head count. The deposit pattern might be a low-resource / shallow-model artifact, or it might persist and strengthen at scale—both possibilities would be theoretically informative, but neither is tested.",
+      "suggested_fix": "Vary model depth (2, 6, 12 layers) and number of heads (4, 8, 16) in a small sweep. Report whether the single-head concentration ratio scales predictably or saturates."
+    },
+    {
+      "severity": "major",
+      "issue": "The content–position decomposition (Assumption 3.1 / Remark 3.1) is presented as broadly applicable ('a structural lens'), but the justification is partly circular: evidence (iii) ('ablating pi hurts more than random vectors') is measured in Section 5.4 using an Absolute PE model, where pi is explicitly defined. For RoPE there is no explicit pi, so the claim that the decomposition applies is an approximation whose accuracy is never quantified.",
+      "suggested_fix": "Clarify that Assumption 3.1 is an analytical convenience rather than a claim about learned representations in RoPE models, and add a quantitative check (e.g., probing classifiers) to bound the decomposition error for RoPE activations."
+    },
+    {
+      "severity": "minor",
+      "issue": "Task 2 uses 50,000 examples while Task 1 uses 100,000. The reason for this asymmetry is not explained, which creates a confound when comparing convergence speed across tasks.",
+      "suggested_fix": "Either use equal dataset sizes or justify the asymmetry and verify that results are not sensitive to sample-size ratio."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that 'NoPE and standard Relative PE fail entirely' on Task 1 (Figure 2 caption) appears in the prose without a nuanced definition of 'fail'—it is unclear whether these methods converge to chance or to some above-chance ceiling.",
+      "suggested_fix": "Report exact final test accuracies for all methods in a summary table alongside figures."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide even one result from a non-synthetic setting—e.g., a probing experiment on a small pre-trained RoPE model—to test whether the deposit pattern generalises beyond your 6-layer decoder?",
+    "Assumption 6.1 (A1) requires singular values of all inter-layer Jacobians to lie in [1-α, 1+α]. Have you measured Jacobian spectra in your trained models? For typical pre-norm Transformers, singular values are known to deviate significantly from identity; how sensitive is Theorem 6.1 to violations of this assumption?",
+    "How does the deposit pattern evolve with model depth? Does concentration into a single head increase, decrease, or stay constant as you go from 3 to 6 to 12 layers?",
+    "Section 4.2 states RoPE 'performs strongly' on Task 2 (position-agnostic), but Table 1 shows RoPE achieves 69.43% vs. NoPE's 77.69%—a meaningful gap. Is RoPE's position-agnostic performance actually 'strong', or merely less catastrophic than ALiBi?",
+    "For the gradient analysis, the 'anchor path' assumption (A2) formalises that a learning signal exists for the target token. How is this assumption connected to the synthetic task structure specifically, and could it fail for sequences where triggers are evenly distributed across positions?",
+    "Have you checked whether the single-head deposit pattern appears in publicly available RoPE-based language model checkpoints (e.g., LLaMA or Mistral) via interpretability tools like causal tracing or attention-head ablation on a short synthetic prompt?"
+  ],
+  "calibration_check": "The paper is admirably honest about the length-generalisation link being unvalidated, but the introduction frames the deposit pattern as explaining 'the gap between RoPE's theoretical promise and its practical performance'—a much broader claim than the synthetic evidence supports; moderate over-claiming at the framing level.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The deposit pattern is an interesting mechanistic observation, but without validation on real LMs or at scale, the relevance to the field's core RoPE deployment questions remains speculative."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The unified Toeplitz framework and the single-head deposit pattern are genuine contributions not clearly anticipated by prior work, though mechanistic analyses of attention-head specialisation are an active area."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The Toeplitz decomposition is mathematically sound, but Theorem 6.1 rests on three unverified assumptions and the entire empirical chain is confined to small synthetic tasks with no real-data controls."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Five seeds are used, but error bars are absent from main figures, the variance claim ('< 5%') is imprecise, and no significance tests or effect-size estimates are reported."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper correctly flags the length-generalisation link as unvalidated in the Limitations, but the Introduction overstates the scope of the contribution by attributing RoPE's real-world underperformance to the deposit pattern without direct evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The writing is generally clear and well-organised; the Toeplitz framework is explained with useful notation, though the Ablation 4 section feels compressed and its conclusions are partially embedded in figure captions."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed; the paper is within typical ICLR page bounds and all major sections are present."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The synthetic task design and model architecture are described at a reasonable level of detail, but key hyperparameters (learning rate, batch size, model width/depth per PE method) are deferred to Appendix D, which cannot be evaluated here."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of PE evolution is thorough and recent; mechanistic interpretability literature (circuit analysis, head ablation studies) is cited but not deeply engaged, missing some relevant comparanda for the head-specialisation claim."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Violin plots for head-wise ablation are an appropriate and informative choice; captions are detailed enough to convey the key comparison, though the absence of error bars in accuracy curves (Figures 2–3) is a presentation weakness."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "Every experiment uses a single 6-layer architecture on two synthetic tasks; there is no variation in scale, depth, head count, tokeniser, or task domain, and no real NLP experiment, leaving generality of the core claim entirely undemonstrated."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper contains a genuinely interesting finding and a clean theoretical framing, but the scope of experiments is insufficient for the claims made; a major revision expanding validation to real language-modeling settings would be needed for acceptance."
+    }
+  },
+  "publishability_probability": 0.15
+}

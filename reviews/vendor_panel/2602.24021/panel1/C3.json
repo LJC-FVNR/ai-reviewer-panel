@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a lightweight intervention framework for video anomaly detection with a frozen MLLM: a Fisher-style separability score selects a few attention heads ('latent anomaly experts'), and a small hierarchical meta-controller learns context-conditioned per-channel scaling of those head features, calibrated on 1% of training data. The paper is clearly written, the ablation suite (component, selection strategy, 10-seed stability, data-scaling, hyperparameters) is unusually thorough for this subfield, and the reported results slightly exceed prior few-parameter methods on UCF-Crime and XD-Violence. However, the 'tuning-free' framing is contradicted by the method itself (it trains an HMC plus scorer on labeled data, and the paper's own Table 1 places it under 'Few-Parameter Learning'), the SOTA margins (+0.43 AUC / +0.87 AP over HiProbeVAD) are thin and reported without variance, the supervision granularity of the 1% calibration set is never stated, and only a single backbone is evaluated.",
+  "strengths": [
+    "Well-motivated and clearly articulated perspective: moving from passive feature reading of frozen MLLMs to active, context-dependent intervention on internal representations is a genuinely interesting direction for VAD.",
+    "The method is simple, cheap, and data-efficient: element-wise residual scaling of a handful of attention heads trained on ~16 videos with <1 minute of calibration is practically appealing.",
+    "Strong ablation coverage for a paper of this type: HMC component ablation, RSA vs. positional/random head-selection heuristics, 10-seed stability of expert selection, data-scaling saturation analysis, and K/F hyperparameter sweeps.",
+    "The stability analysis (identical LAEs across 10 seeds, sigma ~ 0.04 AUC) is a nice and uncommon sanity check that the selected heads are intrinsic to the backbone rather than split artifacts.",
+    "Honest inclusion of strong fine-tuned baselines (Holmes-VAD/VAU) in Table 1, allowing readers to see the remaining gap to full training."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central 'tuning-free' framing is inconsistent with the method. SteerVAD trains a hierarchical meta-controller and a logistic scorer with BCE on labeled calibration data; the paper's own Table 1 categorizes it under 'Few-Parameter Learning' alongside VERA and HiProbeVAD. Abstract, contributions, and conclusion repeatedly claim 'tuning-free' and 'state-of-the-art among tuning-free approaches', which mispositions the work against true zero-shot baselines (LAVAD, EventVAD) it does not compare to on equal footing.",
+      "suggested_fix": "Reframe throughout as few-parameter / calibration-based learning; move the primary comparison to the few-parameter category and discuss the zero-shot methods as a different operating point rather than the claimed category."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The supervision level of the 1% calibration subset is never specified. The BCE objective requires per-segment/frame labels y in {0,1}; if frame-level labels are used, the comparison to weakly-supervised MIL methods (video-level labels only) in Table 1 is not on equal footing, and the data-efficiency claim ('1% of training data') conflates number of videos with label granularity.",
+      "suggested_fix": "State explicitly whether frame-level or video-level labels are used for calibration; if frame-level, report results under video-level labels only (or add that variant) and adjust claims accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "The SOTA claim rests on small margins (+0.43 AUC over HiProbeVAD on UCF-Crime, +0.87 AP on XD-Violence) with no error bars or significance testing on the main table. The 10-seed analysis covers only LAE-selection stability on UCF-Crime, not end-to-end variance, and competitor variance is unknown.",
+      "suggested_fix": "Report mean +/- std over multiple calibration/training seeds for the full pipeline on both datasets, and add a significance test or bootstrap CI against the strongest baseline (HiProbeVAD)."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty of the two named components is overstated. The RSA score (Eq. 1) is the classical Fisher discriminant / inter-to-intra scatter ratio, and the rectification (Eq. 4) is context-conditioned per-channel scaling — closely related to activation steering / representation engineering literature (e.g., steering vectors, representation-level interventions), which is not cited or compared against. 'First to operationalize' claims are risky without engaging this line of work.",
+      "suggested_fix": "Add a related-work subsection on activation steering/representation engineering, cite the Fisher-ratio origin of the metric, and ideally include a baseline that applies off-the-shelf steering vectors to the same backbone."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is under-supported: a single MLLM backbone (InternVL3, variant/size unspecified) is used, so claims like 'a powerful new direction' and 'paving the way' for frozen foundation models rest on one model family. The 'real-time, single-pass' claim in the problem formulation is never backed by latency/FLOPs/throughput measurements, and the full autoregressive pass used to obtain the global context vector could be expensive.",
+      "suggested_fix": "Add at least one additional backbone (e.g., Qwen2-VL or Video-LLaMA), report inference runtime per video vs. baselines, and scope the generality claims to what is shown."
+    },
+    {
+      "severity": "minor",
+      "issue": "Missing baselines that isolate the contribution: e.g., a linear/MLP probe trained on the global context vector c alone, a probe over all heads rather than only LAEs, and the same HMC applied to randomly selected heads (the random-head ablation uses heuristics but not HMC-on-random-heads at matched capacity).",
+      "suggested_fix": "Add probes on c and on all-head concatenations trained on the same 1% data, plus HMC-on-random-heads, to quantify how much of the gain is RSA vs. the controller."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: the low-rank bottleneck r is 'set to a small value' but never given; the InternVL3 model size, the text prompt used to elicit the context token, segment-boundary handling, and XD-Violence audio usage are unspecified; no ablation on lambda_reg or sigma_g.",
+      "suggested_fix": "Specify r, exact backbone checkpoint, prompts, and preprocessing; add sensitivity ablations for lambda_reg and sigma_g (even in an appendix)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The gap to fine-tuned methods on XD-Violence is large (83.02 vs. 90.67 AP for Holmes-VAD) and is glossed over by the 'narrows the gap' narrative, which is only accurate for UCF-Crime.",
+      "suggested_fix": "Discuss the XD-Violence gap explicitly and analyze which anomaly categories drive it."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the 1% calibration subset use frame-level anomaly labels, or only video-level labels? If frame-level, how does SteerVAD perform when restricted to video-level supervision, as the weakly-supervised baselines in Table 1 are?",
+    "Which exact InternVL3 checkpoint (parameter size) is used, and what is the value of the low-rank bottleneck r in the local gating module?",
+    "What text prompt produces the global context vector c, and does obtaining it require a full autoregressive generation step per segment? What is the measured per-video inference latency compared to VERA/HiProbeVAD?",
+    "How many attention heads does the backbone have in total, and how sensitive are results to K beyond the sweep in Table 5 (e.g., K=1, K=32)?",
+    "Can you report end-to-end mean +/- std over multiple seeds for the main Table 1 numbers, and a significance test against HiProbeVAD?",
+    "How does the method compare to simply training the same logistic scorer on the raw global context vector c, without any LAE steering?"
+  ],
+  "calibration_check": "Claims are not appropriately scoped: the method is repeatedly called 'tuning-free' despite training a controller and scorer on labeled data (its own table lists it under few-parameter learning), SOTA is claimed on sub-0.5-point margins without variance, and 'real-time' and broad generality are asserted without runtime measurements or a second backbone.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Data-efficient intervention on frozen MLLMs is a useful direction for VAD and interpretability-adjacent work, but the practical gain over the best few-parameter baseline is small and the fine-tuned gap remains large on XD-Violence."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Applying context-conditioned activation scaling to VAD is a fresh combination, but the separability metric is the classical Fisher ratio and the rectification is standard per-channel steering, with the closest activation-steering literature uncited."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is coherent and ablations are thoughtful, but the core framing ('tuning-free') is contradicted by the training procedure, and the supervision granularity underpinning the headline efficiency claim is unspecified."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main results are single-run point estimates with margins of +0.43 AUC / +0.87 AP and no error bars or significance tests; the 10-seed analysis covers only expert-selection stability on one dataset."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'Tuning-free', 'SOTA', 'real-time', and 'powerful new direction' claims exceed the evidence; the large XD-Violence gap to fine-tuned methods is downplayed."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well organized and readable with a clear pipeline, though the heavy manifold-theoretic framing is disproportionate to the simple element-wise scaling actually implemented."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (intro, related work, method, experiments, ablations, conclusion) at a reasonable length with appendix pointers."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Many hyperparameters are given (K, F, lr, epochs, lambda_reg, sigma_g), but the rank r, exact backbone checkpoint, prompts, and label granularity for calibration are missing."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "VAD and mechanistic-interpretability coverage is adequate, but the most relevant prior art — activation steering / representation engineering and Fisher-style separability — is absent, weakening the novelty delineation."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative items (paradigm comparison, framework diagram, before/after t-SNE, comprehensive result and ablation tables) that genuinely support the claims, though t-SNE separation is only qualitative evidence."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Two standard datasets but a single backbone, no cross-model generalization, no runtime analysis, no failure-case or per-category analysis, and key isolating baselines (probe on context vector, HMC on random heads) are missing."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising, well-ablated idea undermined by a mis-framed central claim, thin unverified SOTA margins, and insufficient generality evidence; fixable but requires substantial added experiments and repositioning."
+    }
+  },
+  "publishability_probability": 0.28
+}

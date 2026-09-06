@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes an information-theoretic pipeline that uses VQ-VAE to compress transformer hidden states into discrete codes and then computes mutual information among these codes to characterize planning horizon, branch awareness, and information distribution across layers/blocks. The framework is a reasonable methodological contribution over probe-based interpretability, and the CFG/path-finding/OWT sweep is a sensible starting point. However, the empirical findings are largely qualitative and unsurprising (task-dependent horizon, recency effect), the MTP-vs-NTP contrast that motivates the study yields essentially a null result, and the whole analysis rests on small GPT-3-Small-sized models with heavy dependence on VQ-VAE hyperparameters whose robustness is not adequately established in the main text.",
+  "strengths": [
+    "The core idea — replace learned probes with discrete VQ-VAE codes and estimate MI between codes — is a clean way to sidestep well-known probe-capacity confounds, and the paper articulates the motivation carefully.",
+    "The three planning axes (horizon, branch awareness, computational-history localization) are well-chosen, and the branch-awareness experiment using disjoint alternate/decoy paths in PF is a nice controlled design.",
+    "Claims are generally scoped to relative (normalized) MI within a single experimental setting, with the authors explicitly warning against absolute interpretations — commendable calibration.",
+    "The paper reports multiple seeds and includes a dedicated limitations section, an appendix validation of the VQ-VAE choice, and a probe-vs-MI diagnostic in the appendix."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The measured 'MI' is MI between VQ-VAE codes, not between hidden states. Because both encoders are trained end-to-end (per index-set family) with reconstruction + cosine + entropy losses, the estimated MI depends heavily on codebook size, training objective weighting, and which block families are grouped together. The paper acknowledges this in the abstract-value caveat but does not show that qualitative conclusions (fast CFG decay, PF long-horizon retention, ratio > 1 for alt vs decoy) are stable under nontrivial changes to K, λ_cos, λ_ent, or encoder capacity. Without a hyperparameter-robustness sweep in the main text, the trend claims are only weakly supported.",
+      "suggested_fix": "Add a main-text robustness study varying K (e.g., 128/512/2048), the extra regularizers, and encoder depth; show that the direction and rough magnitude of the reported nMI/MI-ratio trends are preserved. Report at minimum the range across VQ-VAE seeds."
+    },
+    {
+      "severity": "major",
+      "issue": "The MTP-vs-NTP question is prominent in the framing (abstract, intro, dataset selection, conclusion) but the actual finding is 'no consistent differences,' with MMTP showing only 'slightly slower decay' or 'slightly more uniform' nMI. There is no significance testing on these small effects, no CI on the MI-ratio in Table 1 across seeds beyond the ± values shown, and the difference on PF-Long (7.60 vs 6.29 with std 0.78/0.17) is not clearly outside noise. As stated, the paper cannot support any positive claim about MTP shaping planning, and should either narrow the framing or add stronger tests.",
+      "suggested_fix": "Either (a) explicitly present the MTP-vs-NTP comparison as a null result with power analysis / bootstrap CIs and downweight it in framing, or (b) scale up: more seeds, larger models, more MTP-head configurations, and a formal test (e.g., paired bootstrap) on the reported deltas."
+    },
+    {
+      "severity": "major",
+      "issue": "Breadth is thin for the generality suggested by the title. All main experiments use architecturally matched 'GPT-3 Small' models on three tasks; the 0.3B replication is relegated to an appendix and covers only CFG. Nothing in the main text speaks to instruction-tuned models, reasoning-tuned models, larger scales, or non-GPT architectures, yet claims like 'LMs exhibit internal planning' are made in the general.",
+      "suggested_fix": "Either narrow the claims to 'small pretrained decoder-only transformers of GPT-3-Small class' throughout, or extend to at least one larger open-weights model (e.g., a 1–7B checkpoint) for the key horizon and branch-awareness experiments."
+    },
+    {
+      "severity": "major",
+      "issue": "The branch-awareness experiment reports the ratio I(Z_H; Z_alt)/I(Z_H; Z_decoy) but does not report the individual I values, joint entropies, or the number of samples used per estimate. Count-based MI at large alphabet size is notoriously biased upward at small N; the appendix E is referenced for bias correction but the main-text conclusions in Table 1 do not show whether the ratio survives the correction. Additionally, decoys are stipulated to be node-disjoint from correct paths — but node-disjointness does not guarantee statistical independence from the prefix, since the decoy is drawn from the same graph and shares edge tokens.",
+      "suggested_fix": "Report bias-corrected MI estimates, sample sizes, and a permutation/shuffle baseline (e.g., pair each prefix with a decoy sampled from a different graph) to establish the null distribution for the ratio."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'information in the computational history' analysis is presented as an application of the same framework but is essentially a well-known recency/late-layer story (cited to Pal et al. 2023 and long-context attention work). Its inclusion does not add much beyond confirming known effects and dilutes the main contribution.",
+      "suggested_fix": "Either sharpen the section by contrasting quantitatively with what probe-based localization would infer on the same data, or move most of it to an appendix and use the main-text space for the robustness/scale experiments above."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper argues (App. D.2) that probing gives confounded results, but this comparison lives entirely in the appendix and is not summarized quantitatively in the main text. Given that probing is the standard alternative, at least one direct main-text comparison is warranted.",
+      "suggested_fix": "Add a short main-text figure/table where, on one task (e.g., PF-Short), MI-of-codes and a matched probe-accuracy diagnostic disagree in a controlled setting, to make the pipeline's advantage concrete."
+    },
+    {
+      "severity": "minor",
+      "issue": "The writing has several run-together sentences and missing spaces (likely artifacts of extraction, but also visible in the manuscript body, e.g., the joint listing of contributions and the compressed 'MPC and world-model–based approaches' passage). Some notation is introduced twice (H, Z_1:L-1_1:T) with different granularities and could confuse readers.",
+      "suggested_fix": "Copyedit pass; define once and refer back. Add a small notation table."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are the qualitative results (CFG decay rate, PF long-horizon retention, alt/decoy ratio > 1) to VQ-VAE codebook size K, to λ_cos and λ_ent, and to VQ-VAE training seed? Do error bars in Table 1 reflect only LM seeds, only VQ-VAE seeds, or both?",
+    "For Table 1, what are the raw I(Z_H; Z_alt) and I(Z_H; Z_decoy) values, and how do they compare against a shuffled-decoy null baseline? Does the bias-corrected estimator from App. E preserve the ratios reported?",
+    "In PF-Long, MMTP has higher accuracy than MNTP (0.85 vs 0.60). Given this large accuracy gap, is it possible that the reported MI differences are driven by task-competence differences rather than by MTP shaping planning per se? A competence-matched comparison would strengthen the claim.",
+    "The nMI in §3.1 is normalized by the max over τ within the same setting. This makes cross-model MTP-vs-NTP shape comparisons plausible but hides whether MTP actually raises absolute MI. Can you report the underlying (uncorrected and corrected) I values alongside nMI so the reader can distinguish 'flatter shape' from 'higher information'?",
+    "How were CFG rules, PF graphs, and prefix lengths selected? Are results stable if the CFG grammar depth or the PF graph density is varied? Given that the whole story rests on a task-dependence claim, small-vs-large variants of each dataset would help.",
+    "Do you have a validation that the VQ-VAE codes retain the specific information relevant to planning, rather than the information easiest to reconstruct? A downstream probe on the code (e.g., predicting the next-token distribution from Z^L_T alone) would be informative."
+  ],
+  "calibration_check": "Claims about planning being 'task-dependent' and about recency effects are appropriately scoped, but the framing around MTP-vs-NTP and the general title 'Internal Planning in Language Models' overreach given the small-model, three-dataset evidence and the essentially null MTP contrast.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The methodological pipeline could be useful to the interpretability community, but the empirical findings largely confirm expectations (recency, task-dependent horizon) and the headline MTP-vs-NTP contrast comes out as a null."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The specific combination of VQ-VAE discretization plus count-based MI over hidden-state blocks for planning analysis is a reasonable new angle, though each ingredient (VQ-VAE, MI-based interpretability, code-based analysis) exists in prior work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The construction is careful and the branch-awareness design is nicely controlled, but core conclusions ride on VQ-VAE choices whose robustness is not established in the main text, and no formal significance tests back the MTP-vs-NTP or ratio claims."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Multiple seeds are used and Table 1 reports ± values, but there are no significance tests, no bootstrap CIs on MI ratios, no null baselines (e.g., shuffled decoys), and the count-based MI bias is discussed only in an appendix."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper is explicit that absolute MI is not meaningful, uses only within-setting comparisons, and includes a limitations section; however, the abstract/title framing is broader than the model scale supports."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level flow is clear and the methodological motivation is well-argued, but notation is dense, some passages are hard to parse, and the pipeline description takes longer than needed while the actual estimator's finite-sample properties are largely deferred."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure with abstract, introduction, related work, method, analysis, conclusion, and limitations; length appears reasonable and the appendix carries the heavier technical validation."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The method, losses, datasets, and model class are described in enough detail that a competent reader could reimplement, with hyperparameters referenced in appendices; some choices (VQ-VAE hyperparameters, decoy sampling procedure) are underspecified in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of probing, mechanistic interpretability, and info-theoretic interpretability is reasonable and the contribution is delineated, but the positioning against Pal et al. and belief-state / world-model probing work could be sharper, especially for §3.3."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figure 3 (nMI decay curves) and Figure 4 (block/layer heatmaps + conditional nMI) directly support the paper's claims; Figure 1 is a standard pipeline diagram; nothing appears to be decorative but nothing is unusually illuminating either."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "One model class (~GPT-3 Small) with a single appendix scale-up on one task, and three datasets whose difficulty ranges are narrow, do not support the generality suggested by the title; the paper's own claims should either be narrowed or the experiments broadened."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject as-is: an interesting methodological framework with reasonable but limited empirical support and a partly null headline result; needs a robustness study, statistical tests on the key ratios, and broader scale to move to a clear accept."
+    }
+  },
+  "publishability_probability": 0.25
+}

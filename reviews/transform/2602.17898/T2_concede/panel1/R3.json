@@ -1,0 +1,96 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies the 'PCC plateau' in attention-based regressors trained with a joint MSE+PCC loss, offering a gradient-coupling analysis (PCC/MSE gradient ratio decay, dependence on in-sample dispersion) and a convex-hull capacity bound on achievable PCC gain (Theorem 2.2), then proposes ECA (SRA + DATS + DNPL) to counter these effects. The theoretical framing is coherent and the convex-hull bound is a genuinely interesting contribution, but the empirical validation is statistically thin (few seeds, no significance tests, gains dwarfed by variance on the flagship result), the added-parameter confound is uncontrolled, and the 'fundamental capacity limit' framing overreaches given that embeddings are learnable. It is a promising submission that needs substantial added experiments and rescoped claims.",
+  "strengths": [
+    "The convex-hull PCC-gain bound (Theorem 2.2) linking achievable correlation improvement to in-sample dispersion is a novel and intuitively appealing capacity result, and the MSE mean/std/correlation decomposition cleanly motivates the plateau.",
+    "The gradient analysis ties a concrete mechanism (PCC gradient scaling with 1/σ_ŷ and with in-sample dispersion σ_s) directly to each proposed ECA component, giving the method a clear theory-to-design mapping rather than ad hoc additions.",
+    "Evaluation spans four qualitatively different settings (controllable synthetic, UCI tabular, spatial transcriptomics, multimodal sentiment) and includes a per-component ablation table.",
+    "The Limitations section is candid, explicitly acknowledging that observed gains may be partly attributable to implementation details and that comparisons use a limited baseline set."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Statistical soundness is inadequate for the central claims. UCI results (Table 1) and MSA results (Table 2) are single numbers with no seeds, error bars, or significance tests, and several 'improvements' are tiny (e.g., Online News PCC 0.408→0.420). The flagship spatial-transcriptomics result (Table 3) reports PCC@M 0.629±0.135 → 0.716±0.168 over only 3 folds — a gain far smaller than the reported standard deviations, so the headline '+13.81%' / 'breaking the plateau' claim is not statistically established.",
+      "suggested_fix": "Report multiple random seeds with mean±std for every table, run paired significance tests (or at minimum confidence intervals) on the PCC/MSE deltas, and increase fold/repeat counts for the transcriptomics benchmark so that the claimed gains exceed run-to-run variance."
+    },
+    {
+      "severity": "major",
+      "issue": "The improvement is confounded by added capacity. SRA introduces a sample-specific MLP (for γ_s) and DATS adds a learned temperature, so ECA has more parameters/flexibility than the baseline attention. No parameter-matched or capacity-controlled baseline is provided, so gains cannot be cleanly attributed to the extrapolation/temperature mechanisms rather than extra capacity — a point the authors themselves flag but do not address experimentally.",
+      "suggested_fix": "Add parameter-matched controls (e.g., baseline attention with an equal-sized MLP head, or a fixed γ>1 ablation) and, ideally, other MSE+PCC balancing baselines (gradient-surgery/PCGrad-style methods, PCC-weight scheduling) to isolate the mechanism's contribution."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'fundamental capacity limit' framing overreaches. Theorem 2.2 treats the in-sample embeddings {h_si} (and hence the convex hull radius R) as fixed, but in deep models these embeddings are learned; the network can expand the hull or reshape embeddings, so the bound is not a fundamental limit of the full model but of a single fixed-embedding aggregation layer. The 'backbone-agnostic' argument does not resolve this.",
+      "suggested_fix": "Rescope the claim to a per-layer/fixed-embedding capacity statement, discuss how learnable embeddings interact with the bound, and empirically test whether R actually stays small (limiting) in trained deep models vs. being enlarged during training."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is thin on the most relevant literature: the paper identifies a multi-task 'gradient conflict' yet does not position against gradient-surgery / conflict-resolution methods (e.g., PCGrad-type approaches) or loss-balancing schedules, which are natural alternative fixes and baselines.",
+      "suggested_fix": "Add a paragraph situating the contribution against multi-objective/gradient-conflict optimization work and justify why ECA's mechanisms are preferable to (or complementary with) those methods."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DNPL claim that multiplying by StopGrad(σ_ŷ) leaves 'stationary points unchanged' is stated loosely; since σ_ŷ varies across batches, this rescaling alters the effective per-batch gradient weighting and the argument deserves a precise statement.",
+      "suggested_fix": "Formalize the stationary-point invariance claim (or restrict it to the full-batch/deterministic-σ_ŷ regime) and clarify its behavior under stochastic minibatching."
+    }
+  ],
+  "questions_for_authors": [
+    "For the spatial-transcriptomics result (Table 3), are the per-fold gains consistent, and does a paired test across folds/seeds show the PCC improvement is significant given the ±0.16–0.20 spread?",
+    "How much of ECA's gain survives a parameter-matched baseline (baseline attention + equal-capacity MLP head, or fixed γ>1)?",
+    "In trained deep models, does the convex-hull radius R remain small enough for Theorem 2.2 to be binding, or do learned embeddings expand the hull so the bound is slack?",
+    "Have you compared ECA against gradient-surgery or loss-scheduling baselines that also target the MSE/PCC conflict?"
+  ],
+  "calibration_check": "Claims like 'first rigorous theoretical analysis,' 'fundamental limitations,' and 'significant improvements' are only partially supported: the theory is reasonable but treats learned embeddings as fixed, and the empirical gains are frequently within (unreported) noise, so the abstract's language is stronger than the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The PCC plateau and convex-hull capacity view are relevant to attention-based regression in medical/pathology and sentiment domains, but the impact is fairly niche and the empirical payoff is modest."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The convex-hull bound on PCC gain and the dispersion-aware mechanisms are new, though the MSE decomposition, PCC scale-invariance, and softmax-Jacobian pieces are standard."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The derivations appear largely correct, but the 'fundamental limit' framing overreaches by treating learnable embeddings as fixed, weakening the claim–evidence link."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Most tables report single runs with no seeds or significance tests, and the flagship gains are smaller than the reported standard deviations over only 3 folds."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The Limitations section is commendably candid about confounds, but the abstract/intro claims of 'significant' and 'consistent' plateau-breaking are stronger than the statistics justify."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall structure and theory-to-method mapping are clear, though some derivations are dense and would benefit from more explicit intermediate steps."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is present (abstract, intro, theory, method, related work, experiments, conclusion, limitations) at reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets are public and the method is described in fair detail, but key hyperparameters (γ clipping, β, Tmin, λ values, training schedules) and seed counts are only partially specified."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Positioning covers PCC-loss and softmax-expressivity literature but omits the directly relevant multi-objective/gradient-conflict optimization line."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative diagnostic plots (gradient-ratio validation, σ_ŷ growth, per-fold PCC/MSE curves) that support rather than decorate the claims."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four settings are used, but each lacks capacity-matched and alternative-intervention baselines, so the broad 'consistently breaks the plateau' generality claim is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A coherent theory and well-motivated method sit on empirically weak, statistically unverified, and confounded evidence, placing it at borderline-reject pending substantial added experiments."
+    }
+  },
+  "publishability_probability": 0.3
+}

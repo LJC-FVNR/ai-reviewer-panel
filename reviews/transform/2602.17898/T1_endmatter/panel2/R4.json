@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper offers a coherent theoretical story for the 'PCC plateau' observed when jointly training attention regressors with MSE+PCC losses, identifying (i) a 1/σ_y attenuation of the PCC gradient and (ii) a convex-hull capacity ceiling on any convex aggregator, then proposes ECA with three targeted modules (SRA, DATS, DNPL). Empirical gains are consistent across synthetic, tabular, spatial-transcriptomics, and MSA benchmarks. However, the analysis leans on well-known properties of PCC (scale invariance) with restrictive conditions, several experimental gains fall within the reported inter-fold variance, and stat significance, baselines, and reproducibility detail are all thin for an ICLR paper.",
+  "strengths": [
+    "The theory-to-method mapping is unusually clean: each of SRA, DATS, and DNPL is motivated by a specific identified bottleneck (convex-hull radius, homogeneity-driven attention flattening, 1/σ_y gradient attenuation).",
+    "Proposition 2.1's MSE mean–std–correlation decomposition, together with Lemma 2.1's scale invariance, gives an intuitive explanation for the empirical plateau that is easy for practitioners to internalize.",
+    "The convex-hull PCC gain bound (Theorem 2.2) is a novel and useful angle on softmax-attention capacity in the regression setting.",
+    "Experiments span four qualitatively different regimes (controllable-homogeneity synthetic, UCI tabular, pathology spatial-transcriptomics, multimodal sentiment), and ablations remove SRA/DATS/DNPL individually.",
+    "The synthetic-data sweep over σ ∈ {0.10, 0.24, 0.42, 0.73} directly stress-tests the predicted dependence on in-sample homogeneity."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical significance is not established for the headline gains. On 10xProteomic (Table 3) the standard deviations for PCC@F/S/M are 0.16–0.20, larger than or comparable to the reported ~0.09 improvements over EGN; only three folds are shown and no paired test, seed variance, or confidence interval is reported. UCI and synthetic tables likewise lack seeds/error bars, so ~1–4 point PCC gains cannot be distinguished from run-to-run noise.",
+      "suggested_fix": "Report ≥5 seeds with mean±std per cell for every table, run paired significance tests (e.g., Wilcoxon or paired t) on per-fold/per-seed results, and add error bars to Figures 5/6/8/9. Given the fold-level variance on 10xProteomic, additional folds or bootstrap CIs are needed."
+    },
+    {
+      "severity": "major",
+      "issue": "The scope of Theorem 2.2 is narrower than the prose suggests. It requires R < σ_0/‖w‖_2 and only bounds |ρ − ρ_0| relative to mean-pooling; when R ≥ σ_0/‖w‖_2 the bound is vacuous. The paper describes this as a 'fundamental capacity limit' of any convex aggregator, but the result is really a local sensitivity bound near mean pooling. This should be scoped more carefully — mean-pooling is not the optimal convex aggregator, so 'ceiling' language overreaches.",
+      "suggested_fix": "Reframe the claim as a Lipschitz-style bound of PCC around mean-pooling, discuss when the condition R < σ_0/‖w‖_2 holds on real data, and provide either a matching lower/upper bound against the optimal convex aggregator or an empirical characterization of tightness."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty of the optimization-dynamics analysis is oversold. The 1/σ_y attenuation follows almost immediately from the standard fact that PCC is scale-invariant while MSE is not, and Corollary 2.1's O(1/σ_y^{3/2}) rate assumes ρ ∈ [0,1] (i.e., excludes early training where ρ ≤ 0 is common) and uses one particular RMS ratio. The stated bound does not clearly prove attenuation dominates in practice — it only bounds a ratio.",
+      "suggested_fix": "Position the gradient decomposition as a re-derivation for the attention setting rather than a novel bottleneck discovery; discuss the ρ ∈ [0,1] regime restriction; and show empirically that the derived rate matches observed gradient ratios across datasets, not only in the synthetic case (Figure 3)."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines against correlation-oriented alternatives are missing. There is no comparison to obvious alternatives that also target correlation: CCC loss, differentiable Spearman/rank losses (e.g., soft-rank, Blondel et al.), listwise ranking losses, distribution-matching losses (moment-matching, Sinkhorn), or non-convex attention pooling variants (gated attention pooling, set transformers, PMA). Without these, it is not clear whether ECA's gains come from the specific mechanisms proposed or from any correlation-aware objective/non-convex aggregator.",
+      "suggested_fix": "Add at least (i) a differentiable rank-loss baseline, (ii) a non-convex pooling baseline such as gated attention or PMA, and (iii) a temperature-only or residual-only attention variant to isolate whether the gains truly require the ECA-specific parameterization of γ_s and τ_s."
+    },
+    {
+      "severity": "major",
+      "issue": "DNPL is presented as principled but is essentially a StopGrad rescaling by σ_y that exactly cancels the 1/σ_y factor. This risks amplifying noise when σ_y is small early in training and changing effective PCC weighting from the user-specified λ_PCC. There is no analysis of stability, no comparison to simply increasing λ_PCC, and no ablation of the StopGrad choice.",
+      "suggested_fix": "Add ablations: (a) DNPL with vs. without StopGrad, (b) DNPL vs. tuned λ_PCC schedule (linear/curriculum) matched in effective magnitude, (c) sensitivity to initial σ_y. Discuss failure modes when σ_y ≈ 0."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility detail is thin. Hyperparameters β, T_min, γ_max, λ_γ, MLP architecture for γ_s, optimizer, learning rate, batch size, warmup, and stopping criteria are not stated in the body. Anonymization does not excuse missing procedural detail.",
+      "suggested_fix": "Add a concise methods box listing all hyperparameters used per dataset, the γ_s MLP architecture, and training schedule; include ranges and selection procedure."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that the analysis is 'backbone-agnostic' because most attention regressors end in a convex pooling head is strong. Deep transformer stacks earlier can also produce shape information, and the analysis in Section 2.3 assumes a specific single-layer aggregation. Section E is referenced but only in the appendix.",
+      "suggested_fix": "Move the multi-layer/backbone applicability argument into the main text with a clearer statement of what is and is not covered, and, ideally, an experiment where ECA is inserted at multiple attention layers rather than only the final aggregator."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is thin: correlation-oriented ranking/CCC losses, work on softmax expressivity (Bhojanapalli et al., Yang et al.) is cited but not engaged with, and set-encoder / non-convex pooling literature (DeepSets, Set Transformer PMA, gated attention pooling, ABMIL) is not discussed even though SRA is closely related.",
+      "suggested_fix": "Add a paragraph explicitly contrasting SRA with gated attention pooling / PMA / ABMIL, and DNPL with CCC and rank-based losses."
+    }
+  ],
+  "questions_for_authors": [
+    "Are the reported gains on 10xProteomic statistically significant given the per-fold standard deviations exceed the mean gaps? Can you provide paired tests over seeds and folds?",
+    "In Corollary 2.1 you assume ρ ∈ [0,1]. Early training routinely has ρ < 0; does the attenuation story still hold quantitatively there, and does Figure 3 include that regime?",
+    "How tight is the condition R < σ_0/‖w‖_2 in Theorem 2.2 across your real datasets? Please report the actual R and σ_0/‖w‖_2 per dataset.",
+    "How does ECA compare to (a) a differentiable rank / CCC loss with a standard softmax attention, and (b) a gated-attention or PMA pooling with the same MSE+PCC objective? These are natural ablations for the 'extrapolate beyond hull' and 'correlation-aware objective' axes.",
+    "In DATS, τ_s is monotonically increasing in in-sample dispersion, so more heterogeneous samples get higher temperature (softer attention). This is the opposite direction that Remark 2.3 motivates; please clarify or fix the sign.",
+    "For DNPL, does the StopGrad break the fixed points of the joint objective in practice? What happens if σ_y collapses at initialization?",
+    "How sensitive are results to γ_max, λ_γ, T_min, and β? A sensitivity table would clarify whether ECA's gains rely on careful tuning per dataset.",
+    "Why is only one MSA baseline (ALMT) augmented with ECA? Does ECA also improve MISA, MulT, or DLF, or is the gain specific to the ALMT architecture?"
+  ],
+  "calibration_check": "Claims are directionally supported but overreach in two places: Theorem 2.2 is described as a fundamental capacity ceiling when it is a local bound near mean-pooling under a restrictive condition, and the 10xProteomic 'significant improvement' language is not matched by an appropriate significance test given the large inter-fold variance.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a real, practically annoying phenomenon in shape-sensitive regression, and a principled fix would be useful to a substantial subcommunity (pathology, MSA, tabular)."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The convex-hull PCC bound is a genuinely novel angle; the 1/σ_y gradient analysis is a solid re-derivation but follows fairly directly from well-known PCC scale invariance and softmax Jacobians."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Derivations are internally consistent, but Corollary 2.1 restricts to ρ ∈ [0,1] and Theorem 2.2 requires R < σ_0/‖w‖_2 and only bounds against mean-pooling, weaker than the 'capacity limit of any convex aggregator' framing suggests."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seed variance for UCI/synthetic/MSA; 10xProteomic reports large stds that swamp the reported gains; no paired significance tests anywhere; sample sizes per fold are small."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Most claims are scoped, but 'fundamental capacity limit,' 'breaking the PCC plateau,' and 'significant improvements' are stronger than the reported evidence given variance and restrictive theorem conditions."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The narrative arc is clear, but notation is heavy (as, bs, y, ȳ, σ_y, σ_s, R_s, γ_s, τ_s) and the presentation of DATS's temperature direction (higher τ for more dispersion) reads inconsistently with its stated motivation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure with theory, method, and experiments; appendix pointers are appropriate; length feels reasonable for the content."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Method equations are precise, but hyperparameters (β, T_min, γ_max, λ_γ), γ_s MLP architecture, optimizer/LR, and training budget per dataset are not detailed in the body; anonymization does not explain these omissions."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Correlation-loss and softmax-expressivity threads are cited superficially; missing engagement with ranking/CCC losses and non-convex pooling (PMA, gated attention, ABMIL) which are the most natural comparators for both DNPL and SRA."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative comparisons (gradient ratio decay, per-fold training curves, homogeneity sweep) that directly support the theoretical claims, though several rely on visual trends that would benefit from CI bands."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four settings across synthetic/tabular/pathology/multimodal is a real strength, but each is tested with essentially one backbone and lacks the multi-model breadth needed to justify the 'drop-in replacement' generality claim."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: coherent story with real gains but under-tested significance, restrictive theory framed as fundamental, and missing correlation-loss / non-convex-pooling baselines that are directly comparable."
+    }
+  },
+  "publishability_probability": 0.28
+}

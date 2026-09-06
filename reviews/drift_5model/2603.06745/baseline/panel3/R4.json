@@ -1,0 +1,110 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation steering method that couples KV-cache key scaling with a plausibility-guided decoding loop and an attention-sensitivity-based layer ranking to dynamically modulate steering strength and mitigate oversteering. Empirically it shows consistent gains over zero-shot and prior steering baselines (PASTA, SpotLight) on IFEval, LIFBench, and a new GSM8K-Format benchmark, generalizes across Llama and Qwen scales (1B–14B), and preserves text quality/task fidelity per LLM-judge and human evaluation. The core idea—rejection sampling on token-level plausibility with progressive halving of steered layers—is intuitive, well-ablated, and modular (helps other steering methods), though novelty over contrastive/plausibility decoding (DoLa, CD) is incremental and the theoretical grounding of the sensitivity metric is admittedly heuristic.",
+  "strengths": [
+    "Well-motivated attack on a real, documented problem (oversteering in activation steering) with a clean, modular mechanism that combines KV-cache steering, plausibility-based rejection, and sensitivity-based layer ranking.",
+    "Comprehensive empirical evaluation across three benchmark families (IFEval, LIFBench, GSM8K-Format) plus generalization across two model families and four scales (1B–14B); consistent gains and, importantly, does not sacrifice task accuracy (e.g., PASTA collapses GSM8K task acc to 62.7 while DIRECTER retains 86.9).",
+    "Strong ablation coverage: fixed-strength variants (ST1–ST6), reversed ranking, random layers, random tokens, plausibility threshold β sweep, α sweep over 5 orders of magnitude, prompt-variant robustness, and compatibility of the plausibility gate with PASTA/SpotLight.",
+    "Practical efficiency story is credible: gating mechanism using top-2 logits to skip steering, ~16% throughput hit, negligible memory overhead, and FlashAttention compatibility (a genuine advantage over attention-logit-bias methods).",
+    "Task fidelity is measured (LLM-judge + human) rather than only benchmark accuracy, directly addressing the common failure mode of steering methods."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental relative to plausibility/contrastive decoding literature (DoLa, Contrastive Decoding, speculative-style rejection). The plausibility check p̃_{t,ĩ_t} ≥ β·p_{t,i_t} is essentially DoLa/CD-style token-level acceptance applied to steered vs. raw distributions; the paper acknowledges Li 2022 and Chuang 2023 but does not quantitatively separate the contribution of the rejection loop from the KV-cache steering itself or contrast against a DoLa-style baseline.",
+      "suggested_fix": "Add an explicit head-to-head with contrastive/plausibility decoding baselines (DoLa, CD) that do not perform steering, and an ablation isolating (i) KV-cache key scaling alone with fixed α, (ii) plausibility gate alone on raw vs. an alternative expert, and (iii) the full method, to quantify what the steering component adds beyond a rejection-decoding baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin: all main experiments use greedy decoding and, with the exception of the random-layers/random-tokens rows in Table 3 (±0.7, ±1.1), no seeds, error bars, or significance tests are reported for the main comparisons in Tables 1, 2, or 4. Several headline gaps (e.g., 76.5 vs 72.1 average, 91.7 vs 87.6 fidelity) are of a magnitude where seed variance matters for LLM-judge scoring.",
+      "suggested_fix": "Report multiple seeds (at least 3) for LLM-judge evaluations and for prompt-rewriting variants, add confidence intervals or paired significance tests (e.g., McNemar for IFEval instruction-level), and clarify whether IFEval P/I accuracy variance from GPT-4o-mini prompt rewrites was accounted for."
+    },
+    {
+      "severity": "major",
+      "issue": "The layer-ranking motivation is heuristic and the sensitivity metric's justification is deferred to appendices; the paper concedes it 'is not based on a formal theoretical framework.' Table 3 shows the random-layer baseline is only 1.6 points below DIRECTER (80.2 vs 81.8), which is a modest margin given the framing that principled ranking is 'critical.'",
+      "suggested_fix": "Tone down 'critical' claims about the ranking (calibration), add variance for the random-layer baseline across more seeds, and either (a) provide a formal derivation of why the specific Dj(ℓ) form isolates direct+propagated effects or (b) compare against simpler alternatives (magnitude of KV shift, attention entropy shift, gradient-based saliency) to demonstrate the specific choice matters."
+    },
+    {
+      "severity": "minor",
+      "issue": "The IFEval evaluation uses gpt-4o-mini to rewrite prompts to separate task/instruction spans, following Venkateswaran & Contractor (2025). This modifies the benchmark and could bias comparisons if baselines were originally reported on unmodified IFEval; the reader cannot tell how much of the zero-shot 73.5/81.5 differs from standard IFEval numbers.",
+      "suggested_fix": "Include a reference row on the unmodified IFEval prompts for zero-shot and DIRECTER to demonstrate the rewriting does not systematically favor the proposed method, and quantify inter-rewrite variance."
+    },
+    {
+      "severity": "minor",
+      "issue": "Task fidelity is judged by gpt-4o-mini, the same model family used to rewrite prompts, which introduces evaluator/prompt-generator correlation risk. Human evaluation is mentioned but details (n, annotators, agreement) are relegated to Appendix E.3.",
+      "suggested_fix": "Surface human-eval sample size, inter-annotator agreement, and confidence intervals in the main text; consider a second judge model (e.g., Claude, Llama-3.1-70B) to check evaluator sensitivity."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity issues: the plain-text extraction contains formula fragments that are ambiguous (e.g., the gating condition 'p_{t,i_t} < β·p_{t,i_t}' as printed appears to compare a quantity to itself; presumably it's top-2 vs top-1 with a division-by-β on the second-best), and Algorithm 1 has line-numbering gaps (5→7, 11→13) suggesting missing lines in the extraction that may nonetheless reflect underspecified pseudo-code in the paper.",
+      "suggested_fix": "Rewrite the gating derivation with explicit top-1/top-2 notation (e.g., p_{t,i_t^{(2)}} < β·p_{t,i_t^{(1)}}) and audit Algorithm 1 for missing steps in the main text."
+    },
+    {
+      "severity": "minor",
+      "issue": "Positioning against contrastive/plausibility decoding (Li 2022 CD, Chuang 2023 DoLa) is cursory—cited but not compared. Also missing: recent activation-editing baselines like ITI, Function Vectors, or task vectors, and any comparison against RLHF-tuned or instruction-tuning-based mitigations for the same task.",
+      "suggested_fix": "Expand related work with at least one paragraph on plausibility/contrastive decoding and at least one non-attention steering baseline; add a comparison table entry if compute permits."
+    }
+  ],
+  "questions_for_authors": [
+    "How does DIRECTER compare when the plausibility gate is applied without any KV-cache steering (i.e., pure rejection against an alternative decoder like DoLa or a smaller expert)? This would isolate the contribution of steering vs. rejection.",
+    "Do the Table 1/2 numbers hold under multiple seeds and multiple prompt rewrites via gpt-4o-mini? What is the 95% CI on the 6.5-point average gain?",
+    "Table 3 shows random-layer selection is only ~1.6 points below sensitivity-ranked selection. Is this gap statistically significant across seeds, and does it hold on non-IFEval benchmarks?",
+    "The gating inequality is stated in terms of p_{t,i_t} < β·p_{t,i_t}, which appears to compare a quantity to itself. Can you clarify the exact top-1 vs top-2 indexing and prove the sufficiency claim that no steered distribution can satisfy Eq. 1 under this condition?",
+    "How sensitive is the LLM-judge task-fidelity margin (91.7% vs 87.6%) to the choice of judge model? Does the ranking hold under a non-OpenAI judge?",
+    "For scenarios where instruction spans are not cleanly separable (acknowledged limitation), how does DIRECTER perform with the automatic span detection described in Appendix D.2, quantitatively?",
+    "How is α = 100 chosen given Figure 3b shows saturation around α ≈ 100; is the method genuinely hyperparameter-free across benchmarks, or does the choice of β = 0.5 mask task-specific tuning?"
+  ],
+  "calibration_check": "Claims are mostly scoped to evidence, but the framing of principled layer ranking as 'critical' is somewhat overstated given the small random-layer gap, and 'general mechanism for mitigating oversteering' is well-supported for two baselines but not proven broadly.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Addresses a real and increasingly cited problem (oversteering) with a mechanism that is modular and demonstrably helps other steering methods, likely to be built on in the activation-steering line of work."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The rejection-based plausibility loop is a natural but incremental combination of KV-cache steering with contrastive/plausibility decoding ideas (DoLa, CD); the sensitivity-based layer ranking is the more novel piece but is admittedly heuristic."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "Method is clearly formalized, ablations isolate most design choices (layer ranking, plausibility threshold, α, prompt variants), though the sensitivity metric lacks formal justification and some formula fragments in the extraction are ambiguous."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report point estimates under greedy decoding without seeds or CIs; only two ablation rows carry std devs. Several headline gains are within plausible seed/judge variance, which weakens confidence in absolute margins."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations section is honest about the heuristic sensitivity metric and clean-span assumption; some claims (e.g., 'critical' role of principled ranking, 'general mechanism') are slightly stronger than the evidence but not egregious."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall organization and RQ-driven experiments are clear, but the gating inequality is under-specified, Algorithm 1 has gaps, and heavy reliance on appendices for key justifications (metric formulation, prompt templates, span detection) hurts readability."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard Intro/Related/Method/Experiments/Conclusion structure with clear RQs, appropriate length, and Limitations section; conforms well to ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters (α = 100, β = 0.5), models, datasets, and decoding strategy are specified, but greedy-only evaluation, GPT-4o-mini-based benchmark rewriting, and judge-model dependence introduce reproducibility friction; appendices are relied on heavily for procedural detail."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Adequate coverage of attention-level steering (PASTA, SpotLight, Turner et al.) but treats contrastive/plausibility decoding (DoLa, CD) as background rather than a direct baseline; misses several recent activation-editing methods and does not situate against instruction-tuning improvements."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative comparisons (fixed-strength ablation, cross-baseline plausibility gating, β/α sweeps, efficiency), and figures appear tightly tied to specific claims rather than decoration."
+    },
+    "breadth_generality": {
+      "score": 7,
+      "justification": "Two model families and four scales (1B–14B), three benchmark families, and multiple baselines support generality claims reasonably well; missing broader steering baselines and non-English or safety-oriented tasks limit full breadth."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline-accept, useful contribution to activation steering with strong empirical breadth and practical efficiency, offset by incremental novelty and thin statistical treatment of headline numbers."
+    }
+  },
+  "publishability_probability": 0.5
+}

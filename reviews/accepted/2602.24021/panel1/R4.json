@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that identifies discriminative attention heads (LAEs) inside a frozen MLLM via a gradient-free separability score, and applies context-conditioned anisotropic scaling to their features via a hierarchical meta-controller trained on 1% of labels. The paper reports SOTA among tuning-free methods on UCF-Crime and XD-Violence, with reasonable ablations, a stability study over seeds, and a data-scaling curve. The framing as 'manifold rectification' is somewhat overblown given that the actual operation is a per-head multiplicative gate on 4 attention heads, but the empirical setup is coherent, the ablations isolate the key components, and the data-efficiency claim is credible. Main concerns are limited backbone/dataset breadth, absence of variance for the main comparison table, and mild over-claiming around geometry/manifolds.",
+  "strengths": [
+    "Clear, well-motivated problem framing: tuning-free MLLM VAD is an active area, and the paper articulates a concrete gap (passive use of biased representations) that the method plausibly addresses.",
+    "Gradient-free separability score for head selection is simple, cheap, and well-suited to a frozen-backbone regime; the stability analysis over 10 seeds showing identical LAE selection (L18H4, L23H24, L21H21, L22H7) with sigma ~0.04% AUC is a compelling reproducibility signal.",
+    "Ablations decompose the contribution of GSG vs LGM and compare against static/additive steering and linear probing, showing each component adds measurable AUC.",
+    "Data-efficiency is genuinely notable: performance saturates already at 1% of the training set (87.15 -> 87.42 AUC going 1% -> 100%), which supports the paper's central 'data-efficient intervention' claim.",
+    "Expert-selection baselines (random, first-to-mid, mid-to-last) provide a fair sanity check for RSA rather than only comparing against external methods."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The 'manifold rectification' framing over-sells what is technically a per-head element-wise multiplicative gate h_i * (1 + s_global * g_i). Nothing in the method explicitly estimates, parameterizes, or geometrically transforms a manifold; the tanh gate could be described entirely as feature-wise modulation. This risks reviewers reading it as unsupported theoretical dressing.",
+      "suggested_fix": "Either tone down the geometric language (call it 'context-conditioned feature-wise gating' and keep the manifold framing as intuition), or add a concrete geometric analysis - e.g., measure inter/intra scatter ratios before vs after rectification per LAE, quantify anisotropy of the learned scaling, and show the transformation is meaningfully non-isotropic rather than approximating a scalar rescale."
+    },
+    {
+      "severity": "major",
+      "issue": "Main comparison (Table 1) reports point estimates only; there are no error bars or significance tests versus the closest tuning-free baselines (HiProbeVAD 86.72 UCF / 82.15 XD vs. SteerVAD 87.15 / 83.02). The margin is small (~0.4-0.9 points), and the seed-stability table (sigma ~0.04% AUC) covers only LAE-selection stochasticity, not full HMC training variance across data resamples.",
+      "suggested_fix": "Report mean +/- std over multiple seeds and multiple 1% calibration resamples for the headline numbers, and either a paired significance test or bootstrap CI vs. HiProbeVAD and VERA on both datasets."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is claimed but only one MLLM backbone (InternVL3) and two VAD benchmarks are used. It is not shown that RSA discovers stable LAEs, or that HMC gating helps, on any other MLLM (e.g., Qwen-VL, LLaVA-Video, VideoLLaMA), which is important because the paper's central claim is a property of MLLM internal geometry.",
+      "suggested_fix": "Add at least one additional MLLM backbone and, ideally, one additional dataset (e.g., ShanghaiTech or MSAD) to demonstrate that the RSA/HMC pipeline is not tied to InternVL3-specific idiosyncrasies."
+    },
+    {
+      "severity": "minor",
+      "issue": "The RSA metric (inter-centroid squared distance over sum of intra-class variances) is a scalar Fisher-style discriminant applied per head; the paper presents it as novel but does not compare against natural alternatives (e.g., linear-probe AUC per head, mutual information, Fisher discriminant on projected subspaces). Without these, it is unclear whether RSA specifically, or any reasonable head-ranking, drives the gains.",
+      "suggested_fix": "Add a head-ranking ablation: replace RSA with (a) per-head linear-probe AUC on the 1% set and (b) trace-based Fisher ratio, and report whether selected heads and downstream AUC differ."
+    },
+    {
+      "severity": "minor",
+      "issue": "The context vector c is taken from 'the final hidden state corresponding to the first generated token' but the prompt used to elicit that token, and whether the MLLM must actually autoregress to obtain c, are not specified. This ambiguity affects both reproducibility and the 'single forward pass' efficiency claim.",
+      "suggested_fix": "Specify the exact prompt, which token position is used as c, and clarify inference cost (one forward through the visual encoder + LLM prefix, no decoding needed?)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The comparison to fine-tuned methods (Holmes-VAD 89.51 UCF, 90.67 XD) shows SteerVAD does not close the gap on XD-Violence in particular (83.02 vs 90.67 AP). The paper's phrasing 'narrows the performance gap' understates a still-substantial gap on XD.",
+      "suggested_fix": "Adjust wording to acknowledge the remaining XD gap explicitly and discuss whether the manifold-steering approach hits an intrinsic ceiling for violence-detection semantics."
+    },
+    {
+      "severity": "minor",
+      "issue": "Post-hoc explainability is claimed as a feature but is not evaluated - no examples, no qualitative or human eval, no quantitative faithfulness metric.",
+      "suggested_fix": "Either remove or downgrade the explainability claim, or add at least a qualitative appendix with a few generated explanations and a discussion of failure cases."
+    }
+  ],
+  "questions_for_authors": [
+    "How was the specific prompt / first-generated-token choice for the global context c made, and how sensitive is performance to it (e.g., using a mean-pooled last-layer token instead)?",
+    "Are the 4 selected heads (L18H4, L23H24, L21H21, L22H7) stable across MLLM backbones, or is this stability an InternVL3-specific artifact?",
+    "Table 3 shows extremely tight variance (sigma=0.04%) despite different seeds - does the seed control only LAE selection, or also HMC weight init, mini-batching, and the 1% calibration subset draw? Please clarify what varies.",
+    "Have you tested whether the additive/scaling ablation gap (85.02 vs 87.15) is statistically significant, or within run-to-run noise?",
+    "The RSA score is computed on features from a single forward pass per calibration video - which token positions are pooled to form the per-video head representation used to compute centroids and variances?",
+    "Do the rectified features (post-gating) actually show higher separability on held-out test data, quantitatively (not just in t-SNE)?"
+  ],
+  "calibration_check": "Most empirical claims are appropriately scoped, but the 'manifold rectification / geometric intervention' framing over-reaches relative to what is effectively per-head multiplicative gating, and 'narrowing the gap' to fine-tuned methods glosses over the ~7.7 AP gap on XD-Violence.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Advances the tuning-free MLLM VAD line with a data-efficient recipe and small but real gains over recent baselines; likely to be cited within the sub-area but not paradigm-shifting."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining head-level separability scoring with a lightweight context-conditioned gate is a fresh but incremental contribution; the individual pieces (Fisher-like ratios, adapter gating) are well-known, and the 'manifold' framing is more rhetorical than technical."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is coherent and ablations isolate GSG/LGM/steering type and expert-selection strategy, but the tight coupling between the geometric narrative and a simple multiplicative gate is not empirically substantiated (no measured geometric change beyond t-SNE)."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Seed stability for LAE selection and AUC is reported, but the main SOTA table and ablations lack error bars / significance tests, and margins over the closest tuning-free baseline are within a range where variance matters."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Numbers themselves seem honestly reported and limitations of tuning-free vs fine-tuned are partially acknowledged, though the 'manifold rectification' and 'geometric intervention' framing is inflated relative to the actual operation."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall readable and well-structured, but several key operational details (prompt for c, token position for RSA pooling, exact single-pass cost) are underspecified, and extraction artifacts aside, the geometric prose sometimes obscures a simple gating scheme."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows a standard conference layout (Abstract, Intro, Related Work, Method, Experiments, Conclusion) at an appropriate length with appendix references."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, K/F, optimizer, LR, batch size, epochs, lambda_reg, and sigma_g are given, and the calibration subset size is specified; missing pieces are the exact prompt, the pooling used for RSA features, and code availability at review time (redacted per anonymization)."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers traditional VAD, MLLM-based VAD, and mechanistic interpretability adequately, but the positioning against activation steering / representation engineering / task-vector literature could be sharper, since the method is essentially a learned activation steer."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative displays (framework diagram, UMAP/t-SNE, ablation and stability tables) that appear to directly support claims; a couple of captions promise geometric evidence that is essentially qualitative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Only one MLLM backbone and two VAD datasets are evaluated, which limits how broadly the RSA+HMC recipe can be claimed to generalize; ablations on ranking metric alternatives are also absent."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Solid, coherent, and data-efficient tuning-free VAD method with reasonable ablations but incremental novelty, narrow backbone/dataset coverage, and some over-claiming - sits at the ICLR borderline-accept level."
+    }
+  },
+  "publishability_probability": 0.5
+}

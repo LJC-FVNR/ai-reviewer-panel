@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies and analyzes the 'PCC plateau' in attention-based regressors trained with joint MSE+PCC loss, attributing it to (i) gradient attenuation as prediction std grows and (ii) a convex-hull capacity limit on PCC gain, then proposes ECA (scaled residual aggregation, dispersion-aware temperature, dispersion-normalized PCC loss) to address both. The conceptual framing is fresh and the method is cleanly motivated by the theory, but the empirical evidence is modest and under-powered: most tables lack seeds/error bars, no significance tests are reported, several gains are tiny, and comparisons are largely ablation-style rather than against competing correlation-optimization methods. Some claims ('first rigorous analysis', 'significant improvements', backbone-agnostic generality) are stronger than the evidence supports.",
+  "strengths": [
+    "Addresses a real and underexplored phenomenon (early PCC saturation under joint MSE+PCC training) that matters in pathology, transcriptomics, and affective computing where correlation is the primary metric.",
+    "Theory-to-method mapping is coherent: each ECA component (DNPL, DATS, SRA) targets a specific identified limitation, and the MSE decomposition (Prop 2.1) plus PCC scale-invariance (Lemma 2.1) give an intuitive account of why MSE can keep dropping while PCC stalls.",
+    "The convex-aggregation capacity bound (Thm 2.2) is a genuinely interesting observation: any convex aggregator's PCC change vs mean-pooling is bounded by the convex-hull radius, tying homogeneity to a hard ceiling.",
+    "Evaluation spans synthetic (controllable homogeneity), tabular, spatial transcriptomics, and multimodal sentiment, and the transcriptomics result (+~14% PCC@M with reported std over folds) is the most convincing."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is insufficient: Tables 1 (UCI) and 2 (MOSI) report point estimates with no seeds, no error bars, and no significance testing, while several headline gains are tiny (Online News PCC +0.012, Superconductivity +0.010). It is impossible to tell whether these improvements exceed run-to-run variance.",
+      "suggested_fix": "Report mean ± std over multiple seeds for all datasets, add paired significance tests (or bootstrap CIs) for the base-vs-+ECA comparison, and state the number of runs."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines are essentially ablation-style (base model vs base+ECA). There is no comparison against alternative correlation-oriented approaches (e.g., other correlation/rank losses, CCA-style objectives, or alternative non-convex aggregators), so it is unclear whether ECA's gains are specific or generic to any capacity-increasing tweak.",
+      "suggested_fix": "Add competing methods that also target correlation/shape matching, and control for parameter count when comparing SRA against a simple non-convex aggregator baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "Internal consistency of the optimization theory is questionable. Corollary 2.1 claims the PCC/MSE gradient ratio decays as O(1/σ_y^{3/2}), yet DNPL corrects only a single power of σ_y via StopGrad(σ_y)·(1-ρ). The mismatch between the claimed decay exponent and the correction factor is not reconciled, and the 'restores gradient magnitude' justification is asserted rather than shown to remove the plateau.",
+      "suggested_fix": "Clarify whether DNPL targets the absolute PCC-gradient 1/σ_y factor (Thm 2.1) or the relative 3/2-power ratio (Cor 2.1), and empirically show the corrected gradient ratio flattens the attenuation curve, not just downstream PCC."
+    },
+    {
+      "severity": "major",
+      "issue": "The generality/backbone-agnostic claim is overstated. The analysis assumes a single convex attention pooling followed by a linear head; the assertion that it applies to arbitrary-depth transformers 'regardless of depth' ignores that gradients and effective aggregation through deep stacks are not a single convex combination.",
+      "suggested_fix": "Scope the theoretical claims to the final-pooling+linear-head setting, and either provide analysis or empirical evidence for multi-layer backbones rather than asserting depth-independence."
+    },
+    {
+      "severity": "minor",
+      "issue": "Ablations are reported inconsistently: each component's removal is highlighted on a different dataset where its drop is largest (DATS on Appliance, SRA on Online News, DNPL on Superconductivity), which reads as cherry-picking rather than a uniform component analysis.",
+      "suggested_fix": "Report the full ablation grid (all three removals) on every dataset with variance, so each component's contribution can be assessed consistently."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is thin (two short paragraphs) and omits broader correlation-loss, rank-loss, and CCA literature that is directly relevant to 'shape' optimization.",
+      "suggested_fix": "Expand positioning against correlation/rank-based losses and canonical-correlation methods, delineating what is new in the capacity-bound and gradient-conflict analysis."
+    }
+  ],
+  "questions_for_authors": [
+    "Given Corollary 2.1's O(1/σ_y^{3/2}) claim, why does DNPL rescale by σ_y (one power)? Can you show the corrected gradient ratio no longer decays?",
+    "Are the UCI and MOSI numbers single runs? What is the variance, and are the sub-0.02 PCC gains statistically distinguishable from noise?",
+    "How does ECA compare to a simple non-convex aggregator (e.g., allowing negative or unnormalized attention weights) that also escapes the convex hull, controlling for added parameters?",
+    "Does the learnable γ_s in SRA risk inflating σ_y and thereby interacting with the DNPL/MSE terms in unintended ways? How is training stability ensured beyond the optional clip/regularizer?",
+    "Can you provide empirical evidence that the theory holds when ECA replaces attention in an intermediate (not final) layer of a deep backbone?"
+  ],
+  "calibration_check": "Claims are partially over-scoped: the theory is a reasonable but elementary analysis rather than 'rigorous first' territory, and 'significant improvements' is asserted without significance testing on mostly small, single-run gains.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The PCC-plateau problem is real and relevant to correlation-centric domains, but the demonstrated practical payoff is uneven (large on transcriptomics, marginal on tabular)."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The plateau framing and convex-hull PCC-capacity bound are fresh, though the ECA components (temperature scaling, residual scaling, loss reweighting) are individually familiar techniques."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The MSE/PCC decompositions are correct, but the optimization theory has an unreconciled exponent mismatch (Cor 2.1 vs DNPL) and the depth-agnostic generality claim outruns the single-pooling setup."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Most experiments report point estimates with no seeds, error bars, or significance tests, and several headline gains are within plausible noise."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Several claims ('first rigorous', 'significant improvements', backbone-agnostic) exceed what the evidence establishes, and limitations are largely unstated."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative and method are logically organized and each component is explained, though prose has grammatical roughness and some derivations are terse."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (intro, theory, method, related work, experiments, conclusion) is present and appropriately scoped in length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Data generation, benchmark protocols, and key hyperparameters (Tmin, β, γmax, regularizer) are described adequately, though not exhaustively for every setting."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Positioning is thin (two short paragraphs) and omits the broader correlation-loss, rank-loss, and CCA literature directly relevant to shape optimization."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative training curves and a gradient-ratio validation that support the theoretical claims, though several convey only qualitative trends."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four domains are covered, but baselines are essentially base-vs-+ECA with no competing correlation methods, so the claimed generality is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, theory-motivated contribution held back by under-powered empirics and overstated claims — borderline reject pending substantial added evidence."
+    }
+  },
+  "publishability_probability": 0.3
+}

@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes 'internal bias' — a model's preliminary guess formed before systematic reasoning — as a key driver of overthinking in o1/R1-type reasoning models. The hypothesis is timely and clearly operationalized, and the paper supports it with correlation studies, two counterfactual interventions (question removal, bias injection), and attention analysis across multiple models and datasets. However, the work suffers from a near-complete absence of statistical significance testing (including conclusions drawn from n=30 AIME samples), alternative explanations for the main counterfactual intervention that are not adequately controlled, a narrow experimental scope (only explicit-answer tasks, bias injection on a single model), and an attention-based mechanistic claim that is suggestive but not causally established.",
+  "strengths": [
+    "The internal bias hypothesis is original and well-motivated: operationalizing it via forced-skip-reasoning 'direct answers' with 64 samples per question is a principled and concrete measurement strategy.",
+    "The question-removal counterfactual is creative and yields compelling effect sizes (31–53% reduction in post-first-answer length), providing evidence beyond mere correlation.",
+    "The bias injection experiment with four conditions (Low2Wrong, High2Correct, and two random-injection baselines) is well-structured and addresses the 'training itself changes behavior' confound, at least partially.",
+    "The paper is honest about its limitations — explicit-answer task restriction, open-ended bias being undefined — and avoids overclaiming universality.",
+    "Related work on unfaithfulness, CoT spuriousness, and overthinking mitigation is appropriately surveyed and the contribution is clearly delineated from prior work on post-hoc rationalization."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No statistical significance testing anywhere in the paper. AIME 2024 and 2025 results are reported over n=30 questions (e.g., 63.3% vs 66.7% after question removal is 19 vs 20 correct), which is far below the minimum needed for reliable inference. CharCount comparison tables and bias injection results are also reported as point estimates with no confidence intervals or variance.",
+      "suggested_fix": "Report confidence intervals or bootstrap standard errors for all key metrics. For AIME, either aggregate over multiple runs or supplement with higher-sample math benchmarks (e.g., AMC, MATH-500) to provide statistically stable estimates. For bias injection, include standard deviations and a significance test (e.g., paired t-test or Mann-Whitney) on reasoning lengths."
+    },
+    {
+      "severity": "major",
+      "issue": "The question-removal intervention confounds two distinct mechanisms: (1) preventing reactivation of internal bias via attention, and (2) simply reducing the information available for any reason, which may alter generation in ways unrelated to bias. No control condition removes an equivalent-length but semantically irrelevant portion of the context (e.g., a padding segment), so it is impossible to attribute the reduction to bias reactivation specifically.",
+      "suggested_fix": "Add a control condition that removes a context segment of similar length/position that does NOT contain the question (e.g., the system prompt, an appended dummy paragraph) to isolate the effect of removing the question specifically from the effect of context truncation in general."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment uses different test samples for the treatment and control conditions (Low2Wrong trains and tests on low-Dbias samples; Random2Wrong trains on random correct facts but also tests on low-Dbias samples), meaning the treatment and control groups differ not only in the injection but also in the base difficulty/deviation characteristics of the test questions. This confound makes the causal interpretation less clean.",
+      "suggested_fix": "Ensure that treatment (Low2Wrong vs. Random2Wrong, and High2Correct vs. Random2Correct) are applied to the same set of test questions, with only the injected declarative statements differing between them."
+    },
+    {
+      "severity": "major",
+      "issue": "The mechanistic claim that 'excessive attention to the input question reactivates internal bias' is established only correlatively. High attention at reflection tokens toward the question section does not establish that this attention *causes* bias reactivation. Crucially, no attention-masking or activation-steering experiment is performed to test whether suppressing question attention reduces overthinking.",
+      "suggested_fix": "Supplement the attention correlation analysis with a causal probe: e.g., use attention masking or representation-level intervention (similar to the SEAL baseline already evaluated) to suppress question-section attention at reflection points and measure the effect on overthinking, which would directly test the proposed mechanism."
+    },
+    {
+      "severity": "minor",
+      "issue": "The complexity-control argument in Section 4.3 (that first-reasoning-length is approximately constant across deviation groups, ruling out difficulty as a confounder) is weak: first-reasoning length is an imperfect proxy for problem difficulty, and items within CharCount are constructed to be similar, but this is not independently validated.",
+      "suggested_fix": "For KnowLogic and AIME, include an independent difficulty estimate (e.g., human-rated difficulty, solve rate across a reference population) and verify that it does not correlate with deviation group assignment."
+    },
+    {
+      "severity": "minor",
+      "issue": "Bias injection is performed only on R1-Distill-Qwen-14B and only on CharCount (zh). The causal claim is stated broadly across the paper, but this experiment's scope is very narrow.",
+      "suggested_fix": "Replicate the bias injection experiment on at least one other model (e.g., QwQ-32B) and one additional task type (e.g., KnowLogic) to support broader causal claims."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the model's behavior in 'skip reasoning' mode (producing a direct answer) faithfully reflect the internal bias it would have during normal reasoning? What evidence rules out the possibility that the no-reasoning prompt substantially alters the model's answer distribution relative to what it 'knows' implicitly?",
+    "In the question-removal experiment, what happens to accuracy and length when context is removed *before* the model generates its first answer (i.e., removing the question from the very beginning of generation)? This control would help establish whether the effect is specifically about *re*-accessing the question, or simply about the question's presence during later generation.",
+    "The probing study (Appendix J.1) verifying that hidden states from the question segment encode the direct answer is mentioned but not discussed in the main text. What is the probing accuracy, and does it decay over reasoning length (which would support the 'attention dilution' hypothesis in the Conclusion)?",
+    "For the mitigation trials, why does FCSDPO result in a *higher* R (46.3%) than the baseline (31.5%), meaning DPO training seemingly exacerbates the influence of internal bias? This is a notable and somewhat surprising finding that deserves deeper analysis.",
+    "The parroting analysis in Section 4.3 reports a 6.6% vs 2.8% parroting rate between high- and low-MAE groups; with what sample sizes, and is this difference statistically significant?"
+  ],
+  "calibration_check": "The paper's hedged language ('one important reason,' 'may reactivate,' 'suggests') is generally appropriate, but the AIME accuracy improvements (e.g., +10 percentage points from question removal on AIME 2025) are presented as meaningful findings despite resting on n=30 samples, representing an uncalibrated overstatement of evidential strength.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in o1/R1-type models is a pressing practical problem, and a mechanistic account of its origin would be genuinely useful for the field; the internal bias framing offers a novel angle that could motivate new training and inference designs."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Framing overthinking as triggered by a preliminary internal guess — operationalized via skip-reasoning prompts and validated with counterfactual interventions — is a meaningfully new contribution distinct from prior work on unfaithfulness and sycophancy."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The counterfactual interventions are creative but leave important alternative explanations uncontrolled (question removal vs. generic context truncation), and the attention-mechanism claim is supported only correlatively."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No confidence intervals, standard errors, or significance tests appear anywhere in the paper; key AIME comparisons rest on n=30 samples, rendering reported percentage-point differences statistically uninterpretable."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper consistently uses hedged language and includes a substantive limitations section acknowledging the restriction to explicit-answer tasks; the main calibration failure is presenting n=30 AIME results as meaningful evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The hypothesis and experimental logic are clearly laid out; Section 6.2's attention-scoring notation contains formatting artifacts (likely from text extraction) that obscure the formula, and some transitions between sections are abrupt."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Related Work, Method, Experiments, Conclusion) with appropriate length; the appendix is used appropriately for supplementary details."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Experimental setups, hyperparameters, and keyword lists are described with reasonable detail in the main text and appendices; the CharCount dataset is custom and only partially characterized in the main text, and the anonymized code/data links are the only missing element per review conditions."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of overthinking mitigation and CoT unfaithfulness literature is solid and fairly positioned; the connection to the Ameisen et al. (2025) neural-pathway finding is an appropriately acknowledged predecessor, though more mechanistic interpretability work (e.g., on attention heads) could be cited."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on the captions, Figure 2's grouped bar-plus-line design cleanly separates length, first-answer position, and reflection keyword counts; Figure 4's layer-wise attention ratio is a sensible visualization; Figure 3's attention color map is a reasonable qualitative illustration of the claimed mechanism."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Correlation analyses span three model families and four datasets, which is reasonable, but the causal experiments (bias injection, attention analysis) are confined to a single model on a single dataset; the explicit-answer restriction is a substantial limitation on the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper addresses an important problem with a novel hypothesis and creative experiments, but the absence of statistical rigor, uncontrolled alternative explanations in the main causal intervention, and narrow scope of the injection experiment prevent it from meeting ICLR acceptance standards in its current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

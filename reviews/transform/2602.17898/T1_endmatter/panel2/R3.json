@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies the 'PCC plateau' in attention-based regressors trained with a joint MSE+PCC loss, offering a gradient-attenuation analysis (PCC gradient scales with 1/σ_ŷ) and a capacity bound showing convex aggregation limits achievable PCC gain via the in-sample convex-hull radius, then proposes ECA (Scaled Residual Aggregation, Dispersion-Aware Temperature Softmax, Dispersion-Normalized PCC loss). The problem framing and the convex-aggregator PCC-ceiling result are genuinely interesting, and experiments span synthetic, UCI, spatial-transcriptomic, and MSA data. However, the empirical support is statistically fragile (missing error bars on most tables, overlapping variances where reported, tiny/inconsistent ablation margins) and several claims are over-scoped, so substantial added rigor is needed before acceptance.",
+  "strengths": [
+    "Identifies and names a concrete, plausibly widespread failure mode (PCC plateau under joint MSE+PCC training) and ties it to a clean MSE mean/std/correlation decomposition and a 1/σ_ŷ gradient-attenuation argument.",
+    "Theorem 2.2 (a PCC-gain upper bound for any convex aggregator governed by the convex-hull radius / in-sample homogeneity) is a novel and conceptually useful capacity result that also directly motivates the extrapolation mechanism.",
+    "The three ECA components are each explicitly derived from an identified limitation (attenuation, homogeneity-induced flat attention, convex-hull confinement), giving a coherent theory-to-method story.",
+    "Evaluation includes realistic high-homogeneity domains (pathology/spatial transcriptomics, video sentiment) rather than only synthetic data, and reports training-curve evidence of plateau-breaking."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Statistical soundness is inadequate for the headline claims. UCI (Table 1) and MOSI (Table 2) report single numbers with no seeds/error bars; the only table with variance (Table 3, spatial transcriptomics) shows EGN 0.602±0.160 vs EGN+ECA 0.690±0.202 — the ~0.088 gain is well within one standard deviation across only three folds, so the '+14.64%' and 'significant' claims are not statistically supported.",
+      "suggested_fix": "Report mean±std over multiple seeds for every benchmark, run significance tests (e.g., paired t-test/Wilcoxon across seeds/folds), and increase fold/seed counts; restate 'significant' only where tests support it."
+    },
+    {
+      "severity": "major",
+      "issue": "Ablations are marginal and inconsistent: each component appears to matter on only one dataset and by small margins (e.g., w/o-SRA Online News PCC ~0.410–0.418 vs full ~0.420), which reads as noise rather than a robust per-component contribution and undercuts the claim that all three parts are needed.",
+      "suggested_fix": "Provide ablations with variance on all datasets, and show each component's effect is consistent and outside noise; explain why a component is inert on datasets where removing it barely changes results."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines are thin: ECA is compared almost exclusively against the unmodified base model (mean-pooling only appears theoretically). Alternative remedies to the diagnosed problem (max/attention-free aggregation, non-convex/set aggregators, loss reweighting/normalization schemes, larger λ_PCC schedules) are not compared, so it is unclear ECA is the best or a necessary fix.",
+      "suggested_fix": "Add non-convex aggregation and simple loss-normalization baselines to isolate whether gains come specifically from extrapolation vs. generic reweighting."
+    },
+    {
+      "severity": "major",
+      "issue": "The capacity argument (Theorem 2.2) treats final-layer features {h_si} as fixed, but in deep attention regressors those features are learned, so a small convex hull is not an intrinsic bound — the backbone can reshape features. This weakens the practical force of the 'fundamental capacity limit' framing for multi-layer models the paper claims to cover.",
+      "suggested_fix": "Explicitly scope Theorem 2.2 to the final aggregation given fixed features, and empirically/theoretically address whether earlier layers can already circumvent the bound (expand Section E into the main text)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Calibration: 'first rigorous theoretical analysis', 'significant improvements', and 'consistently breaks the plateau' are stated more strongly than the evidence (small UCI/MSA gains, overlapping variances) warrants, and limitations are barely discussed.",
+      "suggested_fix": "Soften claims to match evidence and add an explicit limitations section covering the fixed-feature assumption and variance of results."
+    }
+  ],
+  "questions_for_authors": [
+    "Given EGN vs EGN+ECA standard deviations of ~0.16–0.20 over three folds, are the PCC improvements statistically significant under a paired test? Please report p-values and more folds/seeds.",
+    "In Corollary 2.1 the PCC/MSE gradient ratio decays as O(1/σ_ŷ^{3/2}), yet DNPL multiplies the loss by StopGrad(σ_ŷ) (power 1). Why is a power-1 correction the right counter to a 3/2-power attenuation, and does residual attenuation remain?",
+    "Since features are learned in deep backbones, how do you reconcile the 'fundamental' convex-hull capacity bound with the network's ability to reshape the hull? Can you show a task where mean-pooling+deep-features already saturates PCC, making SRA unnecessary?",
+    "How is γ_s regularized/clipped in the reported runs, and how sensitive are results to γmax, Tmin, and β? Please provide sensitivity analyses.",
+    "For the ablations, why does each component appear to help only a single dataset? Can you show per-component effects with error bars across all benchmarks?"
+  ],
+  "calibration_check": "Claims are only partially scoped to the evidence: the theory is stated carefully but words like 'significant', 'first rigorous', and 'fundamental capacity limit' outrun the marginal, largely variance-free empirical gains.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Correlation-optimized attention regression is a real and somewhat under-studied setting, and the plateau diagnosis plus convex-hull ceiling could interest the subfield if the empirical case were stronger."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The PCC-gain bound for convex aggregators and the plateau framing are novel, though the ECA components (residual scaling, adaptive temperature, gradient-normalized loss) are individually modest engineering choices."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Derivations appear internally consistent, but the capacity result relies on a fixed-feature assumption that weakens its relevance to the deep models the paper claims to cover, and the theory-to-fix mapping (3/2 vs 1 power) is not fully reconciled."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Most tables lack seeds/error bars, the one table with variance shows heavily overlapping distributions, and no significance tests are reported despite 'significant' claims."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Several superlative claims ('first rigorous', 'significant', 'fundamental') exceed the variance-limited evidence, and limitations are largely unstated."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative from problem to theory to method is logical and readable, though the notation is dense and the σ_y/σ_ŷ distinctions demand careful reading."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure (abstract, intro, theory, method, related work, experiments, conclusion) is followed cleanly and at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Synthetic-data construction and cited public protocols (FT-Transformer, EGN, MOSI/THUIAR) are described, but some ECA hyperparameters and training details are only partially specified."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Positioning against correlation-loss and softmax-expressivity literature is present but brief, and the claimed gap (no prior PCC capacity bound) is asserted rather than thoroughly surveyed."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting displays (plateau curves, gradient-ratio validation, σ_ŷ growth, per-fold train/val curves) that map directly to the arguments."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Generality is claimed across domains, but comparisons are mostly against the unmodified base model, ablations are inconsistent, and no alternative aggregators/loss-normalization baselines are tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising theory-driven contribution undermined by weak statistical support, thin baselines, and over-scoped claims — borderline reject pending substantial added experiments."
+    }
+  },
+  "publishability_probability": 0.3
+}

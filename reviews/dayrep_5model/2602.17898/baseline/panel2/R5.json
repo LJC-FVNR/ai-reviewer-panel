@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents a theoretical analysis of the PCC plateau phenomenon in attention-based regression models trained with a joint MSE+PCC loss, identifying two root causes: an optimization-dynamics gradient-bottleneck (PCC gradient attenuated at O(1/σ_ŷ^{3/2}) relative to MSE gradient) and a model-capacity limit (convex attention restricts achievable PCC improvement by the convex-hull radius). Motivated by these findings, the authors propose ECA—a drop-in module combining Scaled Residual Aggregation, Dispersion-Aware Temperature Softmax, and Dispersion-Normalized PCC Loss. The theoretical framework is the clearest contribution and appears sound; however, experimental validation suffers from missing error bars on most benchmarks, incomplete ablations across tasks, and high variance in the spatial transcriptomics results that makes several gains statistically ambiguous. The positioning against multi-task gradient-balancing literature is notably absent.",
+  "strengths": [
+    "The MSE–PCC decomposition + gradient analysis (Theorem 2.1, Corollary 2.1–2.2) is a clean, non-trivial formal framework that ties an empirical puzzle to concrete quantities (σ_ŷ, σ_s).",
+    "Theorem 2.2 establishing an explicit PCC-gain upper bound for any convex aggregator as a function of convex-hull radius R is a novel and useful theoretical result.",
+    "ECA's three components each have explicit theoretical motivation—SRA breaks the convex-hull bound, DATS addresses gradient collapse from near-uniform attention under homogeneity, and DNPL compensates the 1/σ_ŷ attenuation—making the design choices principled rather than ad hoc.",
+    "Evaluation spans four qualitatively different settings (synthetic, tabular, spatial transcriptomics, multimodal sentiment), covering both low- and high-homogeneity regimes, and is thus broader than typical method papers in this niche.",
+    "Figure 5 (synthetic) directly confirms all three theoretical predictions (PCC plateau severity vs. homogeneity, convex-attention ceiling, DNPL effect on PCC curve trajectory)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Statistical rigor is insufficient on the main benchmarks. UCI results in Table 1 are single-run point estimates with no standard deviations, no multiple seeds, and no significance test. The spatial transcriptomics results in Table 3 report 3-fold CV with large standard deviations (PCC@F: 0.602 ± 0.160 → 0.690 ± 0.202); the improvement of 0.088 is smaller than the reported std of 0.202, making significance unclear. At ICLR, claims of improvement must be accompanied by variance estimates that support them.",
+      "suggested_fix": "Re-run all UCI and MOSI experiments with at least 5 random seeds; report mean ± std. For spatial transcriptomics, conduct additional folds or bootstrap confidence intervals. Apply a Wilcoxon or paired t-test where sample size permits."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Ablation coverage is incomplete. Ablations (removing SRA/DATS/DNPL) are only reported for UCI (Table 1). The MOSI and spatial transcriptomics tasks—the paper's primary high-homogeneity use cases and where the largest absolute gains are claimed—lack any ablation. The contribution of each component in the most important settings is therefore unsupported.",
+      "suggested_fix": "Run the three single-component ablation variants on MOSI and the spatial transcriptomics dataset; add corresponding rows to Tables 2 and 3."
+    },
+    {
+      "severity": "major",
+      "issue": "The condition R < σ₀/‖w‖₂ required by Theorem 2.2 is never verified or discussed for real datasets. If this condition fails in practice, the stated PCC-gain bound does not apply and the theoretical motivation for SRA is weakened.",
+      "suggested_fix": "Report empirical values of R, σ₀, and ‖w‖₂ for each benchmark to verify that the regime covered by Theorem 2.2 is actually encountered. Alternatively, extend or discuss the theorem for the case when the condition fails."
+    },
+    {
+      "severity": "major",
+      "issue": "The DNPL stationary-point preservation claim is stated informally. The paper asserts that multiplying (1-ρ) by StopGrad(σ_ŷ) leaves 'stationary points unchanged,' but because σ_ŷ is a function of model parameters during training, blocking its gradient changes the effective loss surface and may shift minima. No formal proof or counterexample discussion is given.",
+      "suggested_fix": "Provide a formal characterization of when/whether stationary points are preserved, or clarify the claim—e.g., state that it preserves the gradient direction rather than the exact loss landscape."
+    },
+    {
+      "severity": "major",
+      "issue": "Missing comparison with gradient-balancing baselines from multi-task learning (e.g., GradNorm, PCGrad, MGDA). These methods directly address the gradient-conflict problem identified in Corollary 2.1 and are obvious competitors. Without them, it is unclear whether ECA outperforms simpler multi-task optimization fixes applied to the same architecture.",
+      "suggested_fix": "Add at least one gradient-balancing baseline (e.g., PCGrad applied to MSE+PCC) to the UCI and/or MOSI experiments."
+    },
+    {
+      "severity": "minor",
+      "issue": "Corollary 2.1 assumes ρ ∈ [0, 1], but in early training and on difficult tasks ρ is routinely negative. The bound's applicability and tightness for ρ < 0 should be discussed.",
+      "suggested_fix": "State the bound for general ρ ∈ [-1, 1] or explicitly limit the scope of Corollary 2.1 and note its effect on the practical analysis."
+    },
+    {
+      "severity": "minor",
+      "issue": "The improvements on Superconductivity (PCC 0.920 → 0.930) are very small and may not be meaningful given the lack of error bars, yet are presented alongside much larger gains without calibrated framing.",
+      "suggested_fix": "Report variance for all UCI numbers; acknowledge when gains are within typical run-to-run variability."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work does not engage with Lin's Concordance Correlation Coefficient (CCC), which is widely used in multimodal sentiment analysis (including MOSI) precisely because it jointly captures magnitude and shape—a core concern of this paper. CCC optimization is a direct prior art gap.",
+      "suggested_fix": "Discuss CCC as an alternative optimization objective and clarify how the PCC-plateau analysis extends or does not extend to CCC."
+    }
+  ],
+  "questions_for_authors": [
+    "For the spatial transcriptomics task, the improvement in PCC@F is 0.088 while the reported std is 0.202. Can you provide a significance test (e.g., paired t-test across folds) or additional seeds to confirm this improvement is not within noise?",
+    "The condition R < σ₀/‖w‖₂ for Theorem 2.2 is critical. What are the empirical values of R, σ₀, and ‖w‖₂ on each dataset? Is the theorem vacuous on Superconductivity or Online News where PCC baseline is already high?",
+    "Why is a gradient-balancing baseline (e.g., PCGrad, MGDA) not included? The Corollary 2.1 analysis directly motivates these methods as alternatives to DNPL.",
+    "DNPL multiplies (1-ρ) by σ_ŷ while blocking its gradient. Does this change the loss landscape's critical points? A formal statement or proof sketch would strengthen the claim.",
+    "The ablation on UCI removes one component at a time, but does not test adding only DNPL (without SRA and DATS) as a standalone intervention. Given that DNPL is the simplest change (a single line of loss reweighting), how much of the total gain does it alone account for on MOSI and spatial transcriptomics?"
+  ],
+  "calibration_check": "The claims are broadly motivated by the theory, but the 'first rigorous theoretical analysis' framing is somewhat overstated given that MSE–PCC gradient interactions and convex-aggregation expressivity limits have partial precedents; more importantly, several headline empirical gains (notably spatial transcriptomics) are reported with standard deviations exceeding the improvement, making the experimental support for the strongest claims inadequate.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The paper addresses a real and underexplored failure mode (PCC plateau) that affects practitioners in pathology, sentiment analysis, and other domains, and provides actionable theory, but the impacted community is relatively specialized and the practical gains on harder benchmarks remain to be confirmed statistically."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Theorem 2.2 (convex-hull PCC-gain bound) and the gradient-ratio decay analysis are genuinely new; individual ECA components (residual aggregation, temperature scaling, loss rescaling) are each known in isolation, but their joint theoretically-grounded derivation for this specific problem is a non-trivial contribution."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Theoretical derivations appear technically sound and the synthetic validation is well-designed, but the condition required by Theorem 2.2 is never empirically verified, and the DNPL stationary-point claim lacks formal justification."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "UCI results lack any variance estimates (single-run point estimates); the spatial transcriptomics 3-fold results show std > improvement for PCC@F; MOSI ablations are absent; no significance tests are performed anywhere, making it impossible to determine whether key improvements are statistically real."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The 'first rigorous theoretical analysis' claim is moderately overstated; marginal gains on Superconductivity (0.920→0.930) are presented alongside large gains without appropriate qualification; the conditions limiting Theorem 2.2's applicability are not discussed in the main body."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative logic (theory → method) is clear and Section 2 is well-organized, but Table 1 appears to have truncated values in the extraction, the DATS formula numbering is slightly confusing, and Figure 6's multi-panel caption references figures 8–9 not included in the submission body."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Theory, Method, Related Work, Experiments, Conclusion) with appropriate length; appendix sections A–G are referenced throughout for proofs and experimental details."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters for γ_max, λ_γ, T_min, and β are referenced in Section G (not included in the submission excerpt); the synthetic dataset generation procedure is described adequately; baseline models are public, but ECA implementation details (MLP_γ architecture, initialization) are insufficiently specified in the main text."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related work section is thin: it omits CCC optimization (a direct alternative for joint magnitude-shape regression used in the same MOSI benchmark), multi-task gradient-balancing methods (GradNorm, PCGrad, MGDA) which directly address the identified gradient conflict, and prior work on adaptive temperature in attention."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, figures appear informative—Figure 5 maps directly to the three theoretical predictions, Figure 6 shows per-fold training curves, and Figure 3 validates Corollary 2.1; Figure 1's convex-hull illustration is conceptually apt, though Figure 6's multi-panel layout appears complex."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only one architecture per benchmark is tested with ECA; ablations are reported only for UCI (not MOSI or spatial transcriptomics); no gradient-balancing or alternative attention-mechanism baselines are included; and the UCI improvements are statistically unverified single-run results."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The theoretical framework is a genuine and useful contribution to the ICLR community, but the paper currently falls below the experimental rigor bar: missing error bars on primary benchmarks, key ablations absent from the most important tasks, and a blocking concern about statistical significance on the highest-claimed improvement—taken together, this places it at borderline reject pending major experimental additions."
+    }
+  },
+  "publishability_probability": 0.22
+}

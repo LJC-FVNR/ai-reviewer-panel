@@ -1,0 +1,137 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper adapts crosscoders — previously used across layers and across base/chat model pairs — to the temporal axis, training a single sparse dictionary jointly over 32 Pythia pre-training snapshots so that features are aligned across training time, and uses per-snapshot decoder norms as a proxy for when a feature exists. The resulting observations (initialization vs. emergent feature families, a near-orthogonal directional turning point around step 1,000, a previous-token → induction → context-sensitive emergence ordering, and a statistical-learning-then-feature-learning two-phase picture) are genuinely interesting and address a question the interpretability community cares about. However, the central methodological premise — that a cross-snapshot crosscoder aligns the *same* concept across checkpoints better than the obvious alternative of per-snapshot SAEs plus post-hoc matching — is argued mostly by appeal to the optimization objective and validated only on reconstruction/sparsity Pareto curves, never against a tracking baseline; and essentially no result carries seeds, error bars, or variance over crosscoder training runs. Combined with a single layer per model, a single model suite, arbitrary thresholds, and several overclaims (\"necessary and sufficient\", \"universal\", \"deeply consistent\" with information bottleneck), the paper needs substantial added controls before it clears the bar.",
+  "strengths": [
+    "The core idea — repurposing crosscoders along the training-time axis so that features from different checkpoints share one sparse code — is a clean, well-motivated solution to the alignment problem that has blocked longitudinal SAE studies, and the decoder-norm-as-presence observation is an elegant consequence of putting the decoder norm inside the sparsity penalty (Eq. 2).",
+    "Breadth of analysis is respectable for an interpretability paper: emergence timing and steepness, feature lifetime, cross-snapshot directional projections, LLM-scored complexity vs. emergence time, rule-based case studies of three well-known feature types, attribution-based circuit tracing on three tasks with complementary ablations, and two independent lines of evidence for the phase transition.",
+    "Two model scales (Pythia-160M and Pythia-6.9B) are used for the headline evolution and dimensionality results, and both show the same qualitative trend, which is more than many interpretability submissions provide.",
+    "The snapshot selection strategy is thoughtfully designed and clearly justified — all 20 checkpoints before step 10,000 to resolve early dynamics, then stratified later ones — which matters because most of the interesting structure is reported before step 1,000.",
+    "The emergence-hierarchy result (previous-token features around steps 1,000–5,000, induction and context-sensitive later) independently recovers and refines the known causal dependency between previous-token and induction heads, which is a good sanity signal that the method tracks something real.",
+    "The Limitations section is candid and specific, naming the Pythia-only scope, the simplicity of the downstream tasks, and the linear memory cost in snapshot count rather than gesturing vaguely at future work."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The key baseline for the paper's central methodological claim is missing. The paper compares crosscoders to per-snapshot SAEs only on reconstruction quality and L0 (Figure 3a-c), which tests dictionary learning, not feature *tracking*. The natural competing approach — train an SAE per snapshot and align features post hoc via decoder cosine similarity, activation-pattern correlation, or Hungarian matching — is never implemented, so there is no evidence that the crosscoder's joint training buys anything for the actual research question. All downstream conclusions (lifetimes, rotation at step 1,000, emergence ordering) are conditional on tracking quality that is never measured.",
+      "suggested_fix": "Implement per-snapshot SAEs plus post-hoc matching as a tracking baseline and compare on a quantitative alignment metric — e.g., agreement of matched features' top-activating examples across adjacent snapshots, stability of the matched trajectory under held-out data, or recovery of synthetic features injected at known training steps. Report where and by how much the crosscoder wins."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No variance quantification anywhere. Every reported number comes from a single crosscoder training run per configuration; there are no seeds, error bars, or confidence intervals on the decoder-norm trajectories, the lifetime distribution, the projection matrix in Figure 5c, the attribution rankings, or the total-dimensionality curve in Figure 8c. Sparse dictionary learning is well known to be seed-sensitive (feature splitting, dead features, dictionary composition all vary run to run), and the paper itself acknowledges observing feature splitting. The single reported statistic with an inferential test is the r = 0.309 complexity correlation.",
+      "suggested_fix": "Retrain crosscoders with at least 3 seeds per configuration and report the distribution of the headline quantities: fraction of features classified as initialization vs. emergent, the location of the directional turning point, median lifetime, and the dimensionality-curve minimum. Show that the step-1,000 turning point and the compression-then-expansion shape are not seed artifacts."
+    },
+    {
+      "severity": "major",
+      "issue": "The statistical-to-feature-learning transition is supported only by temporal coincidence, and the argument contains a presupposition the paper's own data contradicts. The framing question asks what the model learns early \"if no features are formed at this period\", yet Section 4.1 states that initialization features exist from random initialization and that emergent features begin around step 1,000 — so the early period is not featureless, it is dominated by a feature family the paper elsewhere treats as real. The evidence is that unigram/bigram KL converges early and the dimensionality curve turns around; no intervention or predictive test distinguishes this from other accounts.",
+      "suggested_fix": "Reconcile the presupposition with the initialization-feature finding explicitly, and add a test with discriminative power — e.g., ablate the n-gram-statistical component (train on n-gram-matched shuffled data, or subtract a fitted bigram baseline from the logits) and show the dimensionality turning point moves accordingly, or show the transition step scales predictably with model size or data distribution."
+    },
+    {
+      "severity": "major",
+      "issue": "The information bottleneck connection is asserted, not demonstrated. The paper calls the two-stage structure \"deeply consistent with the fitting-to-compressing phase transition\" of Shwartz-Ziv & Tishby (2017), but IB compression refers to a decrease in mutual information between representations and the input, whereas the paper measures superposition geometry via a decoder-vector interference ratio. These are different quantities, and the IB compression phase itself remains contested in the literature. The mapping is rhetorical.",
+      "suggested_fix": "Either measure an actual IB-style quantity (an estimate of I(X;T) across snapshots) to substantiate the correspondence, or downgrade the claim to a loose analogy and note the known disputes over the IB compression phase."
+    },
+    {
+      "severity": "major",
+      "issue": "The Pythia-6.9B versus Pythia-160M dimensionality comparison is confounded by dictionary size. The 160M crosscoder has 98,304 features and the 6.9B crosscoder has 32,768, and the paper attributes the lower 6.9B dimensionality ratio to \"limited representational capacity of the 32,768-feature crosscoder\" — which is precisely to concede that the cross-model difference is an artifact of the analysis apparatus rather than a property of the models. The dimensionality metric of Eq. 6 depends on how many dictionary directions are packed into the same activation space.",
+      "suggested_fix": "Sweep dictionary size at fixed model (at least 32,768 and 98,304 on Pythia-160M) to characterize how the total-dimensionality curve depends on n_features, and either match dictionary sizes across models or report the curve normalized so cross-model comparison is meaningful."
+    },
+    {
+      "severity": "major",
+      "issue": "Activations are sampled from SlimPajama while Pythia was pre-trained on the Pile. Studying which features exist at a given training step using data drawn from a different distribution than the one that created those features is a real confound: features specific to Pile-only sources may be systematically under-sampled and thus appear absent or weak, and the effect could vary with training step. The mismatch is never mentioned.",
+      "suggested_fix": "Justify the choice explicitly, and replicate at least the core decoder-norm evolution and dimensionality results with activations sampled from the Pile to show the emergence times and turning point are unchanged."
+    },
+    {
+      "severity": "major",
+      "issue": "The causal claim in Section 5 outruns its controls. The paper concludes ablations \"confirm our method identifies necessary and sufficient task components\" from the observation that tens of features suffice to disrupt or recover performance, but no comparison group is reported — no random-feature ablation curve, no neuron-basis ablation, no per-snapshot-SAE feature ablation. Without those, the ablation curves in Figure 7b-c cannot establish that the identified features are special rather than that ablating any moderately-sized set of high-norm directions perturbs the metric.",
+      "suggested_fix": "Add random-feature and magnitude-matched control ablations to Figures 7b-c across all three tasks, and soften \"necessary and sufficient\" to a claim about the relative sufficiency of the top-k set versus controls."
+    },
+    {
+      "severity": "major",
+      "issue": "The single most important validation — that the decoder norm is a faithful proxy for feature presence rather than an artifact of how the norm enters the sparsity penalty in Eq. 2 — is deferred to Appendix C, as are the interpretability/faithfulness evaluation (Appendix A), the activation and regularization function selection (Appendix A.1), the feature-splitting analysis (Appendix F), and the IG details (Appendix E). The body's argument for alignment fidelity in \"Potential failure modes\" is entirely a priori reasoning about what the objective should incentivize, capped by a forward reference. A reader of the main text cannot assess the paper's foundational assumption.",
+      "suggested_fix": "Promote the decoder-norm probe validation into Section 3 with the quantitative result stated in the body (correlation between decoder norm and probe accuracy, across snapshots and feature types), and summarize the completeness/faithfulness numbers in the main text rather than only pointing to the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Thresholds and design choices are unmotivated and untested for sensitivity: the lifetime definition uses a hard decoder-norm cutoff of 0.3 on rescaled norms, the complexity analysis uses 100 sampled features scored 1–5 by a single LLM judge with no human agreement check, and the emergence-steepness conclusion (\"considerable variation\") is qualitative with no distributional statistic reported.",
+      "suggested_fix": "Report lifetime distributions across a range of thresholds (0.1–0.5), validate LLM complexity scores against human annotation on a subsample with an agreement statistic, enlarge the sample beyond 100 features given the modest r = 0.309, and quantify emergence steepness with a reported distribution."
+    },
+    {
+      "severity": "minor",
+      "issue": "Internal cross-reference errors and terminology drift. The prose describing the SAE comparison refers to \"Figures 9a and 9b\" and \"Figure 9c\" while the corresponding caption is numbered Figure 3; the Results paragraph in Section 3 opens by discussing Figure 2 before Figure 2's caption appears. Section 6's heading and Figure 8's caption say \"statistical-to-superposition transition\" while the introduction, Section 6 body, and conclusion say \"statistical learning phase to feature learning phase\", and it is never stated whether these are meant to be the same claim.",
+      "suggested_fix": "Fix the figure cross-references and settle on one name for the transition, defining it once."
+    },
+    {
+      "severity": "minor",
+      "issue": "Only one layer per model is analyzed (layer 6 of Pythia-160M, layer 16 of Pythia-6.9B), chosen as \"middle layers\" without justification, yet the conclusions are stated as general properties of pre-training. Feature emergence timing and superposition density are known to differ substantially between early, middle, and late layers.",
+      "suggested_fix": "Add at least an early and a late layer for Pythia-160M and report whether the emergence hierarchy, step-1,000 turning point, and dimensionality trend hold, or scope the claims to mid-network representations."
+    },
+    {
+      "severity": "minor",
+      "issue": "Positioning against the closest work is thin in places. Mishra-Sharma et al. and Minder et al. are cited as applying crosscoders across model variants, but the paper does not explain what is technically different about the temporal axis versus their model-pair axis beyond the number of members in the family, which is the crux of the novelty claim. Prior work that studies checkpoints with dictionary methods or tracks capability formation over training is not engaged with as a comparison class.",
+      "suggested_fix": "Add a paragraph delineating what changes technically and conceptually when the crosscoder family indexes training time rather than layers or model variants, and discuss prior longitudinal interpretability work as the relevant alternative approach."
+    }
+  ],
+  "questions_for_authors": [
+    "How does the cross-snapshot crosscoder compare to per-snapshot SAEs plus post-hoc feature matching on a direct measure of tracking quality, rather than on reconstruction and L0?",
+    "How stable are the headline findings — the step-1,000 directional turning point, the emergent/initialization split, and the compression-then-expansion dimensionality curve — across independent crosscoder training seeds?",
+    "Since Pythia was trained on the Pile but activations are sampled from SlimPajama, have you checked that emergence times and decoder-norm trajectories are unchanged when activations come from the training distribution?",
+    "In Appendix C, what is the quantitative relationship between decoder norm and linear-probe performance, and does it hold uniformly across snapshots, or is the norm-as-presence proxy weaker in early training where the norm penalty in Eq. 2 interacts with rapidly changing activation scales?",
+    "What do the Figure 7b-c ablation curves look like for random or magnitude-matched control feature sets, and does the top-k advantage hold on the induction and IOI tasks as well as SVA?",
+    "If the early phase is \"statistical\" rather than \"feature-forming\", how should the initialization features described in Section 4.1 — which exist from random init and show a drop-and-recovery around step 128 — be interpreted within that framing?",
+    "How does the total-dimensionality curve of Figure 8c vary with dictionary size at fixed model, and does the compression-then-expansion shape survive when the 160M and 6.9B crosscoders are given matched dictionary sizes?",
+    "Do the emergence hierarchy and the step-1,000 turning point replicate at other layers, and how were layers 6 and 16 selected?"
+  ],
+  "calibration_check": "The Limitations section is genuinely candid about scope, task simplicity, and snapshot granularity, but the body repeatedly outruns its evidence — \"necessary and sufficient task components\" without control ablations, \"a universal directional turning point\" from one seed at one layer of two models, and a transition described as \"deeply consistent\" with information bottleneck theory when no IB quantity is measured.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "How features form during pre-training is a question the interpretability community actively wants answered, and a working tool for aligning dictionary features across checkpoints would be built upon if it were validated."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Applying crosscoders along the training-time axis is a new and sensible move, but it is a direct reuse of an existing architecture on a different family index, closely following prior cross-model crosscoder work, and the paper does not articulate what is technically distinct about the temporal case."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The descriptive findings follow reasonably from the construction, but the foundational alignment claim is defended largely by a priori argument about the objective with validation deferred to appendices, the causal ablation claim lacks control feature sets, and the phase-transition argument rests on temporal coincidence plus a premise about early training being featureless that the paper's own initialization-feature result undercuts."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Every result appears to come from a single crosscoder run with no seeds, error bars, or variance reported on trajectories, lifetimes, projections, attributions, or dimensionality curves; the only inferential statistic in the paper is a single modest correlation (r = 0.309) computed over 100 LLM-scored features."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The explicit Limitations section is a real strength and names the Pythia-only scope and task simplicity, but this is offset by \"necessary and sufficient\", \"universal\", and \"deeply consistent with information bottleneck theory\" claims that the presented evidence does not reach, plus an unmentioned train/analysis distribution mismatch."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method and motivation are explained clearly and the narrative arc from architecture to feature statistics to circuits to phase transition is easy to follow, but figure cross-references are wrong in several places, the transition is given two different names, and a large fraction of the load-bearing validation is only reachable by forward reference."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization is followed well — introduction, related work, method, feature analysis, circuit connection, phase-transition evidence, limitations, conclusion — at a length appropriate for ICLR, though the abstract is not present in the supplied text."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, layers, snapshot-selection scheme, dictionary sizes, activation corpus, task setups, and sample counts are specified concretely enough to attempt a reimplementation, but the crosscoder training hyperparameters that matter most — the sparsity coefficient, the chosen activation and regularization functions, learning rate, and token budget — are all deferred to Appendix A.1 and absent from the body."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of learning-dynamics theory and sparse dictionary learning is broad and the crosscoder lineage is correctly traced, but the paper does not engage with longitudinal or checkpoint-based interpretability as a competing methodology, and it never delineates its technical contribution against the cross-model crosscoder work it cites as closest."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The captions describe display items that are well matched to the claims — the SAE-vs-crosscoder Pareto comparison, the sampled decoder-norm trajectories at two model scales, the three-panel emergence statistics, and the four-panel attribution and ablation results all carry real evidential weight rather than decorating — though the numbering inconsistency between captions and prose references detracts."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Conclusions are framed as properties of LLM pre-training but rest on one model suite, one layer per model, one activation corpus that differs from the pre-training corpus, one dictionary size per model, and three simple, well-worn tasks, with the key tracking baseline and control ablations absent."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A genuinely interesting idea with a respectable spread of analyses, but the central methodological premise is validated against the wrong comparison, no result carries variance estimates, and the headline phase-transition claim is correlational — promising work that needs substantial added controls rather than polish."
+    }
+  },
+  "publishability_probability": 0.4
+}

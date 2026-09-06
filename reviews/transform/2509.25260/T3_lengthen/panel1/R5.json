@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes a VQ-VAE-based information-theoretic pipeline to study planning-related properties—horizon and branch awareness—in decoder-only LMs, avoiding probe-confounding by computing mutual information between discrete codes rather than fitting external classifiers. The framework is principled and the motivation is clear, but the experimental scope is too narrow to support the paper's framing: the main planning analyses (§3.1, §3.2) do not extend to natural language, the models studied are GPT-3 Small scale only, and the central NTP-vs-MTP comparison yields a consistent null result that is underplayed. Findings on task-dependent planning horizon and branch awareness are interesting but largely unsurprising given the task designs.",
+  "strengths": [
+    "The VQ-VAE + empirical MI approach to avoid probe-induced confounding is a genuine methodological contribution relative to the probing literature, and the critique of probe-based MI proxies (App D.2) is well-motivated.",
+    "The branch-awareness experiment in §3.2 is creative: constructing PF instances with disjoint correct and decoy paths to rule out trivial overlap is a clean control, and the finding that prefix computations encode alternative correct paths more strongly than decoys is the paper's most novel empirical result.",
+    "The paper is generally honest about the aggregate/average nature of its MI analysis and explicitly restricts all claims to within-setting relative comparisons, avoiding overfitting conclusions to absolute nMI values.",
+    "The three-dataset spectrum (symbolic CFG, relational PF, natural text) is a sensible design, and error bars from multiple seeds are reported throughout."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The horizon (§3.1) and branch-awareness (§3.2) analyses are not performed on natural language at all—only the §3.3 diagnostic uses OpenWebText. This is a critical gap for a paper titled 'Internal Planning in Language Models': the two properties most central to the claims are validated only on an artificial path-finding graph task and a synthetic CFG, leaving open whether the effects generalize to any real text.",
+      "suggested_fix": "Extend the horizon and branching analyses to the OpenWebText (or a comparable structured NL) setting, even if a proxy for 'alternative continuations' must be constructed (e.g., paraphrase-equivalent continuations, synonym swaps, or coreference choices)."
+    },
+    {
+      "severity": "blocking",
+      "issue": "All primary analyses use GPT-3 Small (~125M params); the 0.3B scale-up is reported only for CFG in an appendix. At this scale, 'planning in LMs' is largely decoupled from the frontier models motivating the work. There is no evidence the MI patterns hold at 1B+ scale, where emergent planning is both more plausible and more consequential.",
+      "suggested_fix": "Add at least one experiment—horizon or branching—at 1B scale (e.g., GPT-2 XL, OPT-1.3B, or similar open model) to establish whether conclusions scale, even if compute is a constraint."
+    },
+    {
+      "severity": "major",
+      "issue": "The central NTP-vs-MTP comparison, framed as a core research question in the introduction ('How does the training method affect these qualities?'), yields a consistent null result ('no consistent differences' in the conclusion; 'weakly modulated' in the abstract). This non-finding is positioned in the introduction as a primary goal but is treated as a minor observation in the conclusion, creating a mismatch between framing and evidence.",
+      "suggested_fix": "Either reframe the paper to foreground the null result as an informative finding (with power analysis or effect-size bounds showing the null is not just underpowered), or narrow the framing so that NTP-vs-MTP is a secondary exploratory comparison rather than a headline question."
+    },
+    {
+      "severity": "major",
+      "issue": "The VQ-VAE compression introduces a representation-learning bottleneck that mediates all MI estimates. The paper acknowledges that MI depends on how hidden states are encoded, and points to a validation experiment in App A.4, but the main text provides no quantitative evidence that the VQ-VAE codes are not discarding structure precisely when it would be detectable (e.g., for the MMTP model whose branching signal is claimed to be stronger). In particular, if the VQ-VAE reconstruction quality differs between NTP and MTP models, differential information loss could mask or mimic NTP-MTP differences.",
+      "suggested_fix": "Report reconstruction quality (e.g., per-token MSE) and codebook utilization separately for NTP and MTP models, and add a sensitivity check showing MI conclusions are stable across codebook size K."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 (branch awareness) presents only MI ratios I(Z_H; Z_alt)/I(Z_H; Z_decoy) without separately reporting I(Z_H; Z_alt) and I(Z_H; Z_decoy) in absolute or normalized terms. A ratio above 1 is consistent with both I(Z_H; Z_alt) being meaningfully above zero OR I(Z_H; Z_decoy) being near zero; without disaggregation the finding is ambiguous.",
+      "suggested_fix": "Report both quantities individually (with error bars) in addition to their ratio, so that readers can distinguish genuine branch encoding from a floor effect on the decoy."
+    },
+    {
+      "severity": "minor",
+      "issue": "The PF branching experiment constructs each sample to have exactly two correct paths and one decoy by design—this means the 'branch awareness' result is evaluated only on instances where an alternative path exists and is guaranteed to be disjoint. It is unclear how representative this is of real planning: in practice, the model would encounter many-to-one and context-dependent branching structures.",
+      "suggested_fix": "Acknowledge this construction limitation explicitly and discuss whether the result is expected to be conservative or optimistic relative to naturalistic settings."
+    }
+  ],
+  "questions_for_authors": [
+    "In §3.2, what are the raw (unnormalized) MI values for I(Z_H; Z_alt) and I(Z_H; Z_decoy) separately? A ratio above 1 could arise from Z_decoy having near-zero MI; please disentangle.",
+    "The VQ-VAE is trained separately for each 'family of index sets S.' How sensitive are the nMI trends in Figures 3 and 4 to the codebook size K, the reconstruction coefficient λ_rec, and the entropy regularization weight λ_ent? Is there a hyperparameter sweep in the appendix, and if so, how wide?",
+    "The conclusion states 'no consistent differences between NTP- and MTP-trained models.' Was the experiment powered to detect the effect sizes that MTP has been reported to produce (e.g., as in Gloeckle et al. 2024)? A post-hoc power analysis or confidence interval on the NTP-MTP gap would strengthen this null result.",
+    "Why is the natural language analysis (§3.3) restricted to the localization diagnostic and not applied to the horizon and branching analyses? Is this a principled exclusion (e.g., no ground-truth alternative continuations in OpenWebText) or a computational one? If the former, what would a natural language 'branching' proxy look like?",
+    "The conditional nMI in Figure 4 (right) shows ~0.3 residual information after conditioning on the final prefix token. Is this residual statistically distinguishable from the finite-sample floor expected under the null (i.e., from the bias correction analysis in App E)? What does the bias-corrected estimator give?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped to within-setting relative MI comparisons and the paper appropriately avoids interpreting absolute nMI values; however, the central framing around NTP-vs-MTP training as a key research question is poorly calibrated given that the result is a consistent null, and the generalization of 'planning in LMs' from GPT-3 Small on synthetic PF tasks to LMs broadly is not adequately hedged.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The VQ-VAE-MI framework is a useful methodological addition to LM interpretability, but the core empirical findings—planning horizon is task-dependent, models encode alternative paths, recency effect in layer/block information—are largely unsurprising and demonstrated only on small models and synthetic tasks, limiting near-term impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining VQ-VAE discretization with empirical MI to sidestep probe-confounding is a genuinely new methodological angle; the branch-awareness experimental design using disjoint correct/decoy paths is creative, though the broader framework builds incrementally on VQ-VAE and information-bottleneck literature."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The information-theoretic framing is sound and the paper correctly avoids interpreting absolute MI values, but the indirect link between MI over compressed codes and 'planning' is undertheorized, and the scope (small models, synthetic tasks only for main claims) substantially limits the evidential weight of the conclusions."
+    },
+    "statistical_soundness": {
+      "score": 6,
+      "justification": "Multiple seeds are used and mean ± std are reported in Table 1; however, no significance tests are reported for NTP-MTP comparisons, no power analysis accompanies the null result, and sensitivity to VQ-VAE hyperparameters (K, loss weights) is relegated to an appendix without summary statistics in the main text."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper is transparent that nMI captures aggregate phenomena and restricts claims to relative comparisons, but the introduction overpromises on the NTP-vs-MTP question relative to the null result delivered, and 'planning in LMs' in the title and abstract implies generality that the GPT-3 Small + synthetic-task evidence does not support."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable and the pipeline is described step-by-step with a clear figure; the method section is moderately dense and several key choices (codebook size, encoder depth, loss weights) are deferred to appendices, making self-contained evaluation harder."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed with appropriate sections; length appears within norms and related work is integrated in both the introduction and a dedicated paragraph; appendix use is reasonable though somewhat heavy."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The architecture (GPT-3 Small with RoPE), VQ-VAE design, and dataset descriptions are provided at a level sufficient for reproduction; hyperparameter specifics are in the appendix and MTP implementation follows a cited reference, so the work is reproducible in principle, though the absence of code/data links (noted as anonymization artifacts) is noted without penalty per review instructions."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of probing, mechanistic interpretability, and information-theoretic interpretability is thorough and the critique of probe confounding is well-cited; the paper could better engage with recent work on internal representations encoding future tokens (Pal et al., Wu et al.) as direct precedents for its horizon analysis."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, Figure 3 (nMI decay plots comparing CFG and PF) and Figure 4 (layer/block heatmaps with conditional nMI) directly support the paper's three analyses; the experimental setup visualization in Figure 2 is a useful aid; Table 1 omits disaggregated MI values, limiting its informativeness."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "The two primary planning analyses (horizon, branching) are demonstrated only on GPT-3 Small trained on synthetic tasks; the natural language setting is used only for the §3.3 diagnostic; the scale-up to 0.3B is appendix-only and covers CFG alone, making generalization to real LMs speculative."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising interpretability framework with a clean motivation and novel MI-based methodology, but the gap between the paper's framing ('planning in LMs') and its actual evidence base (small models, synthetic tasks, null NTP-MTP result) is too large for acceptance without extending the natural language analyses and establishing scale robustness."
+    }
+  },
+  "publishability_probability": 0.22
+}

@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation steering method that couples KV cache scaling with a plausibility-guided decoding loop and an attention-sensitivity-based layer ranking to dynamically modulate steering strength and mitigate oversteering. The empirical evaluation is reasonably thorough — spanning IFEval, LIFBench, and a new GSM8K-Format benchmark, with model scale generalization (1B–14B), ablations on layer ranking, hyperparameter robustness, efficiency measurements, and both automated and human evaluation of generation quality. The gains (≈6.5% average over zero-shot, ≈4% over prior steering) are modest but consistent, and the plausibility filter is shown to be a modular improvement to other steering methods (PASTA, SpotLight). Novelty is incremental — combining known ideas (contrastive/plausibility-guided decoding, KV steering, sensitivity-based layer selection) — but the composition is sensible, well-motivated, and empirically supported.",
+  "strengths": [
+    "Clear identification of the oversteering problem and a principled, self-correcting mechanism (plausibility gate + progressive layer reduction) that removes the need for per-task hyperparameter tuning.",
+    "Comprehensive empirical suite: three benchmark families, four model scales across two families, ablations on ranking direction/random layers/random tokens, β and α sweeps, prompt-template robustness, and efficiency measurements.",
+    "Attention-sensitivity layer ranking is validated against both reversed and random baselines, and generation quality is checked with both LLM-as-judge and human evaluation, addressing the common concern that steering trades quality for adherence.",
+    "The plausibility filter is shown to generalize as a safety gate for PASTA/SpotLight, giving the contribution broader relevance beyond a single method.",
+    "Reasonable efficiency profile (≈16% throughput reduction, negligible memory overhead, compatibility with FlashAttention) makes the method practically deployable."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Absolute gains are modest (≈4% over tuned PASTA/SpotLight on IFEval; smaller on LIFBench sub-tasks) and no variance/seed information is reported. With greedy decoding this is partially mitigated, but there is no statistical significance testing, no bootstrap CIs, and no per-benchmark seed variance for the LLM-judge evaluation.",
+      "suggested_fix": "Report multi-seed variance for stochastic components (LLM-judge scoring, human evaluation agreement, any non-greedy runs) and paired significance tests (e.g., McNemar for IFEval instruction-level accuracy) between DIRECTER and the strongest tuned baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "The method depends on being able to identify an 'instruction span' I; this is a strong assumption, and the paper acknowledges it as a limitation but relegates the analysis of mixed prompts to Appendix D.2. Without seeing quantitative results in the main text for realistic prompts where task/instruction are interleaved, the practical claim of 'general-purpose enhancement module' is under-supported.",
+      "suggested_fix": "Bring key numbers from Appendix D.2 into the main body, and add at least one benchmark where instruction spans must be automatically detected, comparing against oracle spans."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental: plausibility-guided/contrastive decoding (Li et al. 2022; DoLa/Chuang et al. 2023), attention-based steering (PASTA, SpotLight), and KV-cache scaling are all prior art. The paper's distinctive contribution is the dynamic layer-count modulation via sensitivity ranking, but the ranking metric itself is heuristic and not deeply analyzed.",
+      "suggested_fix": "Sharpen the delta versus contrastive decoding methods (DoLa, CD) with a direct empirical comparison in the same setting, and provide either theoretical motivation or additional ablations (e.g., sensitivity vs. gradient-based importance, sensitivity vs. random with matched layer count) for the ranking metric."
+    },
+    {
+      "severity": "minor",
+      "issue": "Hyperparameter selection uses IFEval for tuning α and β and then applies the same values everywhere. Because IFEval is also the primary evaluation benchmark, this risks a mild optimistic bias on IFEval scores.",
+      "suggested_fix": "Use a held-out validation split (or a separate dataset) for β/α selection and report IFEval numbers with those out-of-distribution-tuned settings."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'plausibility filter as a safety gate for other methods' claim (Figure 2b, Table 2 rows PASTA*/SpotLight*) is interesting but underspecified in the main text — it is not clear whether the filter alone recovers most of DIRECTER's gains or whether the sensitivity ranking is the critical piece.",
+      "suggested_fix": "Add an explicit ablation table decomposing DIRECTER into (i) plausibility gate only with fixed all-layer steering, (ii) plausibility gate + random layer removal, (iii) plausibility gate + sensitivity ranking (full)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Claim of 'model-agnostic' improvement is based on 5 checkpoints from 2 families (Llama, Qwen). Base (non-instruction-tuned) models, mixture-of-experts, and non-decoder-only architectures are not tested.",
+      "suggested_fix": "Either soften the generality claim or add at least one additional family/regime (e.g., a base model, a Mistral/Gemma checkpoint)."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive is the method to the accuracy of the instruction-span detector when spans are not cleanly separable? What is the performance degradation curve as span noise increases?",
+    "Is the plausibility gate + fixed all-layer steering (no ranking) already sufficient to recover most of DIRECTER's gains? A clean decomposition would clarify where the improvement comes from.",
+    "How does DIRECTER compare directly to contrastive decoding methods (e.g., DoLa) under identical settings, since the plausibility loop is conceptually adjacent?",
+    "Are the IFEval / LIFBench / GSM8K-Format numbers computed with a single greedy run, or averaged over seeds? If greedy, how do results move under nucleus/temperature sampling that users typically deploy with?",
+    "Why is key-only scaling with α as large as 10^2–10^5 stable? Some intuition for why softmax renormalization tolerates such extreme scaling would help interpretability.",
+    "In Table 2, DIRECTER does not outperform SpotLight* on Qwen-2.5-7B — is this within noise, or is there a systematic reason for the gap?"
+  ],
+  "calibration_check": "Claims are mostly scoped appropriately, though 'model-agnostic' and 'general-purpose' are slightly stronger than the evidence (5 checkpoints across 2 families, cleanly separable instruction spans) fully justifies.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a real and recognized problem (oversteering) with a practical, deployable method; gains are consistent but modest and the audience is a specific slice of activation-steering researchers."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The core components (plausibility/contrastive decoding, KV steering, sensitivity-based layer ranking) are individually prior art; the composition and the dynamic layer-count modulation are the main novel contribution."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "Method is clearly formulated, ablations isolate ranking direction, random layers, and random tokens, and both LLM-judge and human evaluation corroborate quality claims."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Greedy decoding avoids sampling variance but there are no seeds/CIs/significance tests, and IFEval-based hyperparameter tuning risks mild optimistic bias on the headline benchmark."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (theoretical grounding of sensitivity, dependence on separable spans) are stated explicitly; a few phrasing choices ('model-agnostic', 'general-purpose enhancement module') are slightly stronger than the evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Algorithm, disturbance score, and gating mechanism are explained adequately, but the extracted text has typographical noise and some equations/pseudocode lines are hard to parse; the main ideas nonetheless come through."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Intro, Related Work, Method, Experiments, Conclusion, Limitations) with appropriate use of appendices for details."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Models, benchmarks, hyperparameters (α=100, β=0.5), tuning procedure, and algorithmic details are specified; the sensitivity metric formulation and DIRECTER pseudocode are provided."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Positions the work against PASTA, SpotLight, and prompting baselines adequately, but the connection to contrastive/plausibility-guided decoding (DoLa, CD) is only briefly cited and not empirically compared."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative content: an overview schematic, hyperparameter sweeps, robustness across prompts, and efficiency plots that support rather than decorate the claims."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Three benchmark families and 5 model checkpoints across 2 families cover a reasonable range but do not fully substantiate the 'general-purpose' claim (no base models, no other families, cleanly separable spans assumed)."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Solid, useful contribution with clear engineering value and adequate experiments; borderline accept — sits at ICLR 6, with novelty and statistical rigor as the main brakes."
+    }
+  },
+  "publishability_probability": 0.5
+}

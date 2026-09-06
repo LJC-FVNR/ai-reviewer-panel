@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA combines attention-rollout-based causal gating, Hutchinson-estimated Hessian sensitivity, and KL-based masking into a unified token-attribution framework for decoder-only LLMs. The problem is well-motivated and the curated NarrativeQA/SciQ benchmark is a genuine contribution. However, the manuscript has a serious internal inconsistency (two tables giving contradictory Soft-NC values for LLaMA-3.1-70B: 0.6 and 9.9 in the same submission), an ambiguous DSA metric definition, extraordinarily large performance margins that are not adequately explained, and missing sensitivity analysis for the two free weighting hyperparameters β and γ. These issues must be resolved before the work can be accepted.",
+  "strengths": [
+    "The problem is well-scoped and practically important: existing attribution methods are largely designed for encoder models, and HETA's decoder-only, causally-masked design is a principled departure.",
+    "The curated mixed-paragraph benchmark (NarrativeQA + SciQ) provides a controlled probe of attribution precision with automatic gold labeling and strong inter-annotator agreement (F1=0.91, κ=0.89), which is a meaningful methodological contribution.",
+    "The comparison set is broad (9 baselines, 4 models spanning 3B–70B parameters) and the ablation covering all component subsets (Transition Only, Hessian Only, KL Only, No-Gating, Uniform Transition, Full) is well-structured.",
+    "Robustness analysis over decoding hyperparameter grids (temperature, top-p, top-k, repetition penalty across 3 seeds) is a thoughtful addition not commonly seen in attribution papers and adds practical value."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The manuscript contains two directly conflicting tables for LLaMA-3.1-70B. An inline table in the Experiments section lists HETA Soft-NC = 0.6 (worst among all methods, below ContextCite at 2.6), while the Table 3 caption reports HETA Soft-NC = 9.9 for the same model. One of these tables is wrong; no explanation is offered. This renders the LLaMA results uninterpretable.",
+      "suggested_fix": "Identify which table is correct, remove the erroneous one, and reconcile all accompanying prose. If the low values correspond to a different dataset or evaluation variant, label it unambiguously."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric definition is ambiguous. The formulation states 'let SNarrQA and SSciQ denote the set of model-selected important token indices,' but does not specify which model or which selection criterion determines these sets. If S is derived from the attribution method under evaluation, DSA is circular; if it is a fixed reference set, that must be stated explicitly.",
+      "suggested_fix": "Rewrite the DSA definition to clearly state that SNarrQA and SSciQ are fixed annotation sets (derived from the GPT-4o/GPT-5 intersection) independent of the method being scored, and provide the subset-selection threshold."
+    },
+    {
+      "severity": "major",
+      "issue": "HETA's Soft-NC scores (e.g., 10.3 on GPT-J LongRA vs. ReAgent at ~1.55) are approximately 5–7× above the next-best baseline. Such a margin is far outside the distribution of competitive attribution results in the literature and is not theoretically explained. The authors do not discuss why second-order terms produce an order-of-magnitude gain, nor do they verify the metric computation is consistent across all methods.",
+      "suggested_fix": "Provide per-method metric computation code, verify that the same perturbation protocol and normalization is applied uniformly to all baselines, and include a 'sanity check' baseline (e.g., random attribution) to calibrate the scale. Add a brief analysis of why HETA achieves such large absolute gains."
+    },
+    {
+      "severity": "major",
+      "issue": "The final attribution score (Eq. 5) has two free hyperparameters β and γ fixed at 0.5 throughout, but no sensitivity analysis is provided. If performance is strongly sensitive to these values, the comparison is unfair to baselines that lack equivalent tuning.",
+      "suggested_fix": "Add an ablation sweeping β and γ over a grid (e.g., {0.1, 0.3, 0.5, 0.7, 0.9}) and report the variance in Soft-NC/Soft-NS/DSA. If HETA is robust, this validates the fixed choice; if not, it is a limitation that must be disclosed."
+    },
+    {
+      "severity": "major",
+      "issue": "GPT-5 Thinking is used as a gold annotator for the curated dataset. GPT-5 is an extremely recent and non-publicly-documented model; using it as a reference creates a reproducibility gap and potential distributional overlap with evaluated models. The annotation quality and failure modes of a 'Thinking' variant for span extraction are not analyzed.",
+      "suggested_fix": "Either replace GPT-5 with a reproducible, documented annotation approach, or provide a thorough reliability study (ablating annotator choice, comparing GPT-4o alone vs. the intersection) to show that the metric is not sensitive to which LLM produces the gold labels."
+    },
+    {
+      "severity": "minor",
+      "issue": "The semantic transition term MT is claimed to be 'simplex-normalized,' but the normalization constant Z sums over all tokens j and all layer-head pairs, which normalizes the global sum, not per-token shares. It is unclear that MT [i] ∈ [0,1] is guaranteed or that ΣiMT [i]=1 holds exactly as stated.",
+      "suggested_fix": "Clarify the normalization explicitly: state whether Z is computed once globally or per (l,h), and verify that the simplex property holds analytically or numerically."
+    },
+    {
+      "severity": "minor",
+      "issue": "Computational overhead versus baselines is deferred entirely to the appendix. For a method that adds O(T) masked forward passes (for KL) and HVP Hutchinson sampling on top of standard inference, main-paper readers need at least a rough cost table (wall-clock time per sequence, memory, vs. ReAgent and IG).",
+      "suggested_fix": "Add a single row or footnote in the main experiments section reporting approximate per-sequence latency for HETA and the top two baselines on a representative model/length setting."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you definitively explain the discrepancy between the inline table (HETA Soft-NC = 0.6 for LLaMA-3.1-70B) and Table 3 (HETA Soft-NC = 9.9 for the same model/metric)?",
+    "Are SNarrQA and SSciQ in the DSA formula fixed annotation sets computed independently of the attribution method being scored, or are they derived from each method's own output? If the former, please restate the definition explicitly.",
+    "For GPT-J LongRA, HETA achieves Soft-NC = 10.3 while the next best (Peering) is ~2.05. Can you provide the raw perturbation outputs or metric computation logs to allow independent verification of this 5× gap? Does a random attribution baseline score at approximately 0 on this metric?",
+    "What is HETA's Soft-NC as a function of β and γ when one of them is set to 0 (pure Transition + Hessian, or pure Transition + KL)? This would clarify whether the gains are concentrated in one term or genuinely distributed.",
+    "Figure 2(d) and Figure 3(d) have identical captions ('Input importance distributions for a generative task using our proposed HETA method'). Are these distinct visualizations? If so, please differentiate the captions; if not, one is a duplicate."
+  ],
+  "calibration_check": "The abstract's claim of 'establishing a new standard for interpretability in autoregressive language models' is not calibrated to the evidence: the Soft-NC margins are anomalously large and internally inconsistent, the curated dataset's gold labels depend on a non-reproducible annotator (GPT-5 Thinking), and robustness claims are limited to one model (Phi-3) for the stress tests.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Token-level attribution for decoder-only LLMs is a genuine open problem and the curated benchmark is a tangible community contribution, but the inflated performance claims and unresolved inconsistencies prevent confident assessment of the method's true impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The unified combination of target-conditioned rollout gating, Hutchinson HVP sensitivity, and KL-masking is a new integration, though each individual component has clear prior art (Abnar & Zuidema 2020, Hutchinson estimators, perturbation-based information)."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method is mathematically described but has a normalization ambiguity in MT; the experimental rigor is undermined by directly conflicting result tables, an underspecified DSA metric, and no hyperparameter sensitivity analysis for β and γ."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Three-seed reporting and std < ±0.06 on Table 3 are reasonable, but the ~5–7× Soft-NC gains over baselines are far outside normal variance and are not independently verified; the extraordinary margin makes standard error reporting insufficient without raw-data transparency."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper claims 'new standard for interpretability' and 'consistently outperforms' but the LLaMA results are internally contradictory, GPT-5 annotation limitations are unacknowledged, and no negative results or failure modes are discussed."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The motivation and high-level method are clearly communicated, but the MT normalization is ambiguous, two figure captions are duplicated, and an unexplained inline table with contradictory values creates reader confusion."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The paper follows a recognizable conference structure (Introduction, Motivation, Background, Method, Experiments, Related Work, Conclusion) though placing Related Work after Experiments is non-standard and the Motivation/Background split creates some redundancy with the Introduction."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters (β, γ, rank, window size, batch size, hardware) are reported; however, the number of Hutchinson samples m and the Gauss-Newton/Fisher surrogate specification are left vague, the DSA gold-label pipeline depends on a non-public GPT-5 variant, and code availability is anonymized."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of recent LLM attribution methods (ContextCite, TDD, PML, ReAGent) and classical XAI is thorough and the per-method limitations are accurately characterized; minor gap in engagement with mechanistic interpretability literature on decoder-only circuits."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figure 2 (ablation bars) and Figure 3 (sensitivity/robustness/F1 triple-panel) appear well-designed to support specific claims; however, Figure 2(d) and Figure 3(d) share identical captions, which is either a duplication error or a captioning failure."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models spanning 3B–70B and three standard benchmarks plus a curated dataset is a reasonable scope, but the claim of universally superior performance is undercut by the conflicting LLaMA table and the absence of experiments on instruction-tuned vs. base model variants or tasks beyond QA/biography generation."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising and well-motivated method, but the conflicting LLaMA results table, ambiguous DSA definition, extraordinary unverified performance margins, and missing hyperparameter sensitivity constitute substantive evidentiary gaps that preclude acceptance in the current form."
+    }
+  },
+  "publishability_probability": 0.15
+}

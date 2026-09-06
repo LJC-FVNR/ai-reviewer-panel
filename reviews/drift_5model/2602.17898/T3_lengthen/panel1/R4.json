@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper offers a clean theoretical framing of the PCC plateau in attention-based joint MSE+PCC regression, deriving a gradient-decay bound (Corollary 2.1) and a convex-hull capacity bound (Theorem 2.2), and translates these into three well-motivated modifications (SRA, DATS, DNPL) with consistent gains across synthetic, UCI, spatial transcriptomics, and MOSI benchmarks. The theoretical contributions are neat but each is somewhat obvious in retrospect, and the empirical support is undermined by missing seeds/variance for Tables 1 and 2, a very small (3-fold, high-variance) transcriptomics evaluation, and modest MOSI gains. Related work is thin and misses correlation-optimization literature (CCA-style losses, temperature-scaled attention). With stronger statistics, tighter scoping of the 'first theoretical analysis' claim, and a fuller related-work treatment, this could be a solid conference paper.",
+  "strengths": [
+    "The MSE decomposition (Prop. 2.1) plus the identification of a 1/σ_y^{3/2} decay of the PCC-to-MSE gradient ratio (Cor. 2.1) is a clean, teachable explanation for a phenomenon many practitioners have observed anecdotally.",
+    "Theorem 2.2 (convex-hull-radius bound on PCC gain of any convex aggregator over mean-pooling) is a genuinely useful architectural insight, and the SRA extrapolation is directly motivated by it rather than being a post-hoc trick.",
+    "Each of the three ECA components maps to a specific bottleneck identified in the theory, and ablations remove each component individually and show the expected regression, providing internal consistency between theory and method.",
+    "Evaluation spans four qualitatively different regimes (controllable-homogeneity synthetic data, three UCI tabular tasks, spatial transcriptomics with high in-sample homogeneity, and multimodal sentiment on MOSI), which supports the framing that the plateau is a general phenomenon rather than benchmark-specific.",
+    "The synthetic study systematically varies homogeneity σ and matches the qualitative predictions of both theorems (both PCC baselines and gains shrink as σ decreases), which is a rigorous confirmation of the theory."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Tables 1 and 2 report point estimates with no seeds, no error bars, and no significance tests. Several claimed wins are within a few percent (e.g., MOSI ALMT+LPCC 0.791 vs ALMT+LPCC+ECA 0.806; UCI Superconductivity PCC 0.920 → 0.930), and without variance it is impossible to know whether these gains exceed run-to-run noise.",
+      "suggested_fix": "Report mean ± std over ≥5 seeds for every main-table entry, and mark statistically significant improvements (paired t-test or bootstrap CI) against the strongest baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "The 10xProteomic result (Table 3) is the strongest quantitative gain (+13.8% PCC@M) but is based on only three folds with std as large as ±0.20, i.e., variance comparable to the gain itself. Fold-level PCC also swings across folds in Fig. 6. The claim that ECA 'robustly alleviates the PCC plateau' is thus not supported by the statistical evidence presented.",
+      "suggested_fix": "Increase the number of folds/repeats, report per-fold gains with a paired test, and temper language ('robustly') until variance is controlled."
+    },
+    {
+      "severity": "major",
+      "issue": "Related work (~1/3 page) omits directly relevant literature: CCA-style deep objectives, differentiable rank-correlation losses (SoftRank/Spearman surrogates), temperature-adaptive attention (entmax, sparsemax, learned-τ softmax), residual/skip pathways in aggregation, and prior analyses of softmax expressivity for regression. The 'first rigorous theoretical analysis' framing is not tenable without a much broader survey and explicit contrast with these lines.",
+      "suggested_fix": "Substantially expand Sec. 4, explicitly contrast Cor. 2.1 and Thm. 2.2 with prior gradient/capacity analyses of softmax, and soften 'first' to a more precise scope."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that DNPL 'restores gradient magnitude' is asserted but not proven. Since StopGrad(σ_y)·(1-ρ) simply multiplies the loss by a (blocked) scalar, its effect on the parameter-space gradient depends on how σ_y correlates with the direction of the gradient — this deserves a lemma showing the stationary points are preserved AND the effective gradient scale is now σ_y-independent (or explaining precisely in what sense).",
+      "suggested_fix": "Add a short derivation showing ∇_θ L_PCC^{DNPL} = σ_y ∇_θ (1-ρ) and use Cor. 2.1 to argue the resulting ratio no longer decays, or give the corrected characterization."
+    },
+    {
+      "severity": "minor",
+      "issue": "Cor. 2.1 assumes ρ ∈ [0,1]; this is stated but never justified — early in training PCC can be near zero or negative, and the bound's tightness in that regime is unclear.",
+      "suggested_fix": "State the bound without the ρ≥0 restriction (or give the fully general form) and discuss whether the decay narrative holds when ρ starts near 0."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2.2's bound involves σ_0/‖w‖_2 − R in the denominator and only holds when R < σ_0/‖w‖_2; this precondition is not empirically verified for the datasets used, and the bound is trivial (∞) when it fails.",
+      "suggested_fix": "Report R and σ_0/‖w‖_2 empirically per dataset to show the regime the bound covers, and discuss the case R ≥ σ_0/‖w‖_2."
+    },
+    {
+      "severity": "minor",
+      "issue": "The learned scale γ_s ≥ 1 is capped or regularized in practice, and its role is arguably close to a per-sample residual gain, similar to well-known residual/skip designs; the paper does not compare SRA to simpler alternatives such as adding a plain residual h_si − h̄_s branch with a fixed scale, or to non-convex aggregators (e.g., sparsemax, entmax, additive attention with unnormalized weights).",
+      "suggested_fix": "Add ablations against (i) SRA with γ_s = fixed constant > 1, (ii) sparsemax/entmax attention, and (iii) a plain residual gate, to isolate the value of the learned, sample-conditional γ_s."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'PCC plateau' is repeatedly framed as a universal failure mode, but Fig. 2 shows only two datasets and Fig. 7 (in appendix) is referenced without visible content; the causal chain 'homogeneity → small σ_s → small PCC grad → plateau' is bounded, not proven necessary.",
+      "suggested_fix": "Add correlational analysis: across many runs, does the observed plateau epoch actually track σ_y and σ_s magnitudes predicted by the theory? A regression of plateau severity on these quantities would strengthen the causal claim."
+    }
+  ],
+  "questions_for_authors": [
+    "Please report mean ± std over ≥5 seeds for Tables 1 and 2, with a paired significance test versus the strongest baseline. Which of the reported gains survive at p < 0.05?",
+    "For DNPL: can you derive explicitly how StopGrad(σ_y)·(1-ρ) modifies ∇_θ ρ, and show that the resulting effective gradient no longer scales as O(1/σ_y^{3/2})? Otherwise the mechanism motivating DNPL is unproven.",
+    "How does ECA (or just SRA) compare to non-convex aggregators like sparsemax/entmax and to simple non-learned residual gates? These are the natural baselines for 'breaking the convex hull'.",
+    "For Theorem 2.2, what are the empirical values of R and σ_0/‖w‖_2 on your four benchmarks, and does the precondition R < σ_0/‖w‖_2 hold uniformly?",
+    "Is the 10xProteomic gain robust to more folds/seeds? Given fold-level std ≈ 0.20 in Table 3, a proper significance test (paired across folds/seeds) is needed to defend the +13.8% claim.",
+    "How sensitive is ECA to γ_max, β, and T_min? A sweep would clarify whether the gains depend on tuning these on a per-benchmark basis.",
+    "The 'first rigorous theoretical analysis' framing is strong. Can you contrast Cor. 2.1 and Thm. 2.2 explicitly against prior expressivity analyses of softmax and prior gradient analyses of correlation losses?"
+  ],
+  "calibration_check": "Claims are moderately overscoped: 'first rigorous theoretical analysis' is asserted without a serious survey, and 'robustly alleviates' / 'consistently breaks the plateau' rest on point estimates with little variance analysis and, in one case, only three high-variance folds.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The plateau is a real, practically annoying phenomenon in joint MSE+PCC regression, and a clean explanation plus a plug-in fix is useful; impact is subfield-scale (regression with correlation objectives, e.g., transcriptomics, affective computing) rather than broadly foundational."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Theorem 2.2 (convex-hull-radius PCC-gain bound) is a fresh and useful angle, and the DNPL rescaling is a specific new twist; however, SRA is close to a learned residual and DATS is a variant of temperature-adaptive softmax, both of which have close precedents in the literature."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Propositions and theorems are stated cleanly and the derivations shown are plausible, but several key inferential steps (DNPL 'restores gradient magnitude', causal role of homogeneity in producing plateaus) are asserted rather than proven, and Cor. 2.1's ρ∈[0,1] assumption is not defended."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Tables 1 and 2 report bare point estimates with no seeds or CIs; Table 3 has only 3 folds with std comparable to the reported gains; no significance tests appear anywhere. Given the modest effect sizes on MOSI and UCI, this is a real weakness."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "'First rigorous theoretical analysis' and 'robustly alleviates the plateau' are stronger than the evidence supports, and limitations (bound tightness, when Cor. 2.1 preconditions hold, MOSI marginal gains) are not discussed."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Structure and roadmap are clear, but sentence-level writing is often awkward with run-ons and misplaced connectives ('and first', 'and, in these domains'), and some derivations reference appendices without giving enough in-text context to follow the argument."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract → intro → theory → method → related → experiments → conclusion) with reasonable length allocation and ablations included in the main paper."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets and integration points (FT-Transformer, EGN, ALMT) are specified, and ECA's components are defined by equations; missing seeds, some hyperparameter details (β, T_min, γ_max used per benchmark), and optimizer/schedule specifics for each backbone would still hinder faithful reproduction."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related-work section is short and omits central lines: differentiable rank/Spearman losses, deep CCA, sparsemax/entmax, learned-temperature attention, and prior expressivity analyses of softmax as an aggregator. This weakens the 'first' claim."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, Figs. 2, 3, 5, and 6 clearly support the theoretical narrative (plateau, gradient-ratio bound, homogeneity sweep, per-fold PCC/MSE curves); Fig. 1's conceptual sketch is helpful; Tables 1–3 are informative but under-annotated (no CIs)."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four evaluation regimes across quite different modalities is a real strength for a plug-in module, but each regime uses a single backbone and the number of baselines specifically for ECA-style extrapolation (sparsemax, learned residuals) is zero."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject at current statistical support and related-work depth, but the theoretical framing plus consistent qualitative improvements would make this a borderline accept after a proper revision with seeds/CIs, tightened claims, and comparisons to non-convex aggregators."
+    }
+  },
+  "publishability_probability": 0.3
+}

@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes 'internal bias' — a model's preliminary guess formed before systematic reasoning — as a root cause of overthinking in o1/R1-type reasoning models, and tests this with two counterfactual interventions (question removal, bias injection) plus attention analysis. The core hypothesis is timely and genuinely interesting, and the causal framing distinguishes it from prior correlational work on overthinking. However, key experiments are underpowered (AIME with n=30), the proxy for internal bias has unaddressed validity concerns, the question-removal intervention conflates several mechanisms, and statistical reporting lacks error bars and significance tests throughout. These are substantive scientific gaps that require revision, not polish.",
+  "strengths": [
+    "The hypothesis that a preliminary implicit guess (operationalized as a forced direct answer) triggers overthinking is original, well-motivated, and clearly differentiated from prior work on CoT unfaithfulness.",
+    "The question-removal intervention is cleverly designed: by stripping the question only after the first reasoned answer, the authors create a cleaner counterfactual that isolates the question's ongoing role; the 31–53% length reduction across five datasets with mostly maintained accuracy is the paper's strongest result.",
+    "Experiments span three model families, three sizes (14B–671B), three task types, and two languages, lending meaningful breadth to the correlation findings in Section 4.",
+    "The attention analysis (Section 6) complements the behavioral evidence with mechanistic grounding: the 4× spike in attention to the question at reflection points, concentrated in middle-to-later layers, is a notable interpretability finding.",
+    "The bias injection experiment (Section 5.2) provides a second, independent causal probe, and the inclusion of Random2Wrong/Random2Correct baselines is methodologically sound."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "AIME experiments are conducted on n=30 samples with no confidence intervals or variance estimates. The accuracy differences cited (e.g., 63.3% → 66.7% after question removal, n=30) are on the order of one or two samples and are not statistically distinguishable from noise. Major claims about performance on complex tasks rest on this underpowered evaluation.",
+      "suggested_fix": "Report bootstrap 95% CIs or binomial CIs for all accuracy figures; use the full AIME 2024/2025 test sets if possible, or clearly state that AIME results are exploratory given n=30. At minimum, the text must not present these differences as evidence of improvement without statistical qualification."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The question-removal intervention confounds at least two mechanisms: (1) removing the bias trigger, and (2) removing any information still needed for subsequent reasoning. The fact that accuracy drops on simpler tasks (CharCount en/zh) is consistent with the intervention being disruptive rather than purely debiasing, yet this is dismissed as 'coarse-grained.' The causal interpretation ('excessive focus on the question is the key driver') is therefore not fully established.",
+      "suggested_fix": "Add a control condition that replaces the question with a semantically neutral filler of equal length (e.g., randomized tokens or an unrelated sentence) to separate 'absence of bias trigger' from 'absence of content.' If accuracy under neutral replacement is similar to question removal, the causal claim strengthens; if it is similar to the original, it does not."
+    },
+    {
+      "severity": "major",
+      "issue": "The validity of the 'direct answer' as a proxy for internal bias is assumed but not rigorously established. Forcing the model to output an answer with a no-reasoning prompt and a closing </think> token is a distributional shift; the 64-sample multi-template approach mitigates sampling variance but does not address whether the resulting answers reflect the model's implicit prior at inference time vs. a behavior elicited only under the forced-skip regime.",
+      "suggested_fix": "Add a validation experiment: for cases where the model's reasoning process explicitly mentions an initial guess or estimate early in the chain, check whether this stated guess matches the direct answer distribution. This would provide direct evidence that the proxy captures what is claimed."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (Section 5.2) fine-tunes on sample-specific statements for 500 individual samples, then evaluates on exactly those samples. This setup carries a high risk of memorization/overfitting artifacts masquerading as bias installation, and the accuracy changes (Low2Wrong: 89.5%→83.4%; High2Correct: 67.0%→76.6%) could plausibly drive the length changes via accuracy-conditioned reasoning rather than bias-conditioned reflection. The baselines use different test samples than the experimental conditions, making direct comparison imperfect.",
+      "suggested_fix": "Add a held-out transfer evaluation: inject bias for sample set A, test on same-type but different samples B, to assess whether the injected bias generalizes beyond the specific training instances. Report accuracy-stratified length to disentangle accuracy effects from bias effects."
+    },
+    {
+      "severity": "minor",
+      "issue": "Multiple anonymized '[Author] et al.' references in the text (SEAL, PROBE, FCS, and others) make the related work and experimental sections difficult to assess for positioning accuracy and reproducibility; the reader cannot evaluate whether the reproduced baselines are faithfully implemented.",
+      "suggested_fix": "Provide sufficient methodological detail in Appendix I such that the baselines can be evaluated independently; post-review, de-anonymization will resolve the citation issue, but the appendix description must stand alone."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention analysis (Section 6) is conducted on a single model (R1-Distill-Qwen-14B) on CharCount only, yet the claim in the abstract ('excessive attention to the input question serves as a key mechanism') is stated broadly. The strawberry example in Figure 3 is cherry-picked by construction.",
+      "suggested_fix": "Run the attention analysis on at least one additional model (e.g., QwQ-32B) and one additional task type (KnowLogic or AIME) to check whether the 4× spike and layer-localization findings replicate."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the false-positive rate of the direct answer as a proxy for internal bias? Specifically, for cases where the direct answer equals the final reasoned answer (low deviation), can you verify via the reasoning trace that no internal conflict actually occurred, rather than that bias happened to align with the correct answer?",
+    "In the question-removal intervention, what happens when you replace the question with a length-matched random string instead of removing it entirely? Does accuracy and length reduction change substantially, and if so, what does that imply about the mechanism?",
+    "Table 3 shows that High2Correct injection raises accuracy from 67% to 76.6% while also reducing length. Could this simply reflect that the model is answering more confidently because it 'knows' the right answer from the injected memorization, rather than that bias was reduced? What evidence rules out this alternative?",
+    "The attention spike is measured for R1-Distill-Qwen-14B on CharCount. Do you observe a similar spike in larger models (DeepSeek-R1 671B) and on categorical tasks such as KnowLogic?",
+    "The limitations section restricts the scope to tasks with explicit numerical/multiple-choice outputs. Given that the primary motivation is overthinking in general reasoning models (including code, scientific reasoning), how do you expect the internal bias mechanism to manifest in open-ended settings, and is there any preliminary evidence?"
+  ],
+  "calibration_check": "The core correlational claims are supported by consistent multi-model, multi-task evidence; however, the causal claims from the two interventions are presented with more confidence than the evidence warrants given the confounds in the question-removal design, the memorization risk in bias injection, and the absence of statistical uncertainty quantification throughout.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Identifying a root cause of overthinking in widely-deployed reasoning models is a high-priority problem; if the causal account holds up, this would influence both training and inference design choices for the field."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The two-stage hypothesis (preliminary guess → conflict with reasoning → excessive reflection) and its operationalization as 'internal bias deviation' are genuinely original contributions that go beyond prior correlational or training-centric work on overthinking."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The counterfactual framing is methodologically sound in principle, but unaddressed confounds in question removal and potential memorization artifacts in bias injection weaken the causal conclusions; the proxy validity is assumed rather than demonstrated."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No confidence intervals, no significance tests, and critical AIME experiments at n=30 make it impossible to assess whether key accuracy and length differences are statistically meaningful rather than noise."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section honestly acknowledges the restriction to explicit-answer tasks and the open-endedness of mitigation; however, the abstract and introduction overstate causal certainty relative to the experimental controls available."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally well-written and the hypothesis is clearly stated, but multiple anonymized '[Author] et al.' placeholders in key experimental sections impede comprehension, and the inline Table 3 formatting is awkward."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure cleanly and is within a reasonable length; the heavy use of appendices for supporting experiments is appropriate given the breadth of the work."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Sufficient detail on model selection, prompt templates, and dataset construction is provided or pointed to in appendices; the bias injection training procedure is described, though fine-tuning hyperparameters and the anonymized baseline implementations limit full independent reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of overthinking mitigation and CoT unfaithfulness literature is solid, and Ameisen et al. (2025) on rough-estimate neural pathways is appropriately cited; the positioning against recent representation-steering methods could be more precise given that several are anonymized in this submission."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, Figure 2 and Figure 4 appear informative and directly support the central claims with fine-grained correlation and layer-wise attention breakdown; Figure 3 is illustrative but inherently anecdotal as a cherry-picked example."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three model families and four datasets provide reasonable coverage for an ICLR submission, but the restriction to explicit-answer tasks and the artificial nature of CharCount, combined with n=30 AIME experiments, are insufficient to support the broad framing of the paper's claims about reasoning models generally."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A genuinely interesting hypothesis with meaningful preliminary evidence, but the combination of underpowered key experiments, unaddressed intervention confounds, and missing statistical quantification puts this at borderline reject; the paper needs substantial experimental additions before the causal claims can be trusted at ICLR's bar."
+    }
+  },
+  "publishability_probability": 0.27
+}

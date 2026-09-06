@@ -1,0 +1,110 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes DIRECTER, a KV-cache activation steering method for instruction following that dynamically modulates steering strength via a plausibility-guided rejection loop combined with a one-shot attention-sensitivity layer ranking. The method is well-motivated by the oversteering problem, evaluated across three benchmarks and multiple model families/scales (1B–14B), and shows consistent gains (~6.5% over zero-shot, ~4% over prior steering baselines) while preserving text quality and task fidelity. The core idea (plausibility-guided rejection over layer subsets) is interesting and empirically supported, but improvements over strong tuned baselines are modest, statistical reporting is thin (only some ablations report variance), and one of the three benchmarks (GSM8K-Format) is author-constructed, which weakens the generality claim.",
+  "strengths": [
+    "Clear motivation: the oversteering vs. instruction-adherence trade-off is a real, actively-studied problem, and the plausibility-rejection framing is a clean way to attack it without task-specific tuning.",
+    "The plausibility filter is shown to be modular: applying it as a safety gate on PASTA/SpotLight improves them (Fig. 2b), which supports the claim that dynamic control is a general mechanism, not just a bespoke trick.",
+    "Reasonable breadth: three benchmarks (IFEval, LIFBench, GSM8K-Format), four Qwen scales plus Llama, and analyses covering plausibility threshold β, key scaling α, prompt variants, and inference efficiency.",
+    "Efficiency is honestly reported (~16% throughput cost, ~20% per-token latency), and the top-2-token gating mechanism to skip unnecessary steering passes is a nice engineering contribution.",
+    "Ablations isolate the key design decisions (reversed ranking, random layers, random tokens, fixed steering strengths ST1–ST6), and the results support the specific claims made about layer ranking and dynamic control.",
+    "Quality/fidelity evaluation with an LLM judge (and mentioned human evaluation in appendix) directly addresses the natural concern that steering methods trade text quality for adherence."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Main results (Table 1, Table 2) do not report seeds, standard deviations, or significance tests. Some ablation rows show ±values (random layers/tokens) but the primary comparisons — where DIRECTER beats tuned PASTA†/SpotLight† by ~4% on average — have no variance reporting, so it is impossible to tell whether individual per-benchmark differences (e.g., IFEval P.Acc 78.8 vs 76.5) are statistically significant.",
+      "suggested_fix": "Run at least 3 seeds (or use temperature > 0 with multiple samples) and report mean ± std with a paired significance test on the main tables. If greedy decoding makes seeds moot, report bootstrap CIs over the eval set."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is introduced by the authors and its construction procedure is only briefly described. Because DIRECTER's largest apparent advantage over prior steering methods is on this benchmark (competitors collapse on T.Acc while DIRECTER does not), the paper's headline claim of preserving task fidelity leans heavily on a self-constructed benchmark whose difficulty and design choices are not independently validated.",
+      "suggested_fix": "Either add an equivalent public constrained-reasoning benchmark (e.g., FollowBench, ComplexBench, or IFEval-hard subsets combined with a task-solving eval) or thoroughly characterize GSM8K-Format (task/format instructions used, how difficulty was set) and show the collapse is not an artifact of overly strict format checking that penalizes competing methods unfairly."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper conflates 'improvement over zero-shot' (6.5%) with the more relevant 'improvement over prior steering' (~4%), and the tuned baselines (PASTA†, SpotLight†) themselves are within ~1–2 points of DIRECTER on IFEval (e.g., IFEval I.Acc 83.4 / 83.6 vs 84.8). Given the extra machinery introduced, the paper should more clearly separate 'we beat vanilla steering' from 'we beat well-tuned steering,' and discuss whether the ~1-point delta is worth the added complexity plus 16% throughput hit.",
+      "suggested_fix": "Add a summary table that directly compares against tuned baselines only (excluding zero-shot) with per-benchmark deltas and CIs, and add a brief discussion in §4.2 of when the gain over tuned baselines is largest/smallest and why."
+    },
+    {
+      "severity": "minor",
+      "issue": "IFEval prompts are rewritten with gpt-4o-mini to separate instructions from tasks. This is disclosed but not fully characterized — the exact prompt used, distribution of edits, and any leakage from a stronger model into the evaluation setup should be spelled out, since it affects the 'clean instruction span' assumption that the entire method depends on.",
+      "suggested_fix": "Include the rewriting prompt and a sanity check (e.g., manual audit of a random subset showing rewrites preserve semantics) in the main paper, and report DIRECTER's performance when instructions are identified with the automatic span-detection variant referenced in Appendix D.2 as an additional main-body number, not only as an appendix note."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-sensitivity metric (Eq. 2) is presented as ad hoc — the paper acknowledges it lacks a formal theoretical grounding. The 'random layers' ablation shows only a ~1.6-point gap (81.8 vs 80.2), which is a fairly small justification for the added machinery of the sensitivity analysis.",
+      "suggested_fix": "Either strengthen the empirical case (variance across seeds on random-layers, larger models, alternative sensitivity formulations already in Appendix D.1 brought forward) or explicitly frame it as a modest but consistent improvement rather than a critical component."
+    },
+    {
+      "severity": "minor",
+      "issue": "LLM-as-judge (gpt-4o-mini) is used both for prompt rewriting and for text-quality/task-fidelity scoring (Table 4). This creates potential for correlated evaluator bias, especially in favor of outputs whose format aligns with what gpt-4o-mini would itself produce.",
+      "suggested_fix": "Cross-validate the LLM-judge results with a second judge (e.g., Claude/Qwen-72B) on a subset, and surface the human-evaluation results referenced in Appendix E.3 more prominently in the main paper."
+    },
+    {
+      "severity": "minor",
+      "issue": "Only greedy decoding is tested. Since the method is fundamentally about token-level plausibility acceptance, its behavior under sampling (temperature > 0, nucleus) is a natural question and would strengthen the generality claim.",
+      "suggested_fix": "Add a short experiment showing DIRECTER's behavior under temperature/nucleus sampling on IFEval and note whether the plausibility threshold β needs re-tuning."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive is DIRECTER to the instruction-span rewriting done with gpt-4o-mini? Concretely, what is IFEval performance when the original (un-rewritten) prompts are used with automatic span detection, compared to competing methods evaluated under the same condition?",
+    "Are the per-benchmark improvements over tuned PASTA†/SpotLight† (e.g., IFEval P.Acc 78.8 vs 76.5) statistically significant across seeds or bootstrap CIs?",
+    "How was GSM8K-Format constructed — specifically, what formatting constraints were used, and does the ~40-point collapse of PASTA†/SpotLight† on T.Acc reflect a genuine oversteering effect or a mismatch with the format spec used to score them?",
+    "The plausibility gate rejects steered outputs when the steered top-1 token has raw probability below β·p_{i_t}. This means DIRECTER defaults to raw output on 'hard' decisions — how often does the fallback trigger, and does its frequency correlate with the observed accuracy gains?",
+    "The ~16% throughput reduction assumes the top-2 gating skips most steering attempts. Can you report the fraction of decoding steps where steering is (a) skipped by the gate, (b) accepted on the first candidate set, (c) accepted after rejection cycles, and (d) fully rejected?",
+    "Does the method generalize to instruction-embedded-in-task settings (Appendix D.2) beyond simple automatic span detection, or does performance degrade meaningfully when the instruction span is noisy?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped — the paper is careful to frame improvements against baselines rather than as absolute SOTA, and honestly discusses efficiency costs and the ad-hoc nature of the sensitivity metric; however, the headline '6.5% over baseline' framing mildly overstates the practical gain since the more relevant delta over tuned steering baselines is ~4% (and often ~1–2% on individual metrics).",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a real and active problem (oversteering in activation steering) with a method that could plausibly be picked up by other steering-methods researchers, but the absolute gains over well-tuned prior steering are modest."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Novel combination of plausibility-guided decoding (from contrastive decoding literature) with KV-cache steering and a sensitivity-ranked layer schedule — the individual ingredients exist, but the coupling is new and the rejection-with-progressive-halving loop is a clean idea."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Methodology is sensible and ablations directly target the key design choices (ranking direction, random layers/tokens, fixed strengths), but some controls (e.g., steering fallback rate, judge cross-validation, prompt-rewrite sensitivity) are missing from the main paper."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report only point estimates with no seeds/variance/significance tests; only some ablations show ±values. Given that the margin over tuned baselines is often 1–2 points, this is a real weakness."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (ad-hoc sensitivity metric, cleanly separable instruction/task assumption) are stated in the conclusion, and the paper is not shy about efficiency costs — though the 6.5%-over-zero-shot headline is a mild inflation of the practical delta."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall structure and method exposition are readable; Algorithm 1 and Eq. 1–3 are clear, but the RQ list is somewhat mechanical and the write-up has some awkward passages that could be tightened."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Abstract, Introduction, Related Work, Method, Experiments, Conclusion) with appropriate appendices referenced; within reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model versions, α/β settings, benchmarks, and algorithm are described sufficiently to reimplement; some details (exact GSM8K-Format construction, IFEval rewriting prompt, judge prompts) are referenced only in appendices and would need to be complete there for full reproducibility."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against PASTA, SpotLight, and steering-vector methods is fair and the contrast (dynamic vs static, hyperparameter-sensitivity, oversteering) is well-articulated; contrastive-decoding lineage is acknowledged."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative figures (overview diagram, fixed-strength ablation, compatibility with baselines, robustness sweeps, efficiency) that appear directly tied to claims rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 7,
+      "justification": "Reasonable coverage: three benchmarks (though one is self-constructed), Llama-3.1/3.2 plus four Qwen scales 1B–14B; missing: only greedy decoding, no models beyond 14B, no non-English or multi-turn tests."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: solid, well-motivated, empirically supported paper with modest but consistent gains and a genuinely useful plausibility-gate idea, held back by thin statistical reporting, a self-constructed headline benchmark, and small deltas over tuned baselines."
+    }
+  },
+  "publishability_probability": 0.45
+}

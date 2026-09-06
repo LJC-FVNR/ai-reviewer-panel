@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a principled combination of attention-weighted value flow (semantic transition), Hessian-vector-product sensitivity, and KL-divergence masking for token attribution in decoder-only LLMs. The motivation is sound, the experimental setup spans four models and nine baselines, and ablations confirm each component contributes. However, the reported Soft-NC margins (~5–10× over the next-best baseline on benchmark datasets) are implausibly large and are presented without statistical significance tests; the primary novel evaluation relies on a self-introduced dataset and self-introduced metric (DSA), introducing a circular evaluation risk; and the computational overhead — central to any practical recommendation of a Hessian-based method — is deferred entirely to the appendix. These three issues must be resolved before the main claims can be accepted.",
+  "strengths": [
+    "Principled three-component design: causal gating (MT), second-order Hessian sensitivity via scalable HVPs, and output-distribution-aware KL masking are complementary in a formally stated way, and each is well-motivated by concrete failure modes of prior methods.",
+    "Breadth of comparison: nine baselines spanning gradient, attention, model-agnostic, and recent generative-LLM-specific methods (ReAgent, SEA-CoT, fAML, Progressive Inference) make this one of the more thorough attribution comparisons in the generative LLM literature.",
+    "Multi-axis evaluation: faithfulness (Soft-NC/Soft-NS on three external benchmarks), human-alignment (DSA on curated data), perturbation sensitivity, active/passive syntactic robustness, and decoding-hyperparameter invariance together constitute a genuinely comprehensive evaluation design.",
+    "Ablation coverage: six configurations isolating Transition Only, Hessian Only, KL Only, No-Gating, Uniform Transition, and Full HETA provide sufficient granularity to assess component contributions."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The reported Soft-NC improvements in Table 3 are implausibly large: HETA achieves 10.3 on GPT-J/LongRA while the next-best (PML) reaches 2.05 — a ~5× gap — and similar ratios appear for Phi-3 and Llama. In 20+ years of attribution literature, legitimate improvements of this magnitude over well-tuned baselines are essentially unheard of. No statistical significance test, confidence interval, or ablation of the scoring formula explains or validates this gap. Without formal significance testing (e.g., paired t-tests or bootstrap CIs over the 3 seeds × 1000 instances) and a check that all baselines were fairly re-implemented and tuned, this result cannot be accepted.",
+      "suggested_fix": "Report per-cell means and 95% CIs in Table 3. Run paired significance tests against the strongest baseline (ReAgent) for all model/dataset combinations. Investigate whether the Soft-NC/Soft-NS formulation inadvertently rewards the KL masking step in a way that creates an unfair advantage for HETA; if so, add an ablation with HETA's KL term removed evaluated under the same metric."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The primary novel evaluation dataset (2,000 NarrativeQA+SciQ instances) and the primary novel metric (DSA) are both introduced by the same authors. The DSA metric definition is also internally ambiguous: the notation describes 'model-selected important token indices' (SNarrQA, SSciQ) yet the methodology section refers to GPT-4o/GPT-5 annotation — it is unclear whether the gold index sets are fixed across methods or recomputed per-attribution, which would make DSA circular. A metric defined to measure the thing the proposed method was designed to maximise is not an independent evaluation.",
+      "suggested_fix": "Clarify formally whether S_SciQ and S_NarrQA are fixed annotation-derived sets (consistent for all methods) or method-dependent selected sets. If the former, state this unambiguously; if the latter, redesign the metric. Add at least one external evaluation setting not designed by the authors (e.g., ERASER benchmark, or token-level attribution evaluation on BoolQ/NLI as in Bastings et al.)."
+    },
+    {
+      "severity": "major",
+      "issue": "Computational cost of HETA versus baselines is absent from the main paper; wall-clock time, GPU memory, and throughput comparisons are deferred to Appendix Tables 8–9. For a method whose main novelty includes full Hessian-vector-product estimation — which involves two backward passes per Hutchinson sample times m samples — this is essential information. A method that is 20× slower than ContextCite or ReAgent and requires 80 GB A100 cannot claim practical utility without this discussion in the main body.",
+      "suggested_fix": "Add a cost-efficiency table in Section 5 showing wall-clock time per sequence, peak GPU memory, and throughput relative to each baseline for at least one model. Include HETA-LR+WIN alongside full HETA so readers can assess the efficiency–quality trade-off without consulting the appendix."
+    },
+    {
+      "severity": "major",
+      "issue": "The annotation pipeline references 'GPT-5 Thinking' as one of two annotation oracles (the other being GPT-4o). GPT-5 was not publicly available at the likely time of writing, making the annotation pipeline non-reproducible and raising questions about whether the dataset could be released as described.",
+      "suggested_fix": "Replace or supplement the GPT-5 annotation with a publicly available model or human annotators. Alternatively, if GPT-5 was accessed via API under a specific model ID, state this precisely and confirm the dataset will be released with annotations pre-computed to ensure reproducibility."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian weighting hyperparameters β and γ are fixed at 0.5 throughout, but no ablation over these values is reported. Given that HETA's performance advantage may depend sensitively on this choice, and given that these weights could in principle be optimised per-dataset, this is a potential hidden tuning degree of freedom.",
+      "suggested_fix": "Add a 3×3 grid ablation over β ∈ {0.2, 0.5, 0.8} and γ ∈ {0.2, 0.5, 0.8} on one held-out dataset to show that β=γ=0.5 is not a specially tuned value."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several highly relevant transformer-specific attribution baselines are missing: Chefer et al. (2021) relevance propagation tailored to transformers, Ferrando et al. (2022) ALTI, and Mohebbi et al. (2023) context-mixing analysis. These are standard references for any token attribution paper on transformers.",
+      "suggested_fix": "Add these three methods as baselines or, at minimum, discuss why they were excluded (e.g., incompatibility with decoder-only causal masking) in the related work section."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper contains a double Limitations section: one paragraph inside Conclusion and a separate standalone LIMITATIONS section immediately after. The standalone section reads as generic boilerplate ('we have not established that conclusions transfer to substantially different architectures...') and does not discuss HETA-specific failure modes such as gradient vanishing at HVP estimation, sensitivity to the masking scheme in the KL term, or distributional shift from the NarrativeQA+SciQ mixture.",
+      "suggested_fix": "Merge the two limitations discussions and replace the boilerplate language with concrete, method-specific limitations tied to the three components."
+    }
+  ],
+  "questions_for_authors": [
+    "In Table 3, how were the nine baselines implemented — off-the-shelf from official repositories or re-implemented? Were any hyperparameters tuned per dataset or were defaults used? For ContextCite in particular, what was the number of ablation samples used?",
+    "The DSA metric formula (Section 5.1) uses notation 'model-selected important token indices'; are S_SciQ and S_NarrQA fixed (derived from GPT annotation) and held constant across all attribution methods, or are they recomputed from each method's top-K attributions? If the latter, DSA is not a fair metric.",
+    "What is the wall-clock time per sequence for HETA-LR+WIN relative to ContextCite and ReAgent on GPT-J? Is HETA usable at inference time or is it strictly a post-hoc offline analysis tool?",
+    "How sensitive are the Soft-NC/Soft-NS results to the masking scheme in the KL term (Equation 4)? Specifically, was the masking approach (e.g., replace with [MASK] vs. zero embedding vs. expected embedding) matched across HETA and the baselines that also use masking (e.g., ContextCite)?",
+    "The Hutchinson estimator requires m HVP samples. What value of m was used in the main experiments, and how does attribution quality degrade as m decreases? This is critical for assessing the statistical reliability of the Hessian term."
+  ],
+  "calibration_check": "The abstract claims HETA 'establishes a new standard for interpretability in autoregressive language models,' but this claim rests heavily on self-introduced evaluation instruments (DSA metric, curated dataset) and on Soft-NC margins so large (~5×) that they require independent validation before such a sweeping conclusion can be accepted.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Token attribution for decoder-only LLMs is an active and important problem; if the reported improvements are real and the method is computationally tractable, it would be a meaningful contribution to the subfield."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component (attention rollout, Hessian-vector-product sensitivity, KL masking) has precedent in the literature; the contribution is their principled combination under a causal-gate formulation, which is useful but not conceptually groundbreaking."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method formulation is sound, but the extraordinary improvement margins (5–10×) are unverified by significance tests, the primary novel evaluation is self-designed, and the cost analysis is absent from the main paper."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only three seeds are used and only a global std < 0.06 is reported; no per-cell CIs, no significance tests for claimed 5× improvements, and the number of Hutchinson samples m (which controls variance in the Hessian estimate) is not systematically analyzed."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper claims to 'establish a new standard' based substantially on self-introduced metrics; the generic boilerplate limitations section does not fairly characterize method-specific failure modes; however, the paper does acknowledge computational cost and the approximate nature of the Hessian estimator."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method is reasonably well explained and the notation is consistent, but the DSA metric definition is ambiguous regarding whether index sets are fixed or method-dependent, and the table formatting artifacts in Table 3 impair readability."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard ICLR structure is followed, but the paper has a duplicate Limitations section, the Qwen2.5 results are fully relegated to the appendix without justification, and Table 2 has missing entries for most models."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters β, γ, rank, window size, and model IDs are stated, but the annotation pipeline references a non-public model (GPT-5 Thinking), the baseline re-implementation details are absent, and the runtime/memory analysis needed to reproduce the efficiency claims is in the appendix only."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of recent generative-LLM attribution methods is good, but Chefer et al. (2021) transformer relevance propagation, Ferrando et al. (2022) ALTI, and Mohebbi et al. (2023) context mixing — standard comparators in this area — are absent."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, Figure 2 provides ablation bar plots and Figure 3 covers sensitivity, active/passive robustness, and F1 alignment — informative comparisons; the pipeline diagram (Figure 1) with three labelled stages is well-structured, though qualitative examples in 2(d) and 3(d) offer limited additional insight."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models at varying scales and three external benchmark datasets is reasonable; however, the core generality claim depends on a self-constructed evaluation instrument, β/γ are untested across values, and the 5× improvement on Soft-NC has not been replicated on any task outside these three benchmarks."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper has a sound conceptual foundation and genuine experimental breadth, but the combination of implausibly large margins without significance testing, a self-designed primary evaluation, missing cost analysis, and non-reproducible annotation pipeline places it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.12
+}

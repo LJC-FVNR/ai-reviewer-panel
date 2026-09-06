@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes HETA, a token-attribution method for decoder-only LLMs that combines target-conditioned attention rollout as a causal gate, Hutchinson/HVP-based Hessian sensitivity, and KL-based information loss under token masking. The motivation is well-articulated and the tri-component decomposition is defensible; the empirical scope (four models incl. LLaMA-3.1-70B, multiple datasets, robustness/decoding sweeps, ablations) is respectable. However, individual components are largely borrowed from prior work, the reported gains over strong baselines are implausibly large (often 2×–5×) with only 3 seeds and no significance tests, the newly introduced DSA benchmark is co-designed with the method (raising circularity concerns), and several claims (e.g., \"new standard,\" faithfulness scores an order of magnitude above all baselines) are not adequately investigated or explained.",
+  "strengths": [
+    "Well-motivated problem: attribution methods for autoregressive/decoder-only LMs are genuinely underserved, and the second-order (Hessian) argument via the Taylor expansion with vanishing gradient but nonzero curvature is a legitimate motivation.",
+    "Principled decomposition: the three components (causal gate, curvature, information gain) target complementary failure modes of existing attributors, and the composed score has a clear mathematical form (Eq. 5).",
+    "Scalability considerations for the Hessian term are taken seriously: HVPs via Pearlmutter, Hutchinson estimators, Gauss–Newton surrogate, low-rank blockwise (rank-64) with windowing (HETA-LR+WIN), and last-6-layer sampling for 70B models.",
+    "Broad experimental panel: four models spanning 3B–70B, three benchmarks plus a curated dataset, nine baselines including recent decoder-specific methods (ContextCite, TDD, PML, ReAgent, SEA-CoT).",
+    "Robustness analyses are included for decoding hyperparameters (temperature/top-p/top-k/rep. penalty), active/passive rephrasings, and Gaussian input perturbations, together with an ablation across the three components."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Effect sizes are implausibly large without diagnostic analysis. On Table 3 (Soft-NC/Soft-NS), HETA reports 10.3/2.31 vs. the next best (~3.6) on GPT-J LongRA and similar factor-of-2–5 gaps elsewhere. On Table 1 (DSA), HETA is 4.25–5.10 while every baseline is ≤3.78. Such gaps against tuned, recent baselines (ReAgent, ContextCite, SEA-CoT) are extraordinary and demand deeper investigation (e.g., baseline hyperparameter search protocol, sanity checks that all methods share identical evaluation code paths, distributional plots of per-instance scores).",
+      "suggested_fix": "Provide (i) full baseline-tuning protocols and code, (ii) per-instance score distributions (not just means), (iii) statistical tests (paired bootstrap or Wilcoxon) against the next-best method for every model×dataset cell, and (iv) an analysis of why the gap is so large (e.g., is a single component doing all the work, or is it a metric-scale artifact?)."
+    },
+    {
+      "severity": "major",
+      "issue": "Circularity risk on the curated dataset / DSA metric. The dataset is constructed so that answer-bearing tokens live in the SciQ half and distractors in the NarrativeQA half; DSA rewards mass on the former minus the latter. HETA's causal gate MT explicitly restricts mass to tokens with causal paths to the target under the decoder's mask — precisely the property DSA measures. The method and the benchmark are co-designed, which threatens the validity of the alignment claim.",
+      "suggested_fix": "Either (a) evaluate HETA on independently designed, existing human-annotated attribution benchmarks with pre-registered analysis, or (b) release DSA with an adversarial variant where causally-relevant tokens are placed in both segments and show HETA's ranking does not degenerate; also report DSA with the causal gate removed to disentangle the metric's dependence on that component."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin. Only 3 seeds are reported, standard deviations are quoted (<0.2, <0.06) without confidence intervals or significance tests, and the decoding-robustness table (Table 2, LLaMA-3.1 70B row shown) mixes what appear to be % changes with baseline entries that are numerically indistinguishable from means. No power analysis or paired tests support the \"consistently outperforms\" claim.",
+      "suggested_fix": "Increase seeds where compute allows, report 95% CIs, run paired significance tests per cell, and clarify Table 2's semantics (units, whether values are max relative % change or raw metric)."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is largely combinatorial. Each ingredient (attention rollout with causal masking, Hessian sensitivity via HVP+Hutchinson, KL-under-masking information gain) exists in prior work; the paper's contribution is their fusion plus a curated dataset. The theoretical section (Eq. 5, error bounds in Appendix A2) is not previewed in the body, and no formal property (e.g., completeness, sensitivity axioms à la Sundararajan) is proved for the composite score.",
+      "suggested_fix": "Sharpen the novelty claim in the abstract/intro, and either state and prove at least one axiomatic property of the composite score in the main text, or reframe the paper as an empirical study of a strong composite pipeline."
+    },
+    {
+      "severity": "major",
+      "issue": "The causal gate MT uses attention-rollout paths ending at T, but Section 2 spends considerable space arguing attention is not faithful (Jain & Wallace, Kobayashi et al., Abnar & Zuidema). Using a norm-adjusted rollout as a *gate* — which zeroes out any token whose rollout mass is small — is stronger than using it as a signal, and may prune genuinely influential tokens whose effect flows through residual/MLP paths that rollout under-represents.",
+      "suggested_fix": "Compare gate variants (attention-only, norm-adjusted à la Kobayashi 2020, all-token uniform, gradient-based causal mask) and quantify how much the gate is *pruning* vs. *reweighting*; discuss failure cases where the gate can suppress a truly influential token."
+    },
+    {
+      "severity": "minor",
+      "issue": "Overclaiming in the abstract/conclusion (\"establishing a new standard,\" \"new state-of-the-art across both benchmark and controlled evaluation settings\") is not scoped to the four models, three benchmarks, and one self-authored dataset tested.",
+      "suggested_fix": "Soften claims to reflect the evaluation scope and note that the reported gaps warrant independent replication."
+    },
+    {
+      "severity": "minor",
+      "issue": "Method presentation is dense and, in places, unclear: Eq. for MT mixes indices and normalization in a single line; the Hessian-block estimator's Πi/Rademacher construction is not fully specified (block size, number of samples m used in main results); the Gauss–Newton/Fisher surrogate is mentioned but its activation criteria are not stated.",
+      "suggested_fix": "Break the semantic-transition equation into two lines with the normalizer explicit, give a self-contained algorithm box in the main text (not only in the appendix), and specify defaults (m, rank, surrogate on/off) alongside the results tables."
+    },
+    {
+      "severity": "minor",
+      "issue": "Cost analysis is deferred to the appendix but is central: HETA on 70B computes second-order terms only on the last six layers, and long-context uses 512-token windows with 50% overlap. This risks under-capturing influence from tokens whose second-order effect is largest in early/middle layers or across window boundaries.",
+      "suggested_fix": "Report a validation on a smaller model where full HETA (all layers, no windowing) is feasible, showing the rank-of-improvement is preserved by the low-rank+windowed+last-6-layer approximation; include a windowing-boundary ablation."
+    }
+  ],
+  "questions_for_authors": [
+    "What explains the 2×–5× gap between HETA and ReAgent/ContextCite on Soft-NC/Soft-NS? Have you verified that all baselines share identical evaluation harnesses and that Soft-NC/Soft-NS are on comparable numerical scales for gradient-based, ablation-based, and hybrid methods?",
+    "For DSA, what does HETA score when the causal gate MT is replaced by uniform weighting (i.e., the KL+Hessian composite alone)? Your ablation (Fig. 2) mentions this but exact DSA numbers vs. HETA-full are not evident from the body.",
+    "How sensitive is HETA to (β, γ)? Both are fixed at 0.5. Please provide a 2D sweep and report whether the ranking of HETA vs. baselines is stable under other splits.",
+    "Attention rollout under a causal mask still aggregates across residual streams heuristically. Have you compared against a gradient-through-attention causal gate (e.g., using the input×gradient to T restricted to positions ≤T) as an alternative to attention-rollout gating?",
+    "For the curated dataset, how were the two-segment lengths, positions, and topical overlap between NarrativeQA and SciQ balanced? Could the NarrativeQA prefix be systematically shorter or lexically less similar to the question, giving any method that filters by cosine-similarity-to-question an artificial edge?",
+    "The 70B experiments use last-6-layer sensitivity only. On a small model where full-layer HETA is tractable, does last-6-layer HETA preserve the ranking against baselines, or does it move HETA into the pack?",
+    "Do you have significance tests (paired bootstrap or Wilcoxon signed-rank) per model×dataset comparing HETA vs. the second-best method? If not, please add them; the reported std alone is insufficient given only 3 seeds."
+  ],
+  "calibration_check": "Claims are not appropriately scoped to the evidence: language like \"new standard\" and \"new state-of-the-art\" is not justified given only 3 seeds, no significance tests, a self-authored benchmark that overlaps in inductive bias with the method, and unexplained multiplicative gaps over recent baselines.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LMs is a real, active problem; a robust composite attributor would be useful, but this is a crowded subfield and the paper does not clearly move the practical needle beyond what a well-tuned ReAgent or ContextCite already offers."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "The three components (target-conditioned attention rollout, HVP-based Hessian sensitivity, KL under masking) are individually established; the contribution is primarily their linear combination plus a curated benchmark, with no formal axiomatic property proved for the composite."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method is mathematically stated but the causal-gate design contradicts the paper's own critique of attention, and the composite score's properties are asserted rather than proved; the empirical gaps are large but not diagnosed."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only 3 seeds, no significance tests, no confidence intervals, and the effect sizes (2×–5× over recent baselines) receive no diagnostic follow-up — an experimental red flag rather than a strength."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The abstract/conclusion overclaim (\"new standard,\" \"new state-of-the-art\") relative to the evidence; the extraordinary faithfulness gaps are not scrutinized or contextualized; limitations mention runtime but not the more important benchmark-method circularity."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "Motivation and high-level pipeline are readable, but the semantic-transition equation is compressed to the point of ambiguity, the Hessian estimator's key knobs (m, block size, surrogate criterion) are left implicit, and the algorithm is exiled to the appendix."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference structure (Intro, Motivation, Background, Method, Experiments, Ablations, Related Work, Conclusion) at reasonable length; matches ICLR expectations."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Compute (A100 80GB), key hyperparameters (β=γ=0.5, rank-64, 512-token windows, last-6-layer for 70B), and baseline list are given; however, baseline tuning protocol, exact Soft-NC/Soft-NS implementations for generative use, and DSA annotation code are only described in prose."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Recent decoder-oriented attribution methods (ContextCite, TDD, PML, ReAgent) are discussed and critiqued fairly, and classical attribution literature is acknowledged; positioning is adequate though contribution boundary vs. ReAgent could be sharper."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative displays (pipeline overview, ablation bars, robustness plots, qualitative attributions), which appear to support the narrative; nothing in the caption text suggests decorative or misleading figures."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models spanning 3B–70B, three benchmarks plus a curated dataset, nine baselines, and robustness sweeps constitute solid breadth; however, generality to non-English, non-QA, or reasoning-heavy generation is unexamined."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Below the ICLR borderline: interesting direction and reasonable engineering, but implausibly large gains combined with a co-designed benchmark, thin statistics, and modest novelty put this in reject-territory absent substantial revision."
+    }
+  },
+  "publishability_probability": 0.22
+}

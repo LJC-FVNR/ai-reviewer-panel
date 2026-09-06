@@ -1,0 +1,100 @@
+{
+  "grade": "Reject",
+  "summary": "This paper introduces Hessian-Enhanced Token Attribution (HETA), a framework for interpreting autoregressive language models by combining attention-value rollout, second-order Hessian sensitivity, and KL divergence masking loss. While addressing target-conditioned token attribution in decoder-only LMs is an important goal, the manuscript suffers from fatal mathematical impossibilities in its evaluation metrics (DSA scores above 4.0 for a metric bounded in [-1, 1]), flawed theoretical motivations (Hessian vanishing in softplus saturation), duplicate/erroneous baseline entries across datasets, and unrealistic hardware compute claims. Consequently, the empirical and theoretical claims cannot be trusted in their current form.",
+  "strengths": [
+    "Addresses a crucial problem in XAI by formulating target-conditioned, token-level feature attribution specifically tailored for autoregressive decoder-only language models.",
+    "Combines multiple complementary perspectives: structural attention rollout, second-order local curvature, and information-theoretic output shifts under masking.",
+    "Covers a wide range of model architectures and parameter scales, including GPT-J-6B, Phi-3-14B, Qwen2.5-3B, and Llama-3.1-70B."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Mathematical impossibility in the proposed Dependent Sentence Attribution (DSA) metric. DSA is explicitly defined as DSA = sum_{i in SciQ} s_{si} - sum_{j in NarrQA} f_{sj}, where attribution scores are normalized so that total mass over the paragraph sums to 1.0. Mathematically, if mass(SciQ) + mass(NarrQA) = 1.0 with non-negative masses, DSA is strictly bounded within [-1.0, +1.0]. However, Table 1 reports DSA values of 4.80, 5.10, 4.25, and 4.65 for HETA and 2.10 to 3.78 for baselines, which is a mathematical impossibility under the paper's own definition.",
+      "suggested_fix": "Audit the mathematical formulation and code implementation of the DSA metric, ensure proper normalization of attribution scores, and re-evaluate all baseline and proposed method scores."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Flawed mathematical motivation for second-order Hessian sensitivity and misrepresentation of equation capabilities. In Section 2, the authors claim second-order Hessians resolve gradient vanishing in the saturated softplus regime f(x) = log(1 + exp(wx+b)); however, as wx+b -> -inf, both the gradient and the second derivative vanish exponentially at the exact same rate e^{wx+b}. Furthermore, Equation 3 projects both input and output using Pi_i, which isolates the diagonal block H_{ii} (self-curvature of token i) and completely discards off-diagonal blocks H_{ij} (i != j), contradicting the paper's repeated claims that Hessian sensitivity captures token-to-token interactions.",
+      "suggested_fix": "Correct the mathematical motivation in Section 2 with a valid example where 2nd-order terms do not vanish when 1st-order terms do, and accurately describe Equation 3 as measuring per-token embedding self-curvature rather than cross-token interactions."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Data anomalies, baseline inconsistencies, and scaling mismatches in benchmark tables. In Table 3 under LLaMA-3.1 70B, several baseline entries feature identical numeric scores across completely different datasets (e.g., Integrated Gradients Soft-NC is 0.13 for LongRA, TellMeWhy, and WikiBio; Peering Soft-NC is 0.15 for all three; fAML Soft-NC/Soft-NS is 0.46/-0.21 for both LongRA and TellMeWhy). Additionally, Section 5 claims ReAgent is evaluated on GPT-J 6B ('exceeding the next best method, ReAgent, by over 2x'), but ReAgent is missing from Table 3 for GPT-J 6B. HETA's Soft-NC scores (up to 10.8) are up to 10x higher than all baselines without explaining whether unnormalized vectors were used in evaluation.",
+      "suggested_fix": "Audit all experimental pipelines, fix table copy-paste errors, ensure consistent baseline inclusion across models, and normalize attribution vectors before computing Soft-NC/Soft-NS."
+    },
+    {
+      "severity": "major",
+      "issue": "Unsound unnormalized combination of heterogeneous scoring components in Equation 5. Equation 5 computes Attr(x_i -> x_T) = M_T[i] * (beta * S_i^{(T)} + gamma * I(x_i -> x_T)) with fixed weights beta=0.5 and gamma=0.5. While M_T[i] is simplex-normalized, S_i^{(T)} (unnormalized Hessian norm) and I(x_i -> x_T) (KL divergence in nats) have completely different physical dimensions and arbitrary scales that vary drastically across models and context lengths.",
+      "suggested_fix": "Apply proper feature normalization (e.g., min-max scaling or z-score standardization) to S_i^{(T)} and I(x_i -> x_T) before taking their weighted linear combination."
+    },
+    {
+      "severity": "major",
+      "issue": "Infeasible hardware and computational execution claims. The paper claims to run Llama-3.1-70B with sequence lengths of 2,048 and batch size 8 on a single NVIDIA A100 (80 GB) GPU. Storing 70B parameters in FP16 alone requires ~140 GB VRAM, exceeding single-GPU capacity. Furthermore, for T=2048, computing m=10 HVP samples plus KL divergence requires over 40,000 backward/forward passes per generated token, making single-GPU execution physically impossible without quantization or multi-GPU distribution.",
+      "suggested_fix": "Provide precise details regarding multi-GPU distributed infrastructure, model quantization (e.g., 4-bit/8-bit AWQ/BitsAndBytes), and actual wall-clock execution times."
+    },
+    {
+      "severity": "minor",
+      "issue": "Notational errors in equations, missing table entries, and misleading labeling. Equation 1 for M_T[i] contains an extraneous sum over j=1..T that does not index any variable inside the term; Table 2 truncates the DSA row missing values for SEA-CoT and ReAgent; and the curated dataset is described in the abstract as having 'human annotations' when it was annotated by GPT-4o and GPT-5 Thinking.",
+      "suggested_fix": "Fix equation notation in M_T[i], complete the truncated row in Table 2, and clarify in the text that ground-truth annotations were generated by automated LLM consensus."
+    }
+  ],
+  "questions_for_authors": [
+    "How can the DSA metric yield values of 4.80 to 5.10 in Table 1 when the metric is explicitly defined as the difference between two normalized probability masses whose sum equals 1.0?",
+    "Why do several baselines in Table 3 under LLaMA-3.1 70B (e.g., Integrated Gradients, Peering, fAML) share identical numeric Soft-NC/Soft-NS scores across completely different datasets like LongRA, TellMeWhy, and WikiBio?",
+    "In Equation 3, since Pi_i H_T Pi_i isolates only the i-th diagonal block H_{ii}, how does HETA capture cross-token interactions H_{ij} (for i != j) as claimed throughout the paper?",
+    "How was Llama-3.1 70B loaded and evaluated on a single 80 GB A100 GPU given that FP16 weights require ~140 GB VRAM and computing thousands of HVPs per sequence requires significant memory?"
+  ],
+  "calibration_check": "The claims of state-of-the-art attribution faithfulness, human alignment, and computational feasibility are significantly overreached and unsupported due to mathematical impossibilities in the evaluation metrics, erroneous table entries, and unsound theoretical motivations.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 4,
+      "justification": "While developing faithful feature attribution for autoregressive decoder-only LLMs is a highly important subfield, the invalid metric values and flawed evidence prevent this work from having a reliable impact."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combining attention rollout, local Hessians, and perturbation masking is a sensible integration of existing concepts, but the individual components and their combination lack fundamental mathematical novelty."
+    },
+    "rigor": {
+      "score": 2,
+      "justification": "The paper exhibits critical flaws in mathematical rigor, including an impossible metric range for DSA, an unnormalized combination of heterogeneous scores, and an incorrect mathematical example for softplus saturation."
+    },
+    "statistical_soundness": {
+      "score": 2,
+      "justification": "Experimental rigor is severely compromised by duplicate baseline scores across different datasets in Table 3 and mathematically impossible metric values in Table 1."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Claims of superior performance and human alignment are overpromised given that the ground-truth annotations are LLM-generated and the reported scores violate mathematical bounds."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The paper is generally well-structured and readable, but contains typos in key equations, missing entries in Table 2, and text that contradicts table contents."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The manuscript follows standard conference layout guidelines, though it heavily relies on unprovided appendices for essential proofs, algorithm descriptions, and ablations."
+    },
+    "reproducibility": {
+      "score": 2,
+      "justification": "Reproducibility is poor due to unrealistic hardware descriptions, unmentioned quantization details, and contradictory mathematical definitions."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Prior work in feature attribution and generative LLM interpretability is broadly cited, but positioning against baselines is undermined by missing table entries and inaccurate baseline comparisons."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "The display captions describe the workflow and qualitative examples clearly, though key ablation data is omitted from the main text tables and left solely in figure captions."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Although multiple model families are tested, the lack of valid metric normalization and questionable evaluation numbers make it impossible to verify if the method generalizes across architectures."
+    },
+    "overall_recommendation": {
+      "score": 2,
+      "justification": "I recommend reject due to fatal mathematical impossibilities in the evaluation metrics, duplicated table entries across datasets, flawed theoretical motivations, and unrealistic computational execution claims."
+    }
+  },
+  "publishability_probability": 0.02
+}

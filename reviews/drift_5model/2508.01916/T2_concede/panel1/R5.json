@@ -1,0 +1,105 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes Neighbor Distance Minimization (NDM), an unsupervised method that learns an orthogonal rotation of neural representation space to decompose it into interpretable subspaces aligned with mutually exclusive feature groups. The theoretical motivation—extending superposition theory to feature groups and connecting NDM to total correlation minimization—is principled and novel in the interpretability setting. Quantitative evaluation on GPT-2 Small using known circuits and Gini concentration metrics shows NDM outperforms five unsupervised baselines, and results on 2B models provide scalability evidence. However, the absence of ICA as a baseline (the canonical method for finding statistically independent linear subspaces), lack of statistical significance testing, selection bias from best-hyperparameter reporting, and the narrow scope of rigorous quantitative evaluation (5 tests on one model) collectively prevent confident acceptance at the ICLR bar.",
+  "strengths": [
+    "Genuinely novel problem setting: unsupervised, input-independent subspace decomposition for mechanistic interpretability, filling a clear gap relative to supervised methods like DAS that require a pre-specified causal model.",
+    "Principled theoretical framing connecting mutual exclusiveness of feature groups → orthogonal subspace structure → NDM as total correlation minimizer; the MI-based merge criterion is coherent with the stated objective.",
+    "Convincing toy-model validation with ground-truth access (WT W heatmaps before and after training), providing a controlled sanity check that NDM can recover known subspace structure.",
+    "Qualitative InversionView-based preimage analysis (Fig. 3) is a compelling illustration that different aspects of context (token identity, prior token, position, topic) separate into distinct subspaces.",
+    "Honest and substantive limitations discussion: the paper explicitly flags the Linear Representation Hypothesis dependency, compute constraints, partial failure cases, and the non-fine-grained nature of current partitions.",
+    "The 'subspace circuits' future-direction framing—input-independent circuits built over abstract variables—is a genuinely exciting research agenda that positions this work as foundational."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "ICA (Independent Component Analysis) is absent as a baseline. The paper's stated goal is to find a linear rotation that makes subspaces maximally statistically independent (minimizing total correlation), which is exactly what ICA and its extensions (FastICA, kernel ICA, overcomplete ICA) optimize. Without this comparison it is impossible to determine whether NDM's gains over PCA and random baselines stem from the specific neighbor-distance objective or simply from independence-seeking optimization. This is the most significant experimental gap.",
+      "suggested_fix": "Add ICA (at minimum FastICA applied to the same residual-stream activations, using the NDM-determined dimension configuration for fair comparison) to Table 1 and the 2B-model experiments. If ICA performs comparably, the paper's contribution narrows to the unsupervised dimension-configuration discovery; if NDM outperforms, that is a meaningful positive result."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 reports single-run Gini coefficient values with no variance across random seeds, data subsamples, or random restarts. With only 5 test cases, there is no statistical basis for concluding that NDM 'clearly outperforms' baselines. The observed advantage could plausibly arise from a favorable random initialization or subspace-size assignment.",
+      "suggested_fix": "Report mean ± standard deviation across at least 5 seeds; conduct a paired permutation test or Wilcoxon signed-rank test across the 5 tests and report p-values in Table 1."
+    },
+    {
+      "severity": "major",
+      "issue": "Main results in Table 1 use 'best hyperparameters' for NDM while baselines are presumably held to a single configuration. This introduces a selection advantage for NDM that cannot be disentangled from the method's intrinsic quality.",
+      "suggested_fix": "Report results for all hyperparameter configurations tested, or use a held-out validation set to select hyperparameters and report test performance only once. At minimum, add an ablation table showing performance variance across hyperparameter settings."
+    },
+    {
+      "severity": "major",
+      "issue": "Rigorous quantitative evaluation is confined to GPT-2 Small with 5 tests covering known circuits. The 2B-model experiments (Qwen2.5-1.5B and Gemma-2-2B) rely on knowledge-conflict prompts without ground-truth circuits, making it impossible to verify that the identified subspaces correspond to the claimed mechanisms rather than confounds. The claim of 'scalability' is therefore underspecified.",
+      "suggested_fix": "Either add synthetic circuit evaluation on 2B models (e.g., inject a known linear subspace and test NDM's recovery) or add quantitative comparison to baselines under the knowledge-conflict setting and report the comparison statistically rather than by visual inspection of Fig. 5."
+    },
+    {
+      "severity": "minor",
+      "issue": "The MI merging threshold is a critical hyperparameter but its sensitivity is deferred to App. G.4 with only a brief mention in the main text. The choice of 'small and equal-sized' starting subspaces (minimum size 32 dimensions) is also a design decision with potentially large impact on the final partition.",
+      "suggested_fix": "Include a brief sensitivity figure or table in the main paper showing how Gini coefficient varies with the MI threshold and initial subspace size."
+    },
+    {
+      "severity": "minor",
+      "issue": "The related-work section does not engage with the disentanglement learning literature (beta-VAE, FactorVAE, Total Correlation VAE), which also explicitly optimizes for statistical independence of latent dimensions and has extensively studied the conditions under which independent subspaces can be recovered. The connection to and differentiation from this line of work would sharpen the paper's positioning.",
+      "suggested_fix": "Add a brief paragraph in Related Work comparing NDM to disentanglement methods; clarify why these are not applicable baselines (e.g., they require a generative model, operate on different objectives, or are not applicable post-hoc to frozen LMs) or include them as baselines."
+    }
+  ],
+  "questions_for_authors": [
+    "Why was ICA (e.g., FastICA) not included as a baseline? Given that NDM is motivated as total-correlation minimization, ICA is the canonical prior art and its omission is conspicuous. Can you provide ICA results, or explain why ICA is not applicable here?",
+    "What is the variance of the Gini coefficient across random seeds and random restarts of NDM? Have you observed cases where NDM converges to qualitatively different subspace partitions from the same data?",
+    "How sensitive are quantitative results (Table 1) to (a) the MI merging threshold, (b) the initial equal-sized subspace configuration, and (c) the number of activations N used during training? A sensitivity figure would significantly strengthen the experimental section.",
+    "For the 2B-model experiments (Fig. 5), what do the baseline methods (identity, random, PCA) produce under the same knowledge-conflict patching protocol? The appendix figures (Fig. 19, 20) are mentioned but not described in enough detail in the main text to judge the magnitude of NDM's advantage.",
+    "The paper uses InversionView (cited as [Author] et al., 2024b) for all qualitative analysis. Is NDM's interpretability advantage dependent on this specific tool, or would alternative preimage/probing methods yield comparable qualitative results? Can you provide a robustness check with a simpler linear probe?",
+    "The subspace patching evaluation follows Geiger et al. (2024); App. G.2 claims to address concerns from Makelov et al. (2023). Can you summarize in the main text why the Makelov et al. concerns do not invalidate the Gini-coefficient interpretation here?"
+  ],
+  "calibration_check": "The abstract's framing of 'strong connection between subspaces and circuit variables' is modestly overclaimed given the evidence rests on 5 test cases with no significance testing and uses best-hyperparameter selection; elsewhere the paper is appropriately cautious, acknowledging the mutual-exclusiveness assumption, compute limits, and partial failure modes.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Unsupervised, input-independent subspace decomposition directly addresses a real bottleneck in mechanistic interpretability (supervised methods require pre-specified causal models), and the 'subspace circuits' framing is a compelling downstream contribution, but demonstrated impact is currently limited to GPT-2 Small."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "NDM as an unsupervised post-hoc subspace decomposition method for LMs is genuinely new in the interpretability literature; the mutual-exclusiveness/feature-group framing and the MI-based dimension-configuration algorithm are original contributions, though the connection to ICA-style independence maximization is underacknowledged."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Toy-model evaluation is well-controlled and convincing; real-model evaluation is undermined by the missing ICA baseline, best-hyperparameter selection bias in the main table, and the absence of ground-truth circuits for the 2B-model experiments."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Table 1 reports single-run point estimates with no error bars across only 5 test cases; no significance tests are performed; the best-hyperparameter reporting protocol conflates model selection with evaluation, making the reported advantage uninterpretable statistically."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper includes a genuine limitations section and hedges its scalability claims appropriately, but 'strong connection' and 'clearly outperforms' in the abstract and main text are slightly ahead of what the statistical evidence (5 tests, no variance reported) can support."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The core ideas are conveyed with reasonable clarity and the toy-model intuition section is particularly effective; the optimization section (Eqs. 2–4) is dense and the merging algorithm is largely deferred to the appendix, which limits self-containedness."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed; placing Related Work inside Discussion is non-standard but acceptable; the paper fits within a reasonable ICLR length with substantive appendices."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The KSG estimator, orthogonal parametrization, and merging procedure are described at sufficient high level; however, 'best hyperparameters' are not fully specified in the main text, the InversionView tool is an anonymized self-reference, and the preimage collection pipeline relies on external sequences not fully described."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of the mechanistic interpretability subspace literature is thorough and accurate; notable omissions are ICA and the disentanglement learning literature, both of which are directly relevant to the stated objective of finding statistically independent linear subspaces."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, figures appear informative and well-chosen: the WT W heatmap (Fig. 1a/d) cleanly demonstrates the toy-model result, the preimage grids (Fig. 3) directly support the interpretability claim, and the patching-effect plots (Fig. 5) show a clear contrast between subspaces; the table (Table 1) caption is detailed enough to interpret the comparison."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Quantitative evaluation is confined to 5 tests on a single model (GPT-2 Small); the 2B experiments are suggestive but not rigorous; the absence of ICA as a baseline leaves the method's advantage unexplained; claims about scalability and general applicability to 'real language models' rest on limited evidence."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising and novel approach to a real problem in mechanistic interpretability, but the blocking absence of ICA as a baseline, the lack of statistical significance testing, and the narrow scope of rigorous quantitative evaluation collectively keep this below the ICLR acceptance bar; major revisions are needed before acceptance can be recommended."
+    }
+  },
+  "publishability_probability": 0.18
+}

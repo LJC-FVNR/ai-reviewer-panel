@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes combining causal attention rollout, Hessian-based second-order sensitivity (via HVPs), and KL-divergence information impact into a unified token attribution score for decoder-only LLMs. The motivation is sound and the problem is important, but the reported performance margins are implausibly large (HETA achieves Soft-NC of ~10 vs ~1.5 for the strongest baseline — roughly a 7× gap), raising serious concerns about evaluation correctness, baseline fairness, or metric scale. The curated benchmark's reliance on LLM-generated ground truth (GPT-4o + GPT-5) rather than human annotation is methodologically questionable, the DSA metric formula is garbled and its scale is unexplained, ReAgent is absent from two of three models in the main faithfulness table, and no wall-clock runtime comparison is provided for a method that is substantially more expensive than all baselines. These issues collectively prevent confident acceptance.",
+  "strengths": [
+    "The problem is well-motivated and practically important: decoder-only LLMs lack principled, causally faithful attribution methods, and the architectural gap from encoder-based XAI is real.",
+    "The three-component decomposition (semantic transition gating, Hessian-based curvature, KL information impact) is theoretically principled, and the causal gating idea of restricting credit to paths terminating at the target token is a meaningful design choice.",
+    "The ablation study (Figure 2a–c) tests all six component combinations (full, transition-only, Hessian-only, KL-only, no gating, uniform gating) with consistent metrics, which is above the typical ablation standard for ICLR submissions.",
+    "Evaluating robustness to decoding hyperparameters (temperature, top-p, top-k, repetition penalty) across multiple seeds is a useful and underappreciated evaluation dimension.",
+    "The curated benchmark design — concatenating a distracting narrative with an evidence-bearing SciQ segment — is a clever controlled probe of attribution precision that would be reusable by the community."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The Soft-NC scores in Table 3 show HETA achieving ~10.3–10.8 vs the next best method at ~1.5–2.1 (a ~7× margin). Margins of this magnitude are not observed anywhere in the attribution literature when all baselines are correctly configured. This strongly suggests either a bug in the evaluation of HETA or misconfiguration/unfair tuning of baselines. No per-method details of baseline configuration are provided (e.g., path length for IG, number of ablation samples for ContextCite, layer used for TDD). Without ruling out implementation error, the central empirical claim of the paper is not credible.",
+      "suggested_fix": "Provide a sanity check: report Soft-NC/Soft-NS for random attribution and for input-length-proportional uniform attribution as lower-bound references; verify that all baselines are run with their recommended hyperparameters; include a per-method implementation reference or brief description of the configuration used. If the large margins survive, a detailed error analysis explaining the source of the gap is required."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric formula is internally inconsistent. The text defines DSA = sum_{j in S_NarrQA} fs_j but then says 'final DSA reported as average... sum_{i in S_SciQ} ss_i - sum_{j in S_NarrQA} fs_j', and normalizes so total mass sums to one — which would bound per-instance DSA to [-1, 1]. Yet Table 1 reports HETA DSA values of 4.8–5.1 and aggregate values for other methods that exceed ±1. The metric as stated is either wrong as written or the scale description is incorrect, making the Table 1 results uninterpretable.",
+      "suggested_fix": "Provide a clean, self-contained mathematical definition of DSA with the exact normalization used, a closed-form per-instance range, and a worked numerical example on a toy instance. Clarify whether the reported values are averages or sums over 2,000 instances."
+    },
+    {
+      "severity": "major",
+      "issue": "ReAgent — described in the paper as 'consistently ranks second' — is absent from Table 3 for GPT-J-6B and Phi-3-Medium-14B. If the missing rows are an artifact of the PDF extraction the paper still needs to confirm that ReAgent was evaluated on all models; if it was genuinely excluded, this constitutes selective presentation of the second-strongest baseline.",
+      "suggested_fix": "Include ReAgent (and all other listed baselines) for all three models in Table 3, or explicitly state and justify any exclusion."
+    },
+    {
+      "severity": "major",
+      "issue": "The curated dataset uses the intersection of GPT-4o and GPT-5 Thinking annotations as ground truth, but using a frontier LLM as the oracle for evaluating LLM interpretability methods introduces circularity: the F1 alignment metric in Figure 3c directly rewards methods that recover whatever patterns GPT-5 emphasizes, not human-validated causal relevance. The κ=0.89 inter-annotator agreement reported is between two AI systems, not human raters.",
+      "suggested_fix": "Either supplement with human annotation on a held-out subset (even 200 instances suffices to validate the LLM-annotation proxy) or reframe the metric as 'agreement with LLM-annotated spans' rather than 'alignment with human annotations,' and discuss the implications for the interpretation of these scores."
+    },
+    {
+      "severity": "major",
+      "issue": "No computational cost comparison is provided. The KL component alone requires T masked forward passes per instance, and the Hessian component adds HVP calls. The appendix promises efficiency details (Tables 8, 9; Appendix A5) but the main paper contains no per-method runtime or memory table. For a venue like ICLR where practical applicability matters, an attribution method that is 50–100× more expensive than baselines requires a cost/benefit analysis front and center.",
+      "suggested_fix": "Add a table in the main paper reporting wall-clock seconds per 512-token instance for HETA (and each variant) vs all baselines, on the same hardware. Discuss the HETA-LR+WIN approximation quality vs full HETA explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The combination weights β=γ=0.5 are fixed by fiat with no sensitivity analysis. If performance degrades significantly for other reasonable values (e.g., β∈{0.1,0.3,0.7,0.9}), the result is fragile; if it does not, that is worth demonstrating.",
+      "suggested_fix": "Add a 3×3 β–γ grid ablation (or at least a 1D sweep) to the ablation section."
+    },
+    {
+      "severity": "minor",
+      "issue": "The multiplicative gating Attr = MT[i] · (β·S_i + γ·I_i) is unmotivated theoretically. Why should curvature be gated by semantic flow rather than added or combined differently? The paper asserts this is 'principled' but provides no derivation or theoretical justification.",
+      "suggested_fix": "Include a brief justification or derive the combination from first principles; alternatively, add an ablation comparing multiplicative vs additive combination."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the absolute Soft-NC values for a random attribution baseline and for a uniform attribution baseline? These reference points are essential for interpreting the unusually large absolute scores (10.3 for HETA vs ~1.5 for SeA-CoT).",
+    "Can you provide the exact DSA computation for one toy instance step-by-step, showing how a per-instance score is obtained and how aggregation over 2,000 instances produces values in the range 3–5?",
+    "For Table 3, were all baselines (including ReAgent) evaluated with their publicly released code and recommended hyperparameters? Were hyperparameters for baselines tuned on a held-out validation set, and if so, was HETA similarly tuned?",
+    "What is the average wall-clock time per 512-token sequence for HETA-LR+WIN vs the fastest baseline (e.g., Attention Rollout or IG) on the same A100?",
+    "The paper states β=γ=0.5 throughout. What happens to Soft-NC/DSA when β∈{0.1, 0.9} or γ∈{0.1, 0.9}? Is performance robust to these choices?",
+    "For the Hessian component in LLaMA-3.1-70B, only the last 6 layers are used. How much does this layer-selection choice affect results, and was the same layer restriction applied to all models or only the 70B model?"
+  ],
+  "calibration_check": "The paper's core claim — that HETA establishes 'a new standard' with margins of 5–7× over strong baselines on standard faithfulness metrics — is not appropriately scoped to the evidence presented; the margins are so large that they require a methodological explanation before being accepted as genuine performance differences.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Token attribution for decoder-only LLMs is a timely and genuinely important problem, and a principled framework combining causal gating, second-order sensitivity, and information-theoretic measures would be impactful if the results are validated."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component (attention rollout, Hessian/HVP sensitivity, KL-masking information) is individually well-established; the contribution is their combination and the gating design, which is incremental relative to prior work."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The ~7× performance margins over all baselines on Soft-NC are not credible without evidence ruling out implementation error or unfair baseline configuration, and ReAgent is absent from two of three models in the main table."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds are used, no significance tests are reported for the large claimed differences, and the DSA metric scale is inconsistent with the stated normalization, making it impossible to assess the statistical reliability of the central claims."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Claiming 'a new standard' and 'consistently outperforms' with 7× margins — without addressing why prior published work never observed such gaps — is overclaiming; the limitations section is honest about computational cost but does not address the methodological uncertainty around the evaluation."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level narrative is readable and the motivation is well-organized, but the DSA formula is self-contradictory, the combination function is unmotivated, section numbering is inconsistent, and Table 3 appears to be partially embedded inline in the text."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The paper follows a conventional conference structure (intro, motivation, background, method, experiments, related work, conclusion) and appears to be within standard page limits, though the Motivation and Background sections could be consolidated."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters for HETA are stated (β=γ=0.5, rank=64, windowing), but baseline configurations are not described, the KL masking scheme is underspecified ('for a chosen scheme'), and the exact Hutchinson estimator variant (Gauss–Newton vs full Hessian) is left ambiguous."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The paper provides adequate coverage of the main attribution and interpretability literature and clearly positions against the most relevant recent generative-LLM methods (ContextCite, TDD, PML, ReAGent), though the comparison to mechanistic interpretability work is superficial."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe bar-plot ablations with six configurations across multiple metrics and robustness plots comparing sensitivity/consistency/F1, which are informative and directly support the method's claims; qualitative token-attribution examples in 2(d)/3(d) are a useful addition."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four models spanning 3B–70B are evaluated, which is good, but the missing ReAgent results for two models, the absence of β/γ sensitivity analysis, and the single-domain curated dataset limit confidence in the generality of the claimed advantages."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper addresses a real gap with a principled method, but the implausibly large performance margins, inconsistent metric formulation, incomplete baseline reporting, and absence of runtime analysis together constitute substantive evidentiary problems that must be resolved before this work can be accepted at ICLR."
+    }
+  },
+  "publishability_probability": 0.12
+}

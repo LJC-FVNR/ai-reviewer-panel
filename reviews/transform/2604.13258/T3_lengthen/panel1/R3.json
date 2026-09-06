@@ -1,0 +1,108 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a token-attribution method for decoder-only LLMs that combines target-conditioned attention rollout, Hessian-vector-product curvature sensitivity, and KL-divergence masking, plus a new curated evaluation dataset and a Dependent-Sentence-Attribution (DSA) metric. The idea is reasonable and the experimental suite is broad (four models, several benchmarks, nine baselines, ablations), but the headline results rest on metrics whose scales and definitions are unexplained or internally inconsistent, the improvement margins are implausibly large without scrutiny, and several claims are overstated (notably 'human annotations' for LLM-generated labels). These are substantive evidentiary problems, not cosmetic ones, and warrant a major redo rather than a minor revision.",
+  "strengths": [
+    "Addresses a genuinely important and active problem: faithful token-level attribution for autoregressive decoder-only LLMs, where standard encoder-oriented attribution methods are known to be weak.",
+    "Broad experimental scope on paper: four decoder-only models spanning scales (GPT-J-6B, Phi-3-14B, Llama-3.1-70B, Qwen2.5-3B), three public benchmarks plus a curated dataset, nine attribution baselines, and a six-configuration ablation.",
+    "Reasonable engineering for the second-order term (Hutchinson HVP estimator with Pearlmutter's trick, Gauss-Newton/Fisher surrogate, low-rank + windowing variants) and an explicit efficiency/limitations discussion.",
+    "Related-work positioning against generative-specific methods (ContextCite, TDD, PML, ReAgent) is fairly complete and clearly delineates the intended gap."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The primary alignment metric (DSA) is defined as a difference of attribution masses with 'attributions normalized so the total mass over the paragraph sums to one,' which bounds DSA within roughly [-1, 1]; yet Table 1 reports HETA values of 4.25-5.10 and baselines down to -0.52. The reported values are inconsistent with the stated normalization, so the central alignment claim cannot be verified from the text.",
+      "suggested_fix": "State the exact DSA formula unambiguously (the extracted definition is garbled), specify the normalization and theoretical range, and reconcile the reported numeric scale. Include a worked example showing how a value like 5.10 is possible under a sum-to-one normalization."
+    },
+    {
+      "severity": "major",
+      "issue": "Soft-NC/Soft-NS scales are never defined, and HETA's Soft-NC of 10.3 vs. next-best ~ (claimed 'over 2x') is asserted without explaining the metric's range or why the gap is so large. Improvement margins of 2x-10x across metrics are presented as evidence of SOTA but are not scrutinized for measurement artifacts, differing normalization, or metric misuse.",
+      "suggested_fix": "Define Soft-NC/Soft-NS precisely with their ranges, ensure all methods are scored on identical footing, and provide sanity checks (e.g., random/oracle attribution baselines) so the reader can calibrate whether the enormous margins are real."
+    },
+    {
+      "severity": "major",
+      "issue": "The abstract and results claim 'alignment with human annotations,' but the curated dataset labels are produced by GPT-4o and GPT-5, i.e., LLM-generated, not human. The reported inter-annotator agreement (F1=0.91, kappa=0.89) is between two LLMs. This is a calibration/honesty problem that materially inflates the perceived validation.",
+      "suggested_fix": "Relabel as LLM-generated annotations throughout, or add genuine human annotation on a subset and report human-vs-model agreement; scope the 'human alignment' claim accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "The motivating mathematical example is stated incorrectly: the text writes 'partial f/partial x_i = 0 but f(x+epsilon e_i) = f(x)' to argue gradients miss influence, but f(x+eps)=f(x) means no influence. The core motivation for the Hessian term thus rests on a self-contradictory statement (should be f(x+eps) != f(x)).",
+      "suggested_fix": "Correct the inequality and give a concrete, verified example (e.g., the saturated softplus case) with numbers showing gradient ~0 while finite perturbation changes f, ideally with an empirical demonstration in an LLM."
+    },
+    {
+      "severity": "major",
+      "issue": "The final score Attr = MT[i](beta*S_i + gamma*I) is described as 'principled' and 'mathematically grounded,' but it is a heuristic multiplicative gate over a weighted sum with hand-set beta=gamma=0.5; the promised theoretical properties/error bounds are deferred entirely to an unavailable appendix, so no soundness argument is actually presented in the body.",
+      "suggested_fix": "Move the key theoretical claims (any axioms satisfied, error bounds on the HVP/low-rank estimator) into the main text, and justify or sensitivity-analyze the beta/gamma weighting rather than fixing it."
+    },
+    {
+      "severity": "minor",
+      "issue": "Terminology inconsistency: the semantic transition vector MT is derived deterministically from attention rollout, but the ablation section calls it the 'learned semantic transition vector,' implying training that does not appear to occur.",
+      "suggested_fix": "Clarify whether any parameters are learned; if not, remove 'learned.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "Reported standard deviations (std < 0.2, std < ±0.06) with only 3 runs, combined with the very large margins, are stated without significance tests or confidence intervals, and Table 1 lacks any variance reporting.",
+      "suggested_fix": "Add error bars/variance to all main tables and report significance tests (or at least seed-level spread) for the headline comparisons."
+    }
+  ],
+  "questions_for_authors": [
+    "Given the sum-to-one normalization, what is the exact definition and theoretical range of DSA, and how do values above 1 (e.g., 5.10) arise?",
+    "What are the precise definitions and ranges of Soft-NC and Soft-NS, and are all methods normalized identically? Why is HETA's Soft-NC (~10) an order of magnitude above several baselines?",
+    "Since annotations come from GPT-4o and GPT-5, on what basis is 'alignment with human annotations' claimed? Was any human labeling performed?",
+    "Is any component of HETA trained/fit, or is the entire pipeline inference-only? Please reconcile the 'learned semantic transition vector' phrasing.",
+    "How sensitive are results to beta and gamma? Was the 0.5/0.5 setting tuned on test data, and does a sensitivity sweep exist?",
+    "Can you provide random-attribution and oracle-attribution reference points so the magnitude of the reported gains can be calibrated?"
+  ],
+  "calibration_check": "Claims are over-scoped relative to the evidence: 'new standard/SOTA,' 'human alignment,' and 'principled/mathematically grounded' are asserted while the key metrics are undefined or internally inconsistent, the motivating math is misstated, and theory is absent from the body.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Faithful attribution for decoder-only LLMs is a valuable target, but the contribution's impact is undercut by evaluation validity concerns that make the claimed gains hard to trust or build on."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The three ingredients (attention rollout, Hessian/HVP sensitivity, KL masking) each exist in prior work; their integration plus a new dataset/metric is a modest, largely incremental combination."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "A self-contradictory motivating example, a heuristic combination billed as 'principled,' and headline metrics with unexplained/inconsistent scales seriously weaken the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Three-seed means and small stds are reported for some tables, but there are no significance tests, no variance in Table 1, and implausibly large margins are left unscrutinized."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "'Human annotations' actually come from LLMs, and 'new standard/SOTA' plus 'mathematically grounded' claims outrun the presented evidence."
+    },
+    "clarity": {
+      "score": 3,
+      "justification": "Beyond extraction noise, the DSA formula is broken, metric scales are undefined, and prose is riddled with run-on connectives ('and however,' 'and additionally'), impeding precise understanding of the method."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard sections (abstract, intro, motivation, background, method, experiments, related work, conclusion/limitations) are present and appropriately organized within conference length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Models, hardware, and several hyperparameters are specified, but the two central metrics (DSA, Soft-NC/NS) are underspecified and core theory/algorithm details are deferred to an unavailable appendix."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Prior attribution literature and generative-specific competitors are discussed accurately and the intended gap is clearly delineated."
+    },
+    "figure_quality": {
+      "score": 4,
+      "justification": "Captions describe relevant ablation and robustness comparisons, but the supporting tables contain unexplained scales and apparent inconsistencies that limit how much the display items substantiate the claims."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models, multiple datasets, nine baselines, and six ablation configs give good coverage, though the generality claim rests on metrics whose validity is in question."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising idea with broad experiments, but blocking-level metric-validity inconsistencies and overclaims place it below the ICLR bar pending a substantial redo."
+    }
+  },
+  "publishability_probability": 0.12
+}

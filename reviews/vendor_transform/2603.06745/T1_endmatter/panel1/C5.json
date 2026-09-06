@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER proposes a well-motivated dynamic activation steering method that combines KV cache scaling with a plausibility-guided accept/reject decoding loop and a one-time attention-sensitivity layer ranking, effectively mitigating the oversteering problem that plagues prior static steering methods. The main results on Llama-3.1-8B are consistent across three benchmarks, the method preserves generation quality (a genuine differentiator), and the efficiency analysis is thorough; however, statistical rigor (no variance/significance on main results), a weak generalization data point (Qwen-2.5-3B), and a self-designed benchmark (GSM8K-Format) prevent a clear accept without revision.",
+  "strengths": [
+    "Well-motivated problem: oversteering in static activation steering is real and under-addressed, and the dynamic, step-level plausibility control is a principled and genuinely useful response.",
+    "Strong primary results: +6.5% average over zero-shot and ~4% over the best steering baseline on Llama-3.1-8B, with the notable advantage of NOT trading off text quality or task fidelity (Table 4, corroborated by human eval).",
+    "Thorough ablations that isolate each design choice: fixed-strength vs adaptive steering (Figure 2a), layer-ranking order/random/reversed (Table 3), random-token steering, and hyperparameter/prompt robustness (Figure 3).",
+    "The plausibility filter is shown to be a general, modular safety gate that improves PASTA and SpotLight (Figure 2b), supporting the generality claim beyond DIRECTER itself.",
+    "Practical efficiency analysis (throughput, per-token latency, memory) with an honest worst-case discussion and FlashAttention compatibility, which prior attention-level interventions lack.",
+    "Honest limitations section acknowledging the heuristic nature of the sensitivity metric and the instruction-span separation assumption."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No variance, error bars, or significance tests are reported on the main results (Tables 1, 2) or the quality/fidelity table (Table 4). While greedy decoding is deterministic, benchmark-level variance (e.g., from the gpt-4o-mini prompt rewriting, subset selection) is never quantified, so it is unclear whether the ~0.3% gain on Qwen-2.5-3B or several <1% gaps in Table 2 are real.",
+      "suggested_fix": "Report results over multiple rewriting seeds / prompt subsets with std. dev., and add paired significance tests (or at least bootstrap CIs) against the strongest baseline; explicitly discuss the Qwen-2.5-3B near-null result."
+    },
+    {
+      "severity": "major",
+      "issue": "Generalization is under-supported: Table 1 (the full benchmark suite) uses only Llama-3.1-8B, and Table 2 (four model scales) reports only IFEval, where the Qwen-2.5-3B gain collapses to 0.3% and PASTA*/SpotLight* are inconsistent. The 'robust, model-agnostic improvement' claim rests largely on one model on the full suite.",
+      "suggested_fix": "Run at least LIFBench and GSM8K-Format on one additional model family/scale to substantiate cross-architecture generality, or explicitly scope the claim to Llama-family full-suite results."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is a new benchmark designed by the authors and used as a primary evidence axis, but no validation of its construct validity, difficulty, or relation to existing instruction-following benchmarks is provided in the main text, creating a mild circularity risk.",
+      "suggested_fix": "Release the benchmark, report inter-annotator / inter-method agreement, show baseline behavior of known strong instruction-tuned models, and document the construction procedure in the main text (not only appendix)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The plausibility check (Eq. 1) uses only top-1 token comparison, but the choice is not justified against richer distributional distances (KL, TV, Jensen-Shannon) that could give finer-grained control and a smoother accept/reject boundary.",
+      "suggested_fix": "Add a brief ablation comparing top-1 plausibility vs a full-distribution criterion (with the same gating efficiency argument) to justify the design choice."
+    },
+    {
+      "severity": "minor",
+      "issue": "The instruction-span assumption is a real practical limitation: the method requires knowing I (instruction token indices), and the main results assume clean task/instruction separation achieved by gpt-4o-mini rewriting. Real prompts interleave task and instruction, so the deployed benefit may be smaller than reported.",
+      "suggested_fix": "Move the Appendix D.2 automatic span-detection results into the main experiments with quantitative numbers (not just 'continuously effective'), and report performance under imperfect/noisy span detection."
+    },
+    {
+      "severity": "minor",
+      "issue": "The layer ranking is computed once after prefill, but attention sensitivity may shift as the context grows during long generation; this potential drift is not discussed or measured.",
+      "suggested_fix": "Add an analysis measuring ranking stability over generation steps on LIFBench (long-context) and discuss whether re-ranking would help."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the run-to-run variance of the Table 1 and Table 2 numbers under different gpt-4o-mini rewriting seeds, and are the DIRECTER-vs-SpotLight* gaps statistically significant?",
+    "Why does the gain collapse on Qwen-2.5-3B (61.3 -> 61.6)? Is this a span-detection issue, a model-specific attention geometry, or noise?",
+    "How sensitive is DIRECTER to the correctness of the instruction span I in practice, and what is the quantitative performance under the Appendix D.2 automatic detection vs. oracle spans?",
+    "How does the top-1 plausibility criterion compare to a full-distribution (KL/TV) criterion in both accuracy and gating efficiency?",
+    "For GSM8K-Format, what is the agreement between the formatting checker and human judgment, and how do known strong instruction-following models score on it?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped ('up to 6.5%', '~4% over steering baselines', '≈92% fidelity', '≈16% throughput reduction') and limitations are stated, but 'robust, model-agnostic improvement' and 'general mechanism' are slightly over-generalized given the single-model full-suite evidence and the weak Qwen-2.5-3B result.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A useful, citable contribution to inference-time instruction following that addresses the real oversteering problem, but incremental rather than paradigm-shifting for the subfield."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The combination of KV-cache key scaling, top-1 plausibility gating, and quantization-inspired sensitivity ranking is new, but each component draws directly from prior work (KV-cache quantization, contrastive/plausibility decoding, attention steering)."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is sound and the claim-evidence link is mostly correct, but the absence of variance/significance on the main tables and the unvalidated new benchmark leave several quantitative claims under-evidenced."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Greedy decoding mitigates run variance, but no error bars, CIs, or significance tests are reported on Tables 1, 2, and 4, and several <1% gaps (notably Qwen-2.5-3B) may be within benchmark-level noise."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Most headline numbers use hedged language and match the tables, limitations are explicitly stated, but 'robust, model-agnostic' and 'general mechanism' slightly outrun the single-model full-suite evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Generally well-written with a clear method section, helpful algorithm, and readable flow; notation is occasionally dense and the 'dynamic rejection' framing is not explicitly tied to accept/reject semantics."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard Abstract/Intro/Related Work/Method/Experiments/Conclusion structure with reasonable length and explicit RQs guiding the experiments section."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Models, datasets, hyperparameters (alpha=100, beta=0.5), and decoding settings are specified; appendices cover prompts and sensitivity computation, so the work is reproducible in principle despite redacted links."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "PASTA and SpotLight are fairly positioned and oversteering literature is cited, but the contrastive/plausibility-decoding lineage (Li et al. 2022; Chuang et al. 2023) is only briefly invoked and broader inference-time intervention methods are under-covered."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions are informative and each display item supports a specific claim (ablation, robustness, efficiency, qualitative behavior); tables are clearly structured with best/second-best highlighting."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three benchmarks (one self-designed) and one main model for the full suite, with a generalization table limited to IFEval where one scale (Qwen-2.5-3B) shows a near-null gain; the claimed generality is only partially supported."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline-to-weak accept: a sound, well-motivated, and well-ablated method whose main gap is statistical rigor and cross-architecture evidence rather than any fundamental flaw."
+    }
+  },
+  "publishability_probability": 0.45
+}

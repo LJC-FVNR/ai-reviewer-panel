@@ -1,0 +1,98 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper identifies and analyzes the 'PCC plateau' in attention-based regression trained with joint MSE+PCC loss, offering a two-part theoretical account (an MSE/PCC gradient-conflict attenuating correlation gradients as prediction dispersion grows, and a convex-hull capacity bound on PCC gain for any convex aggregator) and a drop-in fix (ECA: Scaled Residual Aggregation, Dispersion-Aware Temperature Softmax, Dispersion-Normalized PCC Loss). The theory is correct and well-motivated, the mechanism design follows cleanly from the analysis, and experiments span synthetic, UCI tabular, spatial transcriptomics, and MOSI benchmarks with consistent gains. However, several headline improvements are small (e.g., +0.012 PCC on Online News) and reported without seeds, error bars, or significance tests on two of three main tables, and the empirical comparison lacks baselines from adjacent families (non-convex/sparse attention, correlation-oriented objectives). This is a solid, well-above-average borderline submission whose acceptance hinges on strengthening statistical reporting and baseline coverage.",
+  "strengths": [
+    "Clean, correct theoretical decomposition: the MSE mean/std/correlation decomposition (Prop. 2.1), the PCC gradient w.r.t. attention logits (Thm. 2.1), and the O(1/sigma^1.5) PCC/MSE gradient-ratio decay (Cor. 2.1) give a genuinely explanatory account of the plateau, validated empirically (Fig. 3).",
+    "Theorem 2.2's convex-hull PCC-gain bound is, to my knowledge, a new and elegant capacity result: it applies to ANY convex aggregator, is scale-invariant, and directly predicts the observed dependence on in-sample homogeneity (confirmed on synthetic data, Fig. 5).",
+    "Method design is tightly coupled to theory: each ECA component (SRA, DATS, DNPL) maps to a specific identified bottleneck, and the ablation rows in Table 1 isolate each component's contribution.",
+    "Good benchmark diversity for a drop-in module: controllable synthetic data, three UCI tasks on FT-Transformer, a clinical spatial-transcriptomics task on EGN with 3-fold std, and MOSI with 10 baselines on ALMT; gains are consistent in direction across all settings and ECA never degrades MSE."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is insufficient for the size of the claimed gains. Table 1 (UCI) and Table 2 (MOSI) report single numbers with no seeds, error bars, or significance tests, while several improvements are tiny (Online News PCC 0.408->0.420; MOSI PCC +0.023 over ALMT). Only Table 3 reports fold-level std, and there the std (e.g., +/-0.16-0.20 around ~0.7) is large relative to the mean gain. It is not established that the UCI/MOSI improvements are statistically real.",
+      "suggested_fix": "Run all benchmarks over >=5 seeds, report mean +/- std on every table, and add paired significance tests (e.g., Wilcoxon signed-rank) for ECA vs. its host baseline; if UCI gains are within noise, temper the 'consistent improvements' claim accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage is narrow in kind. ECA is only ever compared against its own host model (FT-Transformer, EGN, ALMT) plus a plain +PCC-loss variant. There is no comparison to alternative aggregation/attention families that also escape convexity or address flat attention (sparsemax/entmax, linear/performative attention, gated or residual pooling), nor to a simple lambda_PCC sweep or fixed-temperature tuning, which would show whether the plateau is really unbreakable by existing knobs.",
+      "suggested_fix": "Add at least (a) a lambda_PCC sweep for the host baseline demonstrating the plateau persists under re-weighting, and (b) one or two off-the-shelf non-convex/sparse attention baselines on the synthetic and one real benchmark."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2.2 bounds |rho - rho_0|, i.e., the magnitude of change in either direction, but the text consistently frames it as a bound on PCC *improvement*; the framing is slightly loose, and the bound's tightness (is it achievable? is the factor 2R/(sigma0/||w|| - R) sharp?) is not discussed.",
+      "suggested_fix": "Restate as a bound on attainable change, note the one-sided implication for gains, and add a short tightness discussion or a synthetic construction approaching the bound."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DNPL claim that StopGrad(sigma_pred) rescaling 'leaves the learning objective's stationary points unchanged' holds only for the PCC term in isolation; the dynamic per-batch rescaling changes the effective relative weighting between MSE and PCC losses over training, which is exactly the intended effect but deserves an honest statement rather than the current phrasing.",
+      "suggested_fix": "Clarify that stationary points of the PCC term are preserved while the effective MSE:PCC gradient ratio is deliberately rebalanced; optionally show an equivalence to a schedule on lambda_PCC."
+    },
+    {
+      "severity": "minor",
+      "issue": "Sensitivity to the new hyperparameters (beta, T_min, gamma_max, lambda_gamma) is not reported, so it is unclear how much tuning ECA requires per benchmark or whether gains survive a shared default setting.",
+      "suggested_fix": "Add a sensitivity sweep (or state fixed defaults used across all benchmarks) in the appendix and report the tuning budget given to baselines for fairness."
+    }
+  ],
+  "questions_for_authors": [
+    "How many seeds underlie Tables 1 and 2, and what is the run-to-run variance of the PCC gains on Online News (+0.012) and MOSI (+0.023)? Are these gains statistically significant?",
+    "Does the PCC plateau persist for the host baselines under a large lambda_PCC sweep (e.g., 10x-100x)? If a sufficiently large weight also breaks the plateau, what specifically does DNPL add beyond re-weighting?",
+    "How does ECA compare to sparsemax/entmax or other non-convex aggregation on the synthetic benchmark, where Theorem 2.2 makes a quantitative prediction any method can be checked against?",
+    "Is the bound in Theorem 2.2 tight — can you construct inputs where a convex aggregator nearly attains 2R/(sigma0/||w|| - R)?",
+    "What values of beta, T_min, gamma_max, and lambda_gamma were used per benchmark, and how sensitive are the results to them?",
+    "In Table 3 the fold std (~0.16-0.20) exceeds the ECA-vs-EGN mean gap (~0.09); how should readers interpret per-fold consistency — does EGN+ECA beat EGN in every fold for every metric?"
+  ],
+  "calibration_check": "Claims are mostly scoped to the evidence, but 'significant improvements' and 'consistently breaks the PCC plateau' are asserted without significance testing on the two tables where gains are smallest, and 'first rigorous theoretical analysis' is a strong priority claim that should be softened.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "The PCC plateau is a real, widely encountered failure mode in MSE+PCC joint training, and a principled explanation plus a drop-in fix would be used and cited across pathology, spatial transcriptomics, and multimodal regression communities."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The gradient-conflict analysis and especially the convex-hull PCC-gain bound for arbitrary convex aggregators appear genuinely new; the ECA components themselves are individually simple but are novel as a theory-derived combination."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "The derivations (Prop. 2.1, Thm. 2.1-2.2, Cors. 2.1-2.2) are correct as stated with clearly stated assumptions, and theory predictions are checked against controlled synthetic experiments; minor looseness in framing Thm. 2.2 as an improvement bound."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, error bars, or significance tests on the UCI and MOSI tables where several gains are near noise level; only the 3-fold spatial transcriptomics table reports variance, and there the std rivals the mean improvement."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper reports negatives (plain +PCC loss degrades F1/MAE on MOSI) and ablations honestly, but uses 'significant' without tests and overclaims priority ('first rigorous') and generality of the gains."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Well-organized with a clear theory-to-method narrative and readable notation; some redundancy between Introduction and Contributions and a few imprecise phrasings (e.g., the StopGrad stationary-point claim) cost polish."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Intro, Theory, Method, Related Work, Experiments, Conclusion) at appropriate length with appendices referenced for proofs and additional results."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Model equations, loss, synthetic data generation, datasets, host baselines, and evaluation protocols are all specified in the text; per-benchmark hyperparameter tables and seed protocols are the main gaps, and removed links are not counted against the paper."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Correlation-loss and attention-expressivity literatures are cited and the contribution is delineated, but positioning omits adjacent aggregation alternatives (sparsemax/entmax, non-convex pooling) that are the most natural empirical competitors."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe figures that directly support the claims: gradient-ratio bound validation (Fig. 3), homogeneity-controlled synthetic curves (Fig. 5), and per-fold plateau-breaking curves (Fig. 6); Fig. 2's embedded axis text suggests a somewhat rough presentation."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four diverse settings plus per-component ablations are good, but the generality claim rests on single-host-model integration per benchmark, no alternative-aggregator baselines, and no lambda_PCC-sweep control, leaving the necessity of ECA's specific mechanisms under-isolated."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A theory-driven, well-executed borderline paper: the analysis is a real contribution, but acceptance should be conditional on multi-seed statistics, significance testing, and at least minimal non-convex-attention baselines."
+    }
+  },
+  "publishability_probability": 0.45
+}

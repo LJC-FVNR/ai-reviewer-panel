@@ -1,0 +1,98 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper adapts sparse-autoencoder-style crosscoders to track feature evolution across pre-training checkpoints in Pythia-160M and Pythia-6.9B, revealing two feature classes (initialization and emergent), a complexity-emergence correlation, and evidence for a statistical-to-superposition phase transition. The core idea—treating snapshot-specific decoder norms as proxies for feature presence—is principled and elegantly motivated. The work fills a genuine gap in mechanistic interpretability (almost all prior SAE work studies fully-trained models) and connects microscopic features to macroscopic downstream metrics via attribution patching. However, the statistical validation is uneven, the empirical scope is narrow (one model family, one middle layer each), and the phase-transition claim—the paper's most ambitious result—rests on suggestive rather than decisive evidence.",
+  "strengths": [
+    "Novel and well-motivated adaptation of crosscoders to temporal analysis: using snapshot-specific decoder norms as feature-strength proxies follows directly from the crosscoder's optimization objective, and the sanity-check via linear probes (Appendix C) provides useful corroboration.",
+    "The feature emergence hierarchy (previous-token → induction → context-sensitive) aligns with independently established causal dependencies between induction and previous-token heads (Olsson et al., 2022), lending external validity to the temporal ordering finding.",
+    "The attribution-based circuit-tracing analysis (Section 5) successfully demonstrates that tens of crosscoder features can disrupt or recover performance on SVA, IOI, and induction tasks across all training snapshots—a non-trivial result bridging feature-level and task-level analysis.",
+    "The paper honestly scopes its own limitations (model family, layer selection, simple downstream tasks) in a dedicated Limitations section, and the claims in the body are generally calibrated to the evidence presented.",
+    "Clean, well-organized writing; the method is precisely described and the crosscoder architecture is formally stated."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Empirical scope is severely limited: only two models from the same Pythia family, analyzed at a single middle layer each. Key claims—the directional turning point at step ~1000, the compression-then-expansion of total feature dimensionality, the complexity–emergence correlation—are presented as general properties of LLM pre-training but are evidenced only for Pythia at one layer. Input-layer, output-layer, and cross-architecture behavior may differ substantially.",
+      "suggested_fix": "Add at least one non-Pythia checkpoint suite (e.g., OLMo or GPT-NeoX) and one additional layer (e.g., early vs. late) per model. Even partial replication on a different model family would substantially strengthen generalization claims."
+    },
+    {
+      "severity": "major",
+      "issue": "The LLM-based complexity scoring (Claude Sonnet 4, n=100 features, Pearson r=0.309) is methodologically fragile: (1) LLM scoring of feature complexity is poorly calibrated and rater-agreement is not reported; (2) n=100 is small for a correlation claim; (3) the scorer is itself an LLM trained on data that presumably resembles the features being scored, creating a potential circularity; (4) r=0.309 explains roughly 10% of variance—the paper calls this a 'non-trivial correlation with moderate strength,' which is generous framing.",
+      "suggested_fix": "Report inter-rater reliability (e.g., have multiple LLM runs or human annotators on a subset). Increase the sample size or use bootstrap confidence intervals for the correlation. Consider whether 'complexity' can be operationalized via a more objective proxy (e.g., n-gram order of the top-activating context) to triangulate the LLM judgment."
+    },
+    {
+      "severity": "major",
+      "issue": "The statistical-to-superposition phase transition (Section 6) is the paper's most ambitious theoretical contribution, but the evidence is correlational and indirect: KL-divergence convergence and total-dimensionality dynamics are consistent with the hypothesis but do not rule out simpler explanations (e.g., the crosscoder itself may distort dimensionality estimates when the number of features is much smaller than actual model dimensionality). The 70% total dimensionality figure is specific to the 98,304-feature crosscoder; Pythia-6.9B reaches a lower proportion, which the paper attributes to 'limited representational capacity of the 32,768-feature crosscoder'—but this caveat undermines the use of the metric as a direct window into superposition.",
+      "suggested_fix": "Either strengthen the framing to explicitly position this as a hypothesis supported by suggestive evidence (the current text occasionally overclaims), or add a more direct test (e.g., compare the dimensionality trend against a model trained on shuffled tokens, where no feature learning should occur but statistical regularities remain)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Error bars and variance are absent from most quantitative figures. Crosscoder training involves stochastic initialization; it is unclear whether results are stable across seeds. The feature lifetime threshold (0.3) and snapshot-selection strategy are not ablated.",
+      "suggested_fix": "Report mean ± std across at least 3 crosscoder seeds for key metrics. Briefly ablate the lifetime threshold and show that qualitative conclusions are stable."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that crosscoders achieve 'slightly superior Pareto frontier' versus per-snapshot SAEs (Figure 3c) is stated without a significance test. Given the stochasticity of sparse dictionary learning and the fact that SAEs have a theoretical advantage on per-snapshot data, this claim warrants more careful statistical treatment.",
+      "suggested_fix": "Add error bars across seeds and a paired comparison. If the difference is not statistically significant, soften the claim to 'comparable.'"
+    }
+  ],
+  "questions_for_authors": [
+    "The directional turning point at step ~1000 is described as 'universal' and 'remarkably consistent' (Figure 5c). Is this observed in Pythia-6.9B as well, and does it occur at the same absolute training step or the same fraction of total training? Does it shift when controlling for learning rate schedule changes?",
+    "Appendix C validates that decoder norms correlate with feature strength via linear probes. Can you quantify the correlation and specify when this proxy is known to fail (e.g., does it degrade in the very early steps when decoder norms are noisy)?",
+    "For the attribution patching results (Section 5), how sensitive are the top-k feature rankings to the choice of crosscoder seed? Are Features 18341, 47045, 68813, etc. reliably identified across multiple crosscoder runs?",
+    "Section 4.3 identifies previous-token, induction, and context-sensitive features via 'simple rule-based approaches.' What fraction of all features do these cover? Are the remaining features in Figure 6c a representative sample, or were they selected to illustrate a desired pattern?",
+    "The paper analyzes only the middle layer (Layer 6 of Pythia-160M, Layer 16 of Pythia-6.9B). Prior work shows that earlier and later layers serve different representational roles. Do the two-phase evolution pattern and the turning point at step ~1000 generalize to other layers?"
+  ],
+  "calibration_check": "Most claims are appropriately hedged (the phase transition is presented as a 'hypothesis' supported by suggestive evidence), but the 'universal directional turning point' and the 'non-trivial moderate correlation' framing for r=0.309 are slightly overconfident given the evidence—the first needs replication across architectures and layers, and the second explains only ~10% of variance.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Understanding how features emerge during pre-training is a fundamental open question in mechanistic interpretability, and this is among the first systematic empirical studies of it; the community will find the emergence hierarchy and phase-transition evidence genuinely valuable."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Adapting crosscoders to temporal (cross-snapshot) rather than cross-layer analysis is a clever and non-obvious repurposing, but the method is an application of an existing tool rather than a new algorithmic contribution; the empirical findings are more novel than the technique."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The crosscoder framework is technically sound and the decoder-norm proxy is well-motivated and validated in an appendix, but the LLM-based complexity scoring lacks reliability checks and the phase-transition evidence is correlational without controls that would distinguish the hypothesis from alternatives."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Error bars and seed variance are largely absent; the complexity–emergence correlation (r=0.309, n=100) is modest and the LLM rater is not validated for reliability; arbitrary thresholds (0.3 for lifetime) are not ablated; no multiple-comparison corrections are reported."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The Limitations section is substantive and accurate; the authors avoid overclaiming generalization to other architectures; the main overclaim is calling the directional turning point 'universal' on evidence from one model family."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-written with a clear logical progression; the crosscoder formalism is precisely stated; a few passages in Section 6 compress too many ideas for the space available, but overall readability is above average for this venue."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed; the paper is appropriately length for an ICLR submission; appendices are used sensibly for technical details."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model and dataset choices are clearly specified (Pythia suite, SlimPajama, snapshot selection strategy), but crosscoder training hyperparameters are deferred to appendices, training seeds are not reported, and the activation/regularization function selection (Appendix A.1) is not summarized in the main text."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of SAEs, crosscoders, circuit tracing, and learning dynamics is thorough and current; the positioning relative to Mishra-Sharma et al. and Minder et al. (who also use crosscoders for comparing pre-trained vs. chat-tuned models) is appropriate; comparison to concurrent work on Heap et al. (2025) on initialization features could be more explicit."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, the figures appear well-designed: the decoder-norm heatmap (Figure 4), feature statistics (Figure 5), complexity scatter (Figure 6a), and attribution panels (Figure 7) all directly address specific claims; Figure 2/3 captions suggest a Pareto-frontier comparison that supports the crosscoder evaluation."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Results are limited to two models from a single family (Pythia), a single middle layer per model, and three simple downstream tasks; the key quantitative results (turning point, dimensionality dynamics) are not replicated in any other architectural setting, substantially limiting the generality of the conclusions."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A genuinely interesting paper on an understudied problem with a principled methodology, but the narrow empirical scope, absent error bars, and indirectly supported phase-transition claim leave it at the borderline; the contribution warrants publication after the scope and statistical rigor are strengthened."
+    }
+  },
+  "publishability_probability": 0.38
+}

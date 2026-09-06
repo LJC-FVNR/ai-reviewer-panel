@@ -1,0 +1,96 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper analyzes the 'PCC plateau' in attention-based regressors trained with a joint MSE+PCC loss, offering a gradient-coupling argument (PCC gradient attenuates as prediction std grows) and a convex-hull capacity bound, then proposes ECA (SRA + DATS + DNPL) to counteract both. The problem is real and the theory-to-method mapping is coherent, but the empirical case is weak: main tables lack error bars, the one benchmark with variance shows enormous fold-to-fold std relative to the claimed gains, no significance testing is performed, and the ablation evidence appears cherry-picked per dataset. The contribution is promising but needs substantially more experimental rigor before the 'significant improvement' claims are supportable.",
+  "strengths": [
+    "Targets a concrete, underexplored failure mode (early PCC saturation under joint MSE+PCC training) that genuinely arises in pathology/spatial-transcriptomics and multimodal sentiment regression.",
+    "Provides a clean, interpretable theoretical framing: an MSE mean/std/correlation decomposition, a PCC-vs-MSE gradient-ratio decay result, and a convex-hull-radius bound on achievable PCC gain for any convex aggregator.",
+    "Each proposed component (DNPL rescaling, dispersion-aware temperature, scaled residual extrapolation) is explicitly motivated by a specific theoretical bottleneck, and the method is a drop-in module tested across synthetic, tabular, pathology, and MSA settings."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Statistical soundness is inadequate: Tables 1 and 2 report point estimates with no seeds/std/CIs, and Table 3 (the flagship biological benchmark) reports means with std that dwarf the improvements (e.g., 0.690±0.202 vs 0.602±0.160 over only 3 folds), so the headline '+14.64% PCC' is almost certainly not statistically significant. No significance tests appear anywhere.",
+      "suggested_fix": "Report mean±std over multiple seeds for every table, run paired significance tests (e.g., permutation/bootstrap) on the ECA-vs-baseline deltas, and either increase folds/seeds or explicitly qualify claims that fall within noise."
+    },
+    {
+      "severity": "major",
+      "issue": "The ablation evidence looks cherry-picked: each of the three components is shown to matter on a *different* single dataset (DATS on Appliance, SRA on Online News, DNPL on Superconductivity), and on other datasets removing a component sometimes matches or beats the full model. This does not establish that all three components are consistently necessary.",
+      "suggested_fix": "Report the full ablation grid (each component removed) across all datasets with variance, and add a factorial ablation so the marginal contribution of each mechanism is visible everywhere, not selectively."
+    },
+    {
+      "severity": "major",
+      "issue": "Calibration/overclaiming: the abstract and results repeatedly use 'significant improvements' for gains that are often small (UCI PCC deltas of 0.010–0.042; MSA +0.015 PCC over the ALMT+LPCC control) and untested. The SRA claim to 'fundamentally bypass' Theorem 2.2 is near-tautological (extrapolating beyond the hull simply exits the convex-aggregator regime the theorem assumes).",
+      "suggested_fix": "Scope claims to the evidence, drop 'significant' unless backed by tests, and reframe SRA as leaving the convex regime rather than 'breaking' a bound that no longer applies."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines for the correlation-learning claim are thin. The paper positions itself against shape-aware regression yet compares only FT-Transformer±ECA / ALMT±ECA, with no comparison to established alternatives (e.g., CCC/Lin's concordance loss, ranking/Spearman surrogates, or other attention-temperature schemes). This makes it hard to attribute gains to the specific theoretical insight rather than added capacity.",
+      "suggested_fix": "Add correlation-optimization and adaptive-attention baselines, and control for parameter count added by the γ-MLP so improvements are not confounded with extra capacity."
+    },
+    {
+      "severity": "minor",
+      "issue": "Internal consistency between theory and fix: Corollary 2.1 states the PCC/MSE gradient ratio decays as O(1/σ_ŷ^{3/2}), but DNPL multiplies the loss by StopGrad(σ_ŷ), compensating only the 1/σ_ŷ factor of Theorem 2.1, not the 3/2 power. The core MSE decomposition (Prop 2.1) and PCC scale-invariance (Lemma 2.1) are textbook, so the theoretical novelty rests mainly on Theorem 2.2 and the gradient-ratio corollary.",
+      "suggested_fix": "Reconcile the exponent between the derived decay rate and the compensation factor, and clarify which theoretical results are novel versus standard restatements."
+    }
+  ],
+  "questions_for_authors": [
+    "Given the fold-to-fold std in Table 3, are the ECA-vs-EGN PCC gains statistically significant under a paired test? Please report p-values or bootstrap CIs on the deltas.",
+    "The γ-MLP and dispersion-aware temperature add parameters and inductive bias; can you provide a parameter-matched or capacity-matched baseline to isolate the effect of the theoretical mechanisms?",
+    "Why is each ablation component highlighted on a different dataset? Please provide the complete removal grid across all datasets with variance.",
+    "How sensitive are results to γmax, Tmin, β, and λPCC? Do the DNPL/DATS mechanisms ever destabilize MSE convergence?",
+    "Does DNPL's σ_ŷ rescaling fully address the O(1/σ_ŷ^{3/2}) rate, or only the 1/σ_ŷ term, and can you empirically show the intended gradient-magnitude restoration?"
+  ],
+  "calibration_check": "Claims of 'significant improvements' and general plateau-breaking outrun the evidence, which consists of small, mostly untested gains and one high-variance benchmark, so the paper is currently over-scoped relative to its statistical support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The PCC plateau is a real and practically relevant issue in shape-sensitive regression domains, but the demonstrated gains are modest and the audience that trains joint MSE+PCC losses is a moderate slice of the ICLR community."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The convex-hull PCC bound and gradient-ratio framing are somewhat new, but the MSE decomposition and PCC scale-invariance are textbook and the method is a combination of familiar tricks (temperature scaling, residual scaling, loss reweighting)."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Derivations are plausible and method choices follow from the theory, but the theory-to-fix link is loose in places (compensation exponent mismatch) and the SRA 'bypass' of Theorem 2.2 is close to tautological."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Main tables lack seeds/error bars, the only variance reported (3-fold) is large relative to the gains, and there are no significance tests, so it is unclear the improvements are real."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Repeated use of 'significant' for small, untested gains, per-dataset ablation cherry-picking, and minimal discussion of limitations indicate claims are not well scoped to the evidence."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall narrative and structure are followable and the theoretical motivation is clearly linked to each component, though the dense notation and equation-heavy sections are demanding."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, theory, method, related work, experiments, conclusion) is present and used appropriately at reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, backbones, and the synthetic construction are described and hyperparameters are partly specified, but many details are deferred to appendices and key training settings/seeds are not in the main text."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Correlation-learning and softmax-attention expressivity literatures are cited and the gap is stated, but positioning against concrete shape-aware/ranking loss baselines is thin."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative diagnostic plots (gradient-ratio validation, σ_ŷ growth, per-fold PCC/MSE curves) that support the claims, though several rely on single illustrative runs."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four domains are covered, but each uses a single backbone with weak/absent competing baselines and small gains, under-supporting the paper's broad generality claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A coherent, well-motivated framework undermined by insufficient statistical rigor, cherry-picked ablations, thin baselines, and overclaimed significance; borderline reject that could become acceptable with substantial added experiments."
+    }
+  },
+  "publishability_probability": 0.28
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper identifies and theoretically analyzes the 'PCC plateau' in attention-based regression — a phenomenon where PCC stops improving while MSE continues to decrease — and proposes Extrapolative Correlation Attention (ECA) with three theory-motivated components. The theoretical core is the paper's clear strength: the MSE decomposition, gradient bottleneck analysis, and the convex-hull PCC gain bound are rigorous and genuinely novel. However, the experimental evaluation is substantially underscoped relative to the claims: each real-world benchmark is evaluated against only one baseline, ablations are conducted only on UCI datasets, no statistical significance tests are reported, and a directly relevant body of literature (multiple-instance learning) is entirely absent. These gaps prevent a confident assessment of ECA's practical value beyond the specific architectures tested.",
+  "strengths": [
+    "The MSE–PCC decomposition (Proposition 2.1) and the resulting optimization-conflict analysis (Theorem 2.1, Corollaries 2.1–2.2) are mathematically clean and provide the first formal account of gradient attenuation in joint MSE+PCC training.",
+    "Theorem 2.2 (convex-hull PCC gain bound) is a non-trivial capacity result that applies to any convex aggregator, including softmax attention; the connection to in-sample homogeneity is both insightful and practically relevant.",
+    "Each of the three ECA components (SRA, DATS, DNPL) is directly motivated by a specific identified bottleneck, providing coherent theory-to-design traceability.",
+    "Experiments span four diverse domains (synthetic, tabular, spatial transcriptomics, multimodal sentiment), and the synthetic study carefully validates the theoretical predictions about homogeneity.",
+    "ECA is presented as a drop-in module that consistently improves PCC without degrading MSE, which is practically appealing."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Each real-world benchmark is compared against a single backbone baseline (FT-Transformer for UCI, EGN for transcriptomics, ALMT for MOSI). For pathology/spatial transcriptomics, the related Multiple Instance Learning (MIL) literature — ABMIL, TransMIL, DSMIL, etc. — directly addresses the setting (bag-level prediction from patch embeddings under within-bag homogeneity) and is completely omitted. Without these baselines, the claim that ECA is the right mechanism for homogeneous-sample regression cannot be assessed.",
+      "suggested_fix": "Add at least two representative MIL baselines to the spatial transcriptomics experiment, and add one additional attention-based regressor baseline to each of the other real-world settings."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Ablation studies (Table 1) are conducted only on UCI datasets. It is unclear whether DATS and SRA contribute on the high-homogeneity benchmarks (transcriptomics, MOSI) where they are most theoretically motivated.",
+      "suggested_fix": "Run component ablations (w/o SRA, w/o DATS, w/o DNPL) on at least the spatial transcriptomics and MOSI benchmarks and report the results."
+    },
+    {
+      "severity": "major",
+      "issue": "No statistical significance tests or confidence intervals are reported for any of the main results in Tables 1–3, and the UCI table contains a visibly truncated row for 'ECA (full)' (the Superconductivity MSE column is cut off as '7.9761.'). Many of the UCI improvements are small in magnitude (e.g., Online News PCC: 0.408→0.420, MAE 0.641→0.631) and could plausibly be within noise across different random seeds.",
+      "suggested_fix": "Report mean ± std over at least 3 random seeds for all tabular benchmarks, fix the truncated table entry, and, where sample sizes permit, report a paired t-test or Wilcoxon test."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical analysis is formally derived for a single-layer attention pooling architecture with a linear regression head. The paper claims applicability to 'deep architectures' and defers justification to Appendix Section E, which is unavailable in the main manuscript. The gradient bottleneck argument depends critically on the specific form of the Jacobian in Lemma 2.2, which does not hold for intermediate attention layers in a multi-layer Transformer.",
+      "suggested_fix": "Provide at least a sketch of the deep-architecture argument in the main body, explicitly characterize what additional assumptions are needed, and empirically test whether the plateau and its remedy persist in a ≥4-layer Transformer."
+    },
+    {
+      "severity": "major",
+      "issue": "Theorem 2.2 requires the condition R < σ0/‖w‖₂, but the paper never verifies this condition holds on any of the experimental datasets, nor discusses what happens when it is violated. Without this, the theorem's applicability to the empirical settings is unverified.",
+      "suggested_fix": "Report the empirical value of R/(σ0/‖w‖₂) on each benchmark to show the condition holds, or discuss the behavior of ECA when R ≥ σ0/‖w‖₂."
+    },
+    {
+      "severity": "minor",
+      "issue": "ECA introduces several new hyperparameters (Tmin, β for DATS; γmax and λγ for SRA; and the MLP architecture for γs) with no sensitivity analysis. It is unclear how much tuning is required to achieve the reported gains.",
+      "suggested_fix": "Add a hyperparameter sensitivity analysis (even a 2×2 grid on the most impactful parameters) and report the values used on each benchmark."
+    },
+    {
+      "severity": "minor",
+      "issue": "The related work section is unusually brief (~half a page) and does not engage with the multiple-instance learning literature, concurrent work on alternative aggregation mechanisms (e.g., set transformers, attention-based MIL), or methods that address attention collapse under near-uniform inputs (e.g., temperature scaling, label-aware attention).",
+      "suggested_fix": "Expand the related work to cover MIL aggregation methods, known approaches to attention collapse, and any existing work on correlation-based training objectives beyond the few citations currently present."
+    }
+  ],
+  "questions_for_authors": [
+    "Theorem 2.2 bounds the PCC gain for any convex aggregator relative to mean pooling, but the bound depends on R < σ0/‖w‖₂. Can you empirically report these quantities on each dataset and confirm the condition holds?",
+    "How does ECA compare to ABMIL, TransMIL, or other MIL attention mechanisms on the spatial transcriptomics task, where the bag-pooling framing directly overlaps?",
+    "The gradient bottleneck analysis is derived for a single-layer model. In the deep-architecture discussion (Appendix E), do you show that a similar attenuation occurs in intermediate attention layers, or is the argument restricted to the final pooling layer?",
+    "Table 1 appears to have a truncated entry for 'ECA (full)' on Superconductivity MSE. Can you confirm the full value and provide complete results?",
+    "DATS introduces two new hyperparameters (Tmin, β). Are these shared across datasets or tuned per dataset? How sensitive are the results to these values?",
+    "For MOSI, you compare ALMT, ALMT+LPCC, and ALMT+LPCC+ECA but not ALMT+ECA (without the explicit PCC loss). Is DNPL necessary for the ECA gains, or does SRA+DATS alone help?"
+  ],
+  "calibration_check": "The core theoretical claims are well-scoped and carefully qualified, but the paper's framing as a solution for 'attention-based regressors' broadly overclaims relative to an analysis that is formally derived for single-layer convex pooling, and the experimental improvements on some benchmarks (notably Online News) are modest enough that their significance is not established.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a real and underexplored phenomenon in biological and multimodal domains, but the scope of impact is moderate — primarily relevant to practitioners training attention-based regressors with joint MSE+PCC objectives rather than to the broader ICLR community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The theoretical decomposition of PCC plateau into optimization conflict and convex-hull capacity limit is genuinely new; the convex aggregator PCC gain bound (Theorem 2.2) has no clear prior analogue in the literature."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The mathematical derivations appear correct and are clearly structured, but key conditions (R < σ0/‖w‖₂ in Theorem 2.2; ρ ≥ 0 in Corollary 2.1) are not empirically verified, and the extension to deep networks is deferred entirely to an appendix."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No significance tests or confidence intervals are reported for any main result, the UCI table has a visibly truncated row, and many improvements are small enough that variance across seeds is necessary to rule out noise."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper is generally careful about what the theory proves, but the title and framing ('attention-based regressors') overreach the scope of the single-layer pooling analysis, and limitations of the approach (hyperparameter sensitivity, depth restriction) are not discussed."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The structure is logical and the theory is readable, but section numbering is inconsistent (2.3 jumps to 2.5, skipping 2.4), the notation is dense in places, and the contributions section has redundant formatting."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Theory, Method, Related Work, Experiments, Conclusion) and appears within normal ICLR length, though the related work section is disproportionately short."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Dataset sources, preprocessing steps, and evaluation protocols are described, but hyperparameter values for DATS (Tmin, β) and SRA (γmax, λγ) are only partially specified, and critical details like the MLP architecture for γs are vague."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The multiple-instance learning literature — directly relevant to the pathology application and to convex bag aggregation — is entirely absent, and the survey of softmax attention expressivity limits and correlation-based training is incomplete."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From the captions, Figure 5 (synthetic training curves across four homogeneity levels) and Figure 6 (per-fold PCC and MSE curves) are well-designed to support the theoretical claims; Figure 3 validating the gradient ratio bound is particularly on-point."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Each real-world benchmark uses only one baseline architecture, ablations are restricted to UCI, no MIL competitors are included for the pathology setting, and the claim of broad applicability to attention-based regressors is not supported across diverse backbone architectures."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A solid theoretical contribution with a well-motivated method, but the experimental evaluation is too narrow — single baselines per benchmark, missing ablations outside UCI, no significance tests, and absent MIL comparisons — to support acceptance in the current form."
+    }
+  },
+  "publishability_probability": 0.25
+}

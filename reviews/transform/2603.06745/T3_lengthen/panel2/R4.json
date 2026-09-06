@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation steering method that couples KV-cache key scaling with a plausibility-guided decoding loop and an attention-sensitivity layer ranking to mitigate oversteering. The empirical evaluation is broad (three benchmarks, four model scales, ablations, efficiency, LLM-judged quality/fidelity, and a compatibility study showing the plausibility filter helps other steering methods). The core idea is a sensible, well-executed combination of KV-cache steering with contrastive/plausibility decoding, with modest but real gains and honest acknowledgment of limitations; however, novelty is incremental, statistical rigor is limited (mostly greedy, few seeds/CIs), and one benchmark (GSM8K-Format) is author-designed.",
+  "strengths": [
+    "Addresses a real and well-motivated failure mode (oversteering) that is documented in the activation-steering literature, and the plausibility gate is a clean, general mechanism that is shown to also improve competing methods (PASTA, SpotLight), which strengthens the contribution beyond DIRECTER itself.",
+    "Comprehensive evaluation setup: IFEval, LIFBench (List/OD/MD), GSM8K-Format, Llama-3.1-8B main plus Llama-3.2-1B and Qwen-2.5 {3B,7B,14B}, with fixed α=100 and β=0.5 across tasks (no per-task tuning) — a stronger generalization claim than typical steering papers.",
+    "Ablations cover the important axes: fixed-strength variants (ST1–ST6), reversed ranking, random layers, random tokens, and hyperparameter/prompt robustness sweeps for β and α.",
+    "Reports practical costs (throughput, per-token latency, memory) and explicitly notes compatibility with FlashAttention, which attention-level interventions lack — this is a real deployment advantage.",
+    "Task-fidelity and text-quality evaluation (LLM-judged plus a mentioned human eval in appendix) directly addresses the standard critique of steering methods that they win instruction-adherence metrics by sacrificing task correctness."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin: main experiments use greedy decoding and Table 1 / Table 2 report point estimates without seeds, variance, or significance tests. Only Table 3's random-layer/random-token rows show ± ranges. Several of the reported gaps (e.g., DIRECTER 74.4 vs SpotLight* 74.9 on Qwen-7B, or 1B-scale 61.6 vs Zero-shot 61.3) are small enough that without variance estimates they cannot be distinguished from noise, undermining the 'consistent improvement' claim.",
+      "suggested_fix": "Report multiple seeds (or at least prompt-order/decoding-temperature variants) with mean±std and paired significance tests on IFEval/LIFBench. For results where the gap is <1 point, either strengthen the evidence or explicitly say the methods are comparable."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is an author-designed benchmark whose construction ('a formatting component inspired by Zhang et al. 2023') is only sketched in the body, yet it produces one of the paper's headline contrasts (PASTA*: 82.7→62.7 task drop vs. DIRECTER's balanced score). Without a precise specification and independent baselines on this benchmark, this comparison risks looking cherry-picked.",
+      "suggested_fix": "Move the full benchmark construction, prompt templates, verifier logic, and inter-annotator/verifier reliability into the main text or a clearly cited appendix section, and consider adding an existing external formatted-reasoning benchmark to corroborate the finding."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty framing is somewhat overstated. Plausibility-guided decoding (Li et al. 2022; Chuang et al. 2023 for DoLa) and layer-sensitivity ranking (inverting KV-cache quantization heuristics) both pre-exist; the contribution is largely their combination applied to KV-cache key scaling. The abstract's framing of 'a novel steering method' and 'general mechanism' should be more carefully calibrated against these precedents.",
+      "suggested_fix": "Explicitly delineate what is new (the coupling of progressive layer-count reduction with a plausibility rejection loop for KV-cache key scaling; the specific disturbance metric in Eq. 2) versus what is inherited, ideally in a short 'Novelty vs. prior work' paragraph in Related Work."
+    },
+    {
+      "severity": "minor",
+      "issue": "Quality/fidelity is judged by gpt-4o-mini, which is known to have length, style, and self-preference biases; the paper mentions a human eval only in appendix. Given that 'high task fidelity' is a headline claim, the strength of this evidence matters.",
+      "suggested_fix": "Bring key human-eval numbers into the main text alongside Table 4, and report agreement between LLM judge and human raters."
+    },
+    {
+      "severity": "minor",
+      "issue": "The plausibility gate's decision rule (Eq. 1 with top-1 vs. top-2 short-circuit) can silently fall back to the raw distribution; the paper does not report how often steering is actually applied per benchmark. Without this the improvement could be attributable to a small number of decisive tokens, which changes the interpretation of the mechanism.",
+      "suggested_fix": "Report the fraction of decoding steps where steering is (i) skipped by the gate, (ii) accepted, (iii) rejected at every layer count, per benchmark; correlate with accuracy gain."
+    },
+    {
+      "severity": "minor",
+      "issue": "Only two model families (Llama, Qwen) are tested; claims of being 'model-agnostic' are stronger than the evidence supports.",
+      "suggested_fix": "Either soften the model-agnostic wording or add at least one non-Llama/Qwen family (e.g., Mistral, Gemma)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Writing/typography quality is uneven — the extraction shows broken math spacing, mis-hyphenated words, and formulas that render ambiguously (e.g., the definition of pfinal branches on lines 7 and 17 in Algorithm 1). Some of this may be extraction artifact, but the algorithm listing as printed is hard to follow.",
+      "suggested_fix": "Do a careful pass on the algorithm listing and math; ensure Eqs. (1)–(3) render with clear subscripts and that the KV-cache scaling equation is unambiguous."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the acceptance rate of the plausibility gate on each benchmark, and what fraction of accepted interventions use the full layer set vs. progressively reduced sets? Does the gain concentrate on a small fraction of decoding steps?",
+    "Please provide seed/variance information for Tables 1 and 2. On rows where DIRECTER's improvement over SpotLight*/PASTA* is under ~1 point (e.g., LIFBench-OD, Qwen-7B), is the difference statistically significant?",
+    "How was GSM8K-Format constructed and verified, and how do PASTA/SpotLight (default and tuned) behave on it under a genuinely blind hyperparameter selection (i.e., not tuned on IFEval)?",
+    "Why does α behave as a near-no-op above ~10^2 (Figure 3b)? This suggests key scaling saturates the softmax and the effective control variable really is |L|; how does this reconcile with the claim that key scaling (vs. value scaling) is more effective in Appendix C.5?",
+    "The plausibility filter improves PASTA/SpotLight when added as a gate; how much of DIRECTER's headline advantage remains once other steering methods are paired with the same filter under equal tuning budgets?",
+    "How is the instruction span I identified in practice for benchmarks where task and instruction are not cleanly separable, and how sensitive is performance to span-detection noise beyond the 'random tokens' ablation?"
+  ],
+  "calibration_check": "Claims are mostly scoped to the evidence (e.g., 6.5% average gain, ~16% throughput cost, task-fidelity comparable to baselines), but the 'general mechanism' and 'model-agnostic' framings, and the novelty language in the abstract, are somewhat stronger than the two-family, greedy-decoding, single-run evaluation strictly supports.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A practically useful improvement over a real oversteering problem, with a modular plausibility gate that plausibly transfers to other steering methods — meaningful but incremental within the activation-steering subfield."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The individual components (KV-cache scaling, plausibility/contrastive decoding, layer sensitivity via input–output distance) exist in prior work; the contribution is a well-motivated combination plus the specific disturbance formulation in Eq. 2."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is clearly specified and ablations isolate the ranking, plausibility gate, and token selection, but the reliance on greedy decoding and a single primary configuration (α=100, β=0.5) limits how strongly the mechanistic claims are pinned down."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Most tables report single-run point estimates with no seeds, error bars, or significance tests; several reported gaps are small enough that variance information is essential and largely missing."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (no theoretical basis for the sensitivity metric, separable-task assumption) are stated, and Appendix pointers acknowledge tradeoffs; the main-text framing slightly overreaches on 'general mechanism' and 'model-agnostic'."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall structure and RQ framing are easy to follow, but Algorithm 1 as presented is muddled (mis-numbered/branched lines, ambiguous math), and several formulas are hard to parse due to formatting."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (Intro, Related Work, Method, Experiments with explicit RQs, Conclusion with Limitations) at conference-appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters (α, β), models, benchmarks, baseline configurations, and the sensitivity procedure are described well enough to attempt reproduction; however, GSM8K-Format construction and the automatic instruction-span detection lack sufficient main-text detail."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Discusses PASTA, SpotLight, contrastive/DoLa-style decoding, and prompting baselines fairly, but the positioning against contrastive/plausibility decoding as prior art could be sharper to delineate what is genuinely new."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative displays — plausibility-gate schematic, β/α robustness, compatibility bars, efficiency panels — that map directly to the claims; nothing appears purely decorative."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Two model families, four scales, three benchmarks, and multiple ablations provide reasonable breadth for a steering paper, but only two families and greedy-only decoding limit the 'model-agnostic, general-purpose' framing."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline-accept ICLR paper: solid empirical execution and a useful modular contribution, but incremental novelty and thin statistical treatment keep it from a clear accept."
+    }
+  },
+  "publishability_probability": 0.5
+}

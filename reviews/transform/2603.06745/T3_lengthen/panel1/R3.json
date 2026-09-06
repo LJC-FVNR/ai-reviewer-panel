@@ -1,0 +1,91 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation-steering method that scales instruction-token keys in the KV cache while a plausibility-guided decoding loop (comparing steered vs. raw next-token distributions) adaptively reduces the number of steered layers to prevent oversteering, with layers ordered by a one-time attention-sensitivity analysis. The empirical package is broad—three benchmarks, five model scales, ablations, efficiency analysis, and a nice result showing the plausibility filter improves PASTA/SpotLight as a drop-in safety gate. However, novelty is moderate (a combination of contrastive-decoding-style plausibility checks with KV steering), the headline gains over the best tuned baselines are modest (~4 points), and the main results lack any statistical treatment (no confidence intervals/bootstrap over test items, single deterministic runs).",
+  "strengths": [
+    "Addresses a real and well-motivated failure mode (oversteering) with a self-correcting, hyperparameter-light decoding loop, plus an efficient gating rule that provably skips unnecessary steered passes.",
+    "Broad empirical coverage: IFEval, LIFBench, and a new GSM8K-Format benchmark; generalization across Llama-3.2-1B, Llama-3.1-8B, and Qwen-2.5 3B/7B/14B; and efficiency measured (throughput/latency/memory).",
+    "The plausibility filter is shown to be modular—applied as a safety gate it rescues PASTA/SpotLight from oversteering—which elevates it from a single method to a more general mechanism.",
+    "Reasonably honest calibration: the authors admit alpha is not an effective fine-grained control knob, state the clean-span assumption as a limitation, and include both LLM-judge and (appendix) human evaluations of quality/fidelity."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Main results (Table 1, Table 2) report single numbers with no error bars, bootstrap confidence intervals, or significance tests, even though gains over the best tuned baselines are modest (e.g., All-Avg 76.5 vs. SpotLight* 72.1). Greedy decoding is deterministic, but variance over test-set composition and the gpt-4o-mini judge is real and unquantified, so it is unclear the improvements are statistically robust.",
+      "suggested_fix": "Add bootstrap CIs over test examples for each benchmark, report judge-variance for LIFBench/quality/fidelity, and run paired significance tests between DIRECTER and the strongest tuned baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "The mechanism raises interpretability questions: key scaling with alpha=100 (stable from 10^1 to 10^5) suggests the intervention saturates to 'attend almost entirely to instruction tokens' rather than providing graded strength, which undercuts the framing of 'modulating strength' and shifts all control onto the discrete layer count. It is unclear how much of the gain is simply the plausibility rejection loop vs. the specific KV-scaling steering primitive.",
+      "suggested_fix": "Add an ablation isolating the plausibility loop applied to a saturated/binary attention mask vs. the alpha-scaled KV cache, and analyze what fraction of decoding steps actually accept steering vs. revert to raw."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is incremental: the plausibility check is closely related to contrastive decoding (Li et al., 2022) and DoLa (Chuang et al., 2023), KV/attention steering is established (PASTA, SpotLight), and the sensitivity ranking is a modest addition. The paper combines these rather than introducing a fundamentally new primitive.",
+      "suggested_fix": "Sharpen the delineation from contrastive decoding/DoLa in Related Work and empirically contrast the acceptance criterion against a contrastive-decoding-style baseline to demonstrate the specific benefit of the layer-reduction rejection loop."
+    },
+    {
+      "severity": "minor",
+      "issue": "Task fidelity (~92%) and text-quality claims rest primarily on gpt-4o-mini as an automated judge; the corroborating human evaluation is deferred to the appendix and its scale/protocol is not visible in the body.",
+      "suggested_fix": "Summarize the human-eval protocol (annotator count, agreement, sample size) in the main text and report inter-annotator agreement alongside the judge scores."
+    }
+  ],
+  "questions_for_authors": [
+    "Given performance is flat across alpha in 10^1–10^5, does the KV key scaling effectively act as a hard instruction-attention mask? What does the acceptance rate of steered candidates look like per decoding step, and how often does the loop fall all the way back to the raw distribution?",
+    "Can you provide confidence intervals or paired significance tests for the Table 1/Table 2 margins over the best tuned baselines, so readers can judge whether ~4-point gains are robust?",
+    "How sensitive are results to the judge model? Do IFEval/GSM8K-Format (programmatically verified) and the LLM-judged LIFBench/fidelity metrics agree on the ranking of methods?",
+    "The GSM8K-Format benchmark is newly introduced—how are format and task accuracy defined and verified, and could its design inadvertently favor instruction-emphasizing methods?"
+  ],
+  "calibration_check": "Claims are mostly scoped to the evidence and limitations are stated, but the 'dynamically modulates steering strength' framing is somewhat overstated given alpha saturates and control reduces to a coarse discrete layer count.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Oversteering is a real, practically relevant problem and the method is deployable, but the improvements are moderate and confined to the instruction-following subfield."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The core idea combines established components (plausibility/contrastive decoding, KV/attention steering) with a modest sensitivity-ranking addition rather than introducing a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is sound and ablations isolate layer-ranking, random-layer, and random-token variants, but the mechanistic account (alpha saturation) leaves the true source of gains partly unexplained."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report single deterministic numbers with no CIs or significance tests; only the random-layer/token ablations include std, leaving modest margins statistically unverified."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (clean-span assumption, non-theoretical metric, alpha not being fine-grained) are stated plainly, though 'strength modulation' framing slightly overstates the graded nature of the control."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method, algorithm, and research questions are laid out clearly, though the notation-heavy formulation and disturbance-score definition require careful reading."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows standard conference structure (abstract, intro, related work, method, experiments, conclusion, limitations) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Algorithm, key hyperparameters (alpha=100, beta=0.5), models, and decoding settings are specified, though several important details (sensitivity metric simplification, GSM8K-Format construction) are relegated to appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "PASTA, SpotLight, and steering-vector lineage are discussed and contrasted, but the close relationship to contrastive decoding/DoLa is underplayed relative to its importance to the method."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting comparisons (fixed-strength ablation, compatibility, robustness, efficiency), adequately conveying the intended evidence."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Multiple benchmarks, model families/scales, and a compatibility study support reasonable generality, but evaluation is limited to English instruction-following with cleanly separable spans."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, broad empirical study on a real problem that sits at the borderline: solid engineering and useful compatibility results, held back by moderate novelty, modest margins, and absent statistical treatment."
+    }
+  },
+  "publishability_probability": 0.38
+}

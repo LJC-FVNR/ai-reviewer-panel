@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes Neighbor Distance Minimization (NDM), an unsupervised method for decomposing neural-network representation spaces into interpretable, non-basis-aligned subspaces by optimizing an orthogonal rotation to concentrate nearest-neighbor distances within subspaces. The core idea is well-motivated through the mutual-exclusiveness / superposition lens, the GPT-2 circuit evaluation is a meaningful contribution, and qualitative results via preimage analysis are illuminating. However, the paper has a critical omission—no comparison to Independent Component Analysis (ICA) or related independence-maximizing decompositions, which are the natural classical baselines—and the experimental protocol has statistical-soundness problems (no error bars, seeds, or significance tests, and an ambiguous best-hyperparameter selection that may constitute test-set tuning). Scalability to 2B models is suggestive but essentially qualitative.",
+  "strengths": [
+    "Genuinely novel unsupervised objective: NDM does not require the labeled counterfactual pairs needed by DAS/Geiger et al., making it the first method to discover subspaces from raw activations alone.",
+    "The mutual-exclusiveness motivation for feature-group structure is insightful and extends the superposition literature (Elhage et al., 2022; Engels et al., 2024) in a natural direction.",
+    "Quantitative evaluation on five known GPT-2 circuits using subspace interchange intervention (Gini coefficient of patching effect) is a principled, non-trivial test suite that goes beyond qualitative storytelling.",
+    "The MI-guided merging procedure for determining the dimension configuration is a pragmatic solution to what is otherwise an underdetermined combinatorial problem.",
+    "Limitations are stated honestly: coarse granularity (≥32-dim subspaces), reliance on Linear Representation Hypothesis, uninterpretable small subspaces."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No comparison to Independent Component Analysis (ICA) or RICA. NDM's stated goal—finding a rotation that makes subspaces statistically independent—is precisely the objective of ICA (maximizing non-Gaussianity as a proxy for independence) and its variants. Without this baseline the central empirical claim ('NDM outperforms unsupervised alternatives') cannot be evaluated fairly.",
+      "suggested_fix": "Add ICA (e.g., FastICA, RICA) as a baseline in Table 1 using the same subspace configuration as NDM. Report whether NDM's advantage persists; if ICA performs comparably, the contribution shifts from algorithmic to motivational/framing."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Results are reported as single-run point estimates with no standard deviations, confidence intervals, or seed variation. For a method whose objective is non-convex (orthogonal matrix optimization with a greedy merging heuristic), variance across runs is unknown and potentially large.",
+      "suggested_fix": "Report mean ± std over at least 5 random seeds for all Table 1 entries. For NDM, additionally vary the MI threshold and report sensitivity."
+    },
+    {
+      "severity": "major",
+      "issue": "The phrase 'Results of NDM using the best hyperparameters' (Sec. 5.1) is ambiguous: if hyperparameters were selected by maximizing performance on the same 5 test circuits used for reporting, this is test-set tuning and inflates reported numbers.",
+      "suggested_fix": "Clarify explicitly whether hyperparameter selection was done on held-out circuits, on the toy-model setting, or on the test circuits themselves. If the latter, move hyperparameter selection to a validation split or report results for all hyperparameter settings."
+    },
+    {
+      "severity": "major",
+      "issue": "The Gini-coefficient threshold of 0.6 (from App. D.4) for 'satisfactory' concentration is calibrated informally on a handful of visual examples. NDM itself falls below this threshold in two of the five tests (Test 4: 0.50, Test 5: 0.38 on the '-' column), yet the paper presents the overall average as strong evidence.",
+      "suggested_fix": "Provide a principled calibration of the threshold (e.g., using the supervised DAS upper bound or a known-correct partition from the toy model). Discuss per-test failures explicitly rather than averaging over them."
+    },
+    {
+      "severity": "major",
+      "issue": "Scalability evidence for 2B models (Sec. 5.3) is not matched by a rigorous circuit-based test suite analogous to Table 1. The knowledge-conflict experiment is suggestive but lacks baseline comparisons on the primary metric and has acknowledged unknown-circuit caveats that are deferred to the appendix.",
+      "suggested_fix": "Either add a quantitative comparison to the same baselines as Table 1 for the 2B models, or scope the claim in the abstract/introduction to 'promising preliminary evidence' rather than 'scalability.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "The theoretical connection between NDM and total-correlation minimization is described as 'loosely speaking' and deferred to Appendix B.1. The argument (neighbor distance ≈ entropy, entropy is rotation-invariant, so total correlation decreases) is heuristic and could be wrong when the data distribution is highly non-uniform.",
+      "suggested_fix": "Either provide a formal bound or be explicit in the main text that this is an intuitive motivation, not a proved guarantee."
+    },
+    {
+      "severity": "minor",
+      "issue": "The qualitative evaluation (Sec. 5.2) relies heavily on InversionView ([Author] et al., 2024b), a presumably self-authored prior tool, without a self-contained description of what it computes. Readers cannot assess the reliability of the interpretability claims without understanding this tool.",
+      "suggested_fix": "Add a brief (3–5 sentence) description of InversionView mechanics in the main paper so the qualitative results are self-contained."
+    }
+  ],
+  "questions_for_authors": [
+    "How does NDM compare to FastICA or RICA applied to the same residual-stream activations? Since ICA directly minimizes statistical dependence between components, it is the canonical unsupervised baseline for this task.",
+    "Were the hyperparameters (MI threshold, number of initial subspaces, distance metric) selected on the five GPT-2 test circuits reported in Table 1, or on held-out data? Please describe the selection procedure precisely.",
+    "For Tests 4 and 5 in Table 1, where NDM falls below the 0.6 satisfactory threshold, what is the qualitative diagnosis? Is the subspace found by NDM genuinely wrong, or is the limitation in the evaluation metric/counterfactual design?",
+    "The 2B-model experiments patch 'all activations across token positions for a single subspace.' Have you verified that position-uniform patching does not confound results when the relevant circuit is position-specific?",
+    "The merging criterion uses MI normalized by sum of dimensions (footnote 3). How sensitive are results to this normalization and the MI threshold? Is there a principled way to set these, or are they tuned per model/layer?"
+  ],
+  "calibration_check": "Claims are generally scoped appropriately for qualitative findings and toy results, but the abstract and introduction overstate the scalability evidence for 2B models and the quantitative GPT-2 results are presented without acknowledging the below-threshold failures in Tests 4 and 5.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Unsupervised subspace decomposition that produces interpretable, circuit-aligned partitions would be a practically useful tool for mechanistic interpretability, a field ICLR actively covers, though impact depends on how it holds up against ICA-style baselines."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The NDM objective (nearest-neighbor distance minimization under orthogonal constraint) is a genuinely new unsupervised formulation for subspace discovery in neural representations, distinct from both DAS (supervised) and SAE-based methods, though its relationship to ICA needs explicit treatment."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The toy-model validation is careful and the GPT-2 test suite is well-designed, but the missing ICA baseline, ambiguous hyperparameter selection protocol, and absence of error quantification introduce significant methodological gaps."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "All Table 1 results appear to be single-run point estimates; no seeds, error bars, or significance tests are reported for any experiment, which is insufficient for a non-convex optimization method."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper honestly states limitations (coarse granularity, reliance on LRH, uninterpretable small subspaces, unknown circuits for 2B models) and qualifies scalability claims, though some averaging over below-threshold results mildly overstates the GPT-2 findings."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level motivation and method intuition are explained clearly, but the formal optimization (Equations 2–4 as extracted) has notation issues and the dimension-configuration search algorithm references Algorithm 1 and multiple appendix sections rather than being self-contained."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed and the paper fits within typical ICLR length; the decision to relegate most ablations and algorithm details to appendices is reasonable."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The algorithm is described at a conceptual level with appendix details, KSG estimator and Pytorch parametrization are cited, and hyperparameters are stated to be in the appendix, but the ambiguous hyperparameter-selection protocol and absent code/checkpoints (beyond the anonymized link) leave reproducibility uncertain."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of subspace-based interpretability (DAS, SAE-variants, superposition work) is good, but ICA, RICA, and classical representation factorization literature (the most directly competing family of methods) are entirely absent from both related work and baselines."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions are detailed and informative: Figure 1 illustrates both the toy-model result and the NDM geometric intuition, Figure 3 concretely demonstrates per-subspace preimage interpretability, and Figure 5 clearly shows the differential patching effect for the 2B experiments."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Rigorous quantitative evaluation is limited to GPT-2 Small on five circuits; the 2B model experiments are suggestive but lack the circuit-based test suite and baseline comparisons needed to support a generality claim, and no vision or non-language models are tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper has a solid novel idea and promising preliminary results, but the missing ICA baseline and single-run statistics are substantive gaps that must be addressed before the central empirical claims can be considered established at ICLR standards."
+    }
+  },
+  "publishability_probability": 0.22
+}

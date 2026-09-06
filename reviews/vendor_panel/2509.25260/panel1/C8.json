@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a VQ-VAE-based pipeline that compresses collections of transformer hidden states into discrete codes and uses count-based mutual information between those codes to characterize two facets of 'planning' in decoder-only LMs (planning horizon and branch awareness), plus a diagnostic on where next-token information lives across layers and prefix blocks. The framework is a sensible, automated alternative to probing, and the authors are commendably explicit that nMI is only meaningful in relative, within-setting comparisons. However, the two headline planning claims are confounded by task determinism and lack the controls needed to separate 'the model plans ahead' from 'the prompt already determines the continuation'; the evidence base is limited to small from-scratch models on two synthetic tasks (natural language is used only for the layer/block diagnostic), statistical reporting is thin, and the paper contradicts itself on whether MTP changes anything. Promising infrastructure, but the causal/interpretive claims need substantially more evidence before this clears the ICLR bar.",
+  "strengths": [
+    "The core methodological idea — replace trained probes with a learned discrete bottleneck and estimate MI between codes — is a clean response to well-documented probing pathologies (probe capacity confounds, superficial cues, features the model does not use), and the paper argues this motivation carefully rather than asserting it.",
+    "The authors are unusually careful about the interpretability of their own metric: they explicitly disclaim absolute nMI values, give three concrete reasons why absolute values are meaningless (alphabet-size bound, information lost to coarse-graining, relative-comparison-only research questions), and scope all claims to within-setting trends.",
+    "The path-finding task design is thoughtful for the branch-awareness question: two correct paths and a node-disjoint decoy, with edges listed in random order to block positional shortcuts, so trivial token overlap is ruled out as an explanation of the MI ratio.",
+    "The pipeline is validated in more than one direction (App. A.1 reconstruction quality and codebook similarity, App. A.4 recovery of a known underlying distribution, App. E finite-sample error and a bias-corrected MI estimator, App. D.2 a diagnostic of probing confounds), which is more self-scrutiny than most interpretability submissions offer.",
+    "Section 3.3's conditional nMI analysis (nMI between earlier positions in the most recent block and the decision state, conditioned on the final prefix position) is a genuinely good control: it shows the block-level recency effect is mostly attributable to position T rather than to the block as a whole."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central 'forward-looking' result does not separate planning from task determinism. The decision states h^L_{T+tau} are produced by the model from the prefix, so MI between the prefix computation code and later decision-state codes is high whenever the continuation is nearly determined by the prompt, regardless of whether any 'plan' is computed. Path-finding continuations are essentially determined by the graph (a unique or near-unique path), while CFG continuations are genuinely stochastic — which alone predicts the reported contrast (fast nMI decay on CFG, sustained/rising nMI on PF) with no appeal to planning. The paper's stated conclusion ('the effective planning horizon is task-dependent') is therefore not distinguished from 'continuation entropy is task-dependent'.",
+      "suggested_fix": "Add controls that hold the target distribution fixed while varying the computation: (a) a randomly-initialized / untrained LM of identical architecture run on identical prompts, (b) an 'input-only' reference that measures MI between a code of the raw prompt tokens (no LM computation) and the same decision-state codes, and (c) CFG variants with tightened long-range constraints so continuation entropy is matched to PF. Planning claims should be stated as the gap between the trained model and these references, not as raw nMI decay profiles."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The branch-awareness ratio I(Z_H; Z_alt)/I(Z_H; Z_decoy) > 1 admits a trivial explanation the paper does not exclude. The alternative correct path is, by construction, the set of nodes connecting the fixed start and goal, so it is far more predictable from the prompt's edge list than an arbitrary node-disjoint decoy; any encoder that represents the graph at all would show this asymmetry, whether or not the model 'keeps branches alive'. Additionally the ratio is a ratio of unnormalized MIs between targets whose marginal code entropies H(Z_alt) and H(Z_decoy) are not reported or matched, so the numerator and denominator are not on comparable scales.",
+      "suggested_fix": "Report H(Z_alt) and H(Z_decoy) and use a normalized quantity (e.g., MI divided by target entropy, or conditional MI given the prompt encoding). Add an untrained-model and a prompt-encoding-only reference for the same ratio, and construct decoys that are equally constrained (e.g., a second start-goal path in a disconnected copy of the graph, or a path of equal length between two other fixed endpoints) so that predictability is matched and only 'is it a valid answer to this query' differs."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is insufficient for the size of the reported effects. 'We report results from multiple seeds' never states how many; Figure 3's caption describes trends without mentioning error bars; Table 1 gives mean ± std but no seed count, no confidence intervals, and no test that the ratio exceeds 1 (PF-Long ratios of 1.45 and 1.82 are the load-bearing numbers for the 'attenuated but persistent branch information' claim, and count-based MI estimators are upward-biased, so a value near 1 needs a null distribution). No sample sizes for the co-occurrence counts appear in the main text, despite bias of the plug-in estimator scaling with alphabet size over sample size.",
+      "suggested_fix": "State the number of seeds and the number of samples used for each MI estimate; show error bars on all nMI curves; and add a permutation/shuffled-pairing null for every claim of the form 'MI is above zero' or 'ratio is above one', reporting the bias-corrected estimator from App. E in the main text rather than the appendix."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper contradicts itself on the NTP-vs-MTP question, which is one of the two questions posed in the introduction. Section 1 states 'Training with MTP loss modestly reduces purely myopic behavior' and Section 3.1 reads a 'slightly slower decay' and a 'slightly more uniform' nMI profile as explanatory of MTP's higher accuracy, while the conclusion states 'we find no consistent differences between NTP- and MTP-trained models' and then immediately says planning 'vary[s] with the task and training objective'. Table 1 further shows MTP with both a lower ratio and lower accuracy on PF-Short, the opposite of the trend claimed for PF-Long.",
+      "suggested_fix": "Settle on one evidence-supported statement. Given the data shown, the defensible claim is that MTP produces no consistent effect on the measured quantities; remove the 'reduces myopic behavior' framing from the introduction, remove the causal reading of 'slightly slower decay', and reconcile the PF-Short and PF-Long directions explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is under-supported relative to what is claimed. The horizon and branch-awareness analyses use only architecture-matched GPT-3-Small-sized models trained from scratch on two synthetic tasks; the only natural-language experiment is an 8-layer model on OpenWebText used exclusively for the Section 3.3 diagnostic. Yet the abstract says the framework is used to 'study planning in LMs across synthetic grammar, path-finding tasks, and natural language datasets, focusing on two planning properties', which reads as if horizon and branching were measured on natural text. No pretrained public LM (GPT-2, Pythia, Llama) is analyzed anywhere, so nothing licenses conclusions about 'language models' as deployed.",
+      "suggested_fix": "Either run the horizon analysis (and, where feasible, a branching analogue) on OpenWebText and on at least one off-the-shelf pretrained LM, or rewrite the abstract, introduction, and conclusion to scope all planning claims to small models trained from scratch on synthetic tasks."
+    },
+    {
+      "severity": "major",
+      "issue": "The MI values are properties of the jointly-chosen (LM, VQ-VAE) pair, and the paper does not show that conclusions are stable under that choice. A separate VQ-VAE is trained per family of index sets, with an objective (reconstruction + VQ + cosine diversity + entropy) that is unrelated to planning; codebook size K, latent dimension, and the loss weights lambda_q / lambda_cos / lambda_ent never appear in the main text. Because MI between codes is bounded by log K and depends on what the compressor happens to preserve, cross-figure and cross-tau comparisons could shift with these settings.",
+      "suggested_fix": "Add a sensitivity study sweeping K (and the regularizer weights) showing the qualitative trends — CFG decay, PF persistence, ratio > 1, layer/block recency — are invariant, and report the main hyperparameters and codebook utilization in the main text."
+    },
+    {
+      "severity": "minor",
+      "issue": "Section 3.3's findings largely reproduce known results (last-layer concentration is noted as 'aligned with the results of Pal et al.', and recency is unsurprising), and the section is framed as a diagnostic that 'does not tell us how to improve the model', so it adds limited new knowledge. Prior work showing a single hidden state carries multi-future-token information (Pal et al.; Wu et al.) is cited as related but never used as a methodological point of comparison for the horizon analysis.",
+      "suggested_fix": "Compare the horizon result quantitatively against a Future-Lens-style probing readout on the same models and prompts, so the reader can see what the MI framework reveals that existing methods do not, and state plainly which parts of Section 3.3 are confirmatory."
+    },
+    {
+      "severity": "minor",
+      "issue": "There is no dedicated limitations discussion; the acknowledgment that the approach 'can only capture aggregate phenomena' is buried in the related-work paragraph, and the confounds above are not raised at all. Prose also has several errors that impede reading ('Then, we using the empirical joint and marginal distributions'), and the interpretive story for the PF-Short result that the model 'work[s] backwards from the goal' is offered as 'a likely explanation' with no test.",
+      "suggested_fix": "Add an explicit limitations subsection covering encoder-dependence, determinism confounds, model scale, and aggregate-only interpretation; either test the backward-solving hypothesis (e.g., by ablating goal-token information or varying goal predictability) or mark it clearly as speculation."
+    }
+  ],
+  "questions_for_authors": [
+    "How do the nMI-vs-tau curves look for a randomly initialized model of the same architecture on the same prompts? If an untrained model also shows sustained nMI on PF and fast decay on CFG, what remains of the planning interpretation?",
+    "What is the entropy of the decision-state codes H(Z^L_{T+tau}) as a function of tau in each task? Since MI is bounded by this entropy, how much of the CFG-vs-PF contrast is a difference in target entropy rather than in prefix computation?",
+    "How many seeds underlie 'multiple seeds', and how many samples are used per MI estimate? What is the plug-in estimator's bias at those sample sizes given the codebook size K?",
+    "What are H(Z_alt) and H(Z_decoy)? If the decoy code distribution is higher-entropy or less prompt-predictable than the alternative-path code distribution, does the ratio survive normalization?",
+    "Under a permutation null (shuffling the pairing between prefixes and alternative/decoy paths), what ratio would be observed? Is the PF-Long value of 1.45 significantly above that null?",
+    "How sensitive are all reported trends to codebook size K and to the cosine/entropy regularizer weights?",
+    "Do the authors intend the claim 'Training with MTP loss modestly reduces purely myopic behavior' (Section 1) or 'no consistent differences between NTP- and MTP-trained models' (Conclusion)? Which is supported by the data, given that MTP has the lower ratio and lower accuracy on PF-Short?",
+    "Can the horizon and branching analyses be run on an off-the-shelf pretrained LM, or is the pipeline's VQ-VAE training cost prohibitive at that scale?"
+  ],
+  "calibration_check": "Scoping is genuinely careful in places — nMI is explicitly declared relative-only and the authors disclaim MI as a direct planning measure — but the headline interpretations ('models implicitly preserve information about unused correct continuations', 'effective planning horizon is task-dependent') are stated more strongly than controls permit, the abstract implies planning analyses on natural language that were not performed, and the MTP conclusion contradicts the introduction.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The questions (how far ahead do LMs compute, do they retain alternatives) matter to the interpretability community and the pipeline could be reused, but the concrete findings are modest, partly confirmatory of prior probing work, and demonstrated only on small from-scratch models on synthetic tasks, so few researchers would change practice on this basis."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Using a discrete bottleneck to make MI estimation tractable over hidden states is a sensible but not new idea, and VQ-VAE plus plug-in MI is an assembly of standard components; the originality lies mainly in aiming this machinery at horizon and branch-awareness questions rather than in the machinery itself."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The claim-evidence link is broken at the key step: MI between prefix computation and later decision states is high whenever continuations are prompt-determined, and neither an untrained-model reference nor an input-only reference is provided to isolate 'planning', while the branch-awareness ratio is equally consistent with the alternative path simply being more predictable from the edge list than a disjoint decoy."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Seed count and MI sample sizes are never stated, error bars appear only in Table 1, no significance test or permutation null is applied to the load-bearing 'ratio > 1' claims (PF-Long ratio 1.45), and the bias-corrected estimator that would matter most for plug-in MI is relegated to an appendix."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Credit is due for explicitly refusing absolute-nMI interpretations and confining claims to within-setting trends, but this is offset by an abstract that implies planning analyses on natural language that were not run, an introduction-versus-conclusion contradiction on MTP, an untested backward-solving narrative, and no limitations section acknowledging the encoder-dependence and determinism confounds."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The motivation, the three research questions, and the three pipeline steps are laid out in a logical order and the method is precisely enough specified to follow, though the notation for index sets and code variables is heavy and several sentences are ungrammatical or garbled."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference organization (abstract, introduction with an integrated related-work paragraph, method, three experimental subsections, conclusion) at appropriate length, with a reasonable division between main text and appendices, marred only by the absence of a limitations section and by validation results all living in appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model architecture (GPT-3 Small with RoPE, 8-layer for OpenWebText), datasets, MTP implementation (Gloeckle et al. shared trunk with separate heads), block-partitioning scheme, and the four-term VQ-VAE objective are described well enough to rebuild in outline, but the main text omits codebook size, latent dimension, loss weights, seed count, and the sample sizes used for MI estimation, all of which directly affect the reported numbers."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The critique of probing is well-sourced and fair, and both mechanistic and information-theoretic lines are represented, but prior work most directly overlapping the horizon question (multi-future-token information in single hidden states) is cited only as context rather than compared against, and information-theoretic probing alternatives such as MDL or V-information are mentioned without being run as baselines in the main text."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that map directly onto the claims — Figure 1 walks through the three pipeline steps, Figure 2 defines the experimental variables and gives a concrete PF prompt, Figure 3 contrasts CFG decay against PF persistence, and Figure 4 pairs the layer/block heatmaps with the conditional-nMI control — but Figure 3's caption gives no indication of error bars or seed spread, and Table 1 reports std without seed counts or a null reference for the ratio."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Conclusions about 'planning in LMs' rest on two synthetic tasks with ~125M-parameter models trained from scratch (one 0.3B appendix check on CFG only), with natural language entering solely through the Section 3.3 diagnostic and no pretrained public LM examined anywhere, and the essential baselines (untrained model, prompt-only encoding, entropy-matched controls) are absent."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A well-motivated and honestly-framed measurement pipeline whose two headline planning conclusions are not yet separated from simpler explanations (continuation determinism, target predictability), with thin statistical reporting and a narrow empirical base; borderline reject as submitted, but repairable with the controls and scoping described above."
+    }
+  },
+  "publishability_probability": 0.2
+}

@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that actively intervenes on frozen MLLM internals via a gradient-free representational separability analysis (RSA) to identify 'latent anomaly experts' (LAEs) and a lightweight hierarchical meta-controller (HMC) that applies anisotropic feature scaling conditioned on global context. The geometric framing is well-motivated and the stability results (identical LAEs across all 10 seeds) are genuinely impressive. However, performance improvements over the closest tuning-free competitor are marginal (+0.43% AUC, +0.87% AP) with no statistical significance testing in the main comparison table, evaluation is limited to one backbone and two datasets, and the core scaling operation is closely related to prior conditional feature modulation methods (e.g., FiLM) without adequate differentiation.",
+  "strengths": [
+    "The manifold-geometric framing of pre-training bias and contextual ambiguity is conceptually clean and provides a coherent narrative tying motivation to method.",
+    "Exceptional calibration stability: the same four attention heads are selected across all 10 independent seed runs, strongly supporting the claim that LAEs reflect intrinsic model circuits rather than calibration artifacts.",
+    "Data efficiency is well-documented: Table 4 shows asymptotic AUC saturation from 1% to 100% calibration data, with only +0.27% gain despite a 49× increase in training time, constituting a convincing practical argument.",
+    "The ablation table (Table 2, Parts A and B) is comprehensive and cleanly isolates each component — GSG, LGM, steering type, and head selection strategy — with monotonically informative deltas.",
+    "The HMC architecture is appropriately minimal (low-rank adapters + small MLP) given the tiny calibration set, and the logistic regression scorer guards against overfitting with only 1% data."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No statistical significance testing in the main comparison table. The margin over the nearest tuning-free competitors is +0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence over the anonymized HiProbeVAD. Table 3 reports σ≈0.04% across seeds for SteerVAD itself, but does NOT report variance for competing methods; it is entirely possible that the claimed improvement lies within the noise of competing methods.",
+      "suggested_fix": "Report mean ± std across at least 5 seeds for all tuning-free methods that involve training (VERA, HiProbeVAD, SteerVAD), and perform a one-sided Wilcoxon or t-test against the top competitor. Alternatively, include confidence intervals on AUC/AP estimated via bootstrap over the test set."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Single-backbone evaluation. The entire empirical claim rests on InternVL3. It is unclear whether RSA identifies stable LAEs for other MLLMs (LLaVA-1.5 and VERA already use an ∼8B ViT+LLM model that could serve as a second backbone), whether HMC converges on different internal geometries, or whether the performance gains are specific to InternVL3's architecture.",
+      "suggested_fix": "Reproduce the core results on at least one additional MLLM backbone (e.g., the LLaVA-1.5 baseline already in Table 1) to demonstrate that the framework is not an InternVL3-specific artifact."
+    },
+    {
+      "severity": "major",
+      "issue": "The anisotropic manifold scaling h'_i = h_i ⊙ (1 + s_global · g_i) is mathematically equivalent to a conditional feature-wise affine transformation (FiLM, Perez et al. 2018) with a global scalar gate. The paper does not cite or differentiate from FiLM, conditional batch normalisation, or the family of channel-attention / squeeze-excitation mechanisms. Calling this 'manifold rectification' without engagement with these established precedents overstates novelty.",
+      "suggested_fix": "Add a paragraph in Related Work explicitly positioning the anisotropic scaling within the FiLM/SENet/conditional-modulation family. Argue why the specific composition (global gate × low-rank dense vector, residual form, frozen backbone setting) constitutes a distinct contribution rather than a straightforward application."
+    },
+    {
+      "severity": "major",
+      "issue": "The RSA separability metric SRSA is the Fisher linear discriminant criterion (between-class distance squared / sum of within-class variances), applied head-wise. This is a well-known metric; the paper does not acknowledge this lineage or compare RSA to simply selecting heads by Fisher score vs. alternative interpretability-based head importance metrics (e.g., gradient-based head attribution, probing accuracy).",
+      "suggested_fix": "Acknowledge the Fisher discriminant basis and include at least one additional head-selection baseline, e.g., selecting heads by held-out linear probing accuracy on the 1% calibration set, to strengthen the claim that the gradient-free scatter ratio is specifically better."
+    },
+    {
+      "severity": "major",
+      "issue": "Evaluation covers only two datasets (UCF-Crime and XD-Violence). Both are weak-supervision (video-level labels) surveillance/activity benchmarks. There is no evaluation on scene-anomaly benchmarks (e.g., CUHK Avenue, ShanghaiTech) or industrial benchmarks (e.g., MVTec-AD video). The breadth of the claim 'powerful new direction for video anomaly detection' is not supported by the evidence.",
+      "suggested_fix": "Add at least one evaluation on a third benchmark from a different domain (e.g., ShanghaiTech for unsupervised or a different dataset type), or narrow the abstract/conclusion claims to 'weakly-supervised VAD on surveillance/activity datasets'."
+    },
+    {
+      "severity": "minor",
+      "issue": "The choice of 'the final hidden state corresponding to the first generated token' as the global context vector c is stated but not justified. In auto-regressive MLLMs the first generated token's hidden state is architecture-specific and may encode BoS or system-prompt semantics rather than video semantics.",
+      "suggested_fix": "Provide an ablation comparing this token choice to, e.g., an average of visual patch tokens or the last video token, and justify the choice empirically."
+    },
+    {
+      "severity": "minor",
+      "issue": "The regularization term Lreg (Eq. 8) penalises s_global on normal samples but has no ablation in Table 2. Given the paper's otherwise comprehensive ablation, this gap is notable.",
+      "suggested_fix": "Add a row to Table 2 (Part A) for 'w/o Lreg' to verify its contribution."
+    },
+    {
+      "severity": "minor",
+      "issue": "The number of trainable parameters in the HMC (adapters + MLP + scorer) is never reported, making it impossible to compare parameter counts fairly against VERA and HiProbeVAD, which are listed in the same 'Few-Parameter Learning' category.",
+      "suggested_fix": "Report exact trainable parameter counts for SteerVAD, VERA, and HiProbeVAD in Table 1 or a separate table."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 1 contains an entry '[Author] et al., 2025' for HiProbeVAD, which appears to be an anonymized self-citation. Can you confirm the relationship between SteerVAD and HiProbeVAD, and clarify why the +0.43% AUC improvement over what may be a concurrent version of your own framework constitutes the main SOTA claim?",
+    "The anisotropic scaling in Eq. (4) can be written as h'_i = h_i + (s_global · g_i) ⊙ h_i, which is a residual additive update where the added term is itself element-wise gated. How does this differ fundamentally from FiLM conditioning (h' = γ ⊙ h + β) or squeeze-excitation channel recalibration? What is the specific geometric property that the residual (1 + …) form provides that an affine form does not?",
+    "UMAP in Figure 2 shows the raw InternVL3 features as two overlapping clouds. Given that your 'Linear Probing' baseline (Table 2) already achieves 81.33% AUC on frozen LAE features without any rectification, is the representational entanglement in Figure 2 from ALL heads combined, or specifically from the LAE heads? If the LAE heads are already separable (as the RSA metric implies), the visualisation may conflate the pre-selection and post-rectification effects.",
+    "Table 4 shows that 1% calibration (~16 videos) and 100% calibration differ by only 0.27% AUC. However, the calibration set is randomly sampled, so 16 videos may systematically underrepresent rare anomaly categories. Did you verify that each of the 13 UCF-Crime anomaly types is represented at 1% sampling, and if not, what is the performance on underrepresented categories?",
+    "Inference latency and memory overhead versus tuning-free baselines (LAVAD, EventVAD, VERA) are not reported. The HMC adds K parallel adapter networks applied at LAE outputs. What is the wall-clock per-video inference time relative to bare InternVL3 inference?"
+  ],
+  "calibration_check": "The paper's SOTA claims are scoped to tuning-free methods and are factually accurate per Table 1, but the margins are very small (+0.43% AUC) and lack significance testing, making 'establishes it as a powerful new direction' in the abstract overclaimed relative to the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Advancing tuning-free VAD with a data-efficient geometric intervention is a meaningful contribution to the subfield, but the empirical gains are narrow and the backbone/dataset coverage insufficient to establish broad significance."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The manifold-geometric framing applied to frozen MLLM internals for VAD is original in its synthesis, but the RSA metric is the Fisher criterion in head space and the anisotropic scaling is a conditional FiLM-like modulation; neither component is independently novel and the paper does not engage with these precedents."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Within-paper ablations are well-designed and the stability analysis across 10 seeds is rigorous, but the absence of significance testing for the main cross-method comparison and the single-backbone, two-dataset scope leave core claims insufficiently supported."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Table 3 demonstrates excellent internal stability (σ≈0.04%) but the main comparison table reports single-point estimates with no variance for any method, making it impossible to assess whether the claimed improvements are statistically real given the small margins."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The SOTA framing is narrowly accurate (tuning-free category) but the abstract's 'powerful new direction' language overreaches given a +0.43% UCF-Crime AUC improvement over the nearest competitor; limitations regarding single backbone and dataset scope are not acknowledged."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized, the geometric motivation is explained accessibly, and the component descriptions are precise; some metaphor overloading ('manifold rectification', 'geometric intervention') slightly obscures the connection to simpler conditional modulation literature."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed correctly with appropriate section ordering and length; the appendix references (A, B, G) for proofs, implementation details, and additional visualisations suggest a complete submission."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Hyperparameters, optimizer, training duration, GPU, calibration protocol, and feature extraction procedure are all specified; the missing elements are exact trainable parameter counts and the content of referenced appendices that could not be evaluated."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Traditional VAD and MLLM-based VAD are adequately surveyed, but the mechanistic interpretability and feature modulation literatures (FiLM, SENet, channel attention, head probing methods) are incompletely covered, leaving the novelty of the scaling mechanism inadequately positioned."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the t-SNE before/after rectification (Figure 4) and UMAP manifold views (Figure 2) are well-chosen to support the core geometric claims; the comprehensive Table 1 layout with multi-group organisation is informative."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Two datasets and one backbone are insufficient to support generality claims; no ablation of Lreg, no multi-backbone result, and no evaluation outside the weakly-supervised surveillance/activity domain significantly limit the evidential scope."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A borderline submission with genuine conceptual contribution and impressive stability results, undermined by thin performance margins lacking significance testing, single-backbone evaluation, and insufficient novelty differentiation from prior conditional modulation methods."
+    }
+  },
+  "publishability_probability": 0.25
+}

@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "CODEC combines hidden-layer Integrated Gradients with sparse autoencoders (SAEs) to decompose neural network behavior into sparse contribution modes, applied primarily to ResNet-50/ImageNet and a retina CNN model. The core distinction between activations (receptive field only) and contributions (receptive + projective field) is well-motivated, and the cross-domain application to biological vision is a genuine strength. However, the paper fails to position itself against the now-large SAE interpretability literature, systematically overclaims causal status for gradient-based attribution, and the experimental evidence for broad generality is thin—mainly one architecture on one dataset, with a shallow ViT section that acknowledges inferior results without resolution.",
+  "strengths": [
+    "The receptive-field / projective-field framing cleanly motivates why contributions (not activations) are the right unit for causal analysis, and this conceptual contribution is clearly and accessibly explained.",
+    "The empirical characterization of contribution structure across ResNet-50 layers—increasing sparsity, dimensionality, and decorrelation of positive/negative effects—constitutes a coherent set of novel observations about CNN internals.",
+    "The retina-model application is scientifically compelling: using surprisal as a contribution target and linking identified modes to dynamic instantaneous receptive fields provides a biologically grounded external validation that most interpretability papers lack.",
+    "Ablation/preservation experiments (Figure 6) directly test causal sufficiency and necessity, going beyond correlation to behavioral intervention.",
+    "Hyperparameter robustness analysis (Supp. Figs. S3–S4) and SAE reconstruction R² reporting demonstrate methodological care."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The SAE mechanistic interpretability literature—Bricken et al. (2023), Cunningham et al. (2023), and Anthropic's scaling monosemanticity work—is the most directly competitive body of work and is essentially absent from the paper. CODEC's core novelty (SAEs applied to contributions rather than activations) cannot be evaluated without explicit positioning against these methods. Readers will immediately ask: why not just apply existing SAE interpretability tools to contribution vectors?",
+      "suggested_fix": "Add a dedicated related-work paragraph on SAE-based interpretability, clearly stating what those methods do (decompose activations), what CODEC does differently (decomposes contributions, i.e., activation × gradient), and why this difference matters empirically—ideally with a direct experimental comparison to an activation-SAE baseline using the same encoder architecture on the same layer."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The paper repeatedly claims CODEC reveals 'causal processes' and 'causal effects,' but every contribution measure used (Integrated Gradients, ActGrad, SmoothGrad) is a gradient-based attribution method, not an interventional one. Gradient attribution satisfies mathematical axioms (completeness) but does not establish causation in the Pearl/Rubin sense. Ablations do support causal claims, but the word 'causal' is used far more broadly throughout the paper than those ablations can support.",
+      "suggested_fix": "Restrict 'causal' to the ablation/preservation results (Figures 6 and the retina clustering), and use 'attributional' or 'contribution-based' elsewhere. Add a short discussion clarifying the distinction between attributional and interventional causality."
+    },
+    {
+      "severity": "major",
+      "issue": "The non-negative dictionary (D ≥ 0) constraint is architecturally inconsistent with signed contributions. If contributions can be positive or negative (a key feature emphasized throughout) and the reconstruction is c = Dz with z ≥ 0 (hard-thresholded pre-activations), a non-negative dictionary cannot represent negative contribution components without cancellation of positive modes. How negative contributions are faithfully reconstructed is not explained.",
+      "suggested_fix": "Explicitly derive or prove how the non-negative dictionary handles negative-contribution channels (e.g., via pairs of modes with opposing signs), report reconstruction quality separately for positive- and negative-contribution components, and justify or relax the non-negativity constraint."
+    },
+    {
+      "severity": "major",
+      "issue": "Integrated Gradients is run with only 10 integration steps throughout, far below the 50–300 steps commonly used in the literature to achieve stable attributions. No justification or convergence analysis is provided. Given that the entire CODEC pipeline depends on contribution accuracy, underestimated attributions could corrupt all downstream results.",
+      "suggested_fix": "Report a convergence study (contribution maps or final metrics vs. number of integration steps) and either justify 10 steps empirically for this setting or increase to the standard 50–100 steps."
+    },
+    {
+      "severity": "major",
+      "issue": "No statistical significance testing is reported for any key comparative claim (contribution modes vs. activation modes for class correlation, ablation/preservation efficacy, sparsity differences). With 50,000 validation images, many comparisons will be numerically significant; the concern is whether effect sizes are consistent across seeds and whether the advantage of CODEC over activation baselines is robust.",
+      "suggested_fix": "Report results across multiple SAE training seeds with standard errors; apply a Wilcoxon or permutation test comparing CODEC vs. activation-mode perturbation performance across all 1000 classes, and report p-values for the main comparative claims."
+    },
+    {
+      "severity": "major",
+      "issue": "The ViT section acknowledges 'inferior ablation performance' relative to CNNs and defers to 'further exploration,' but this is presented in the main paper as a positive result. A method claiming architectural agnosticism needs to either demonstrate comparable performance on ViTs or honestly frame this as a limitation.",
+      "suggested_fix": "Either move the ViT results to supplementary material and frame them as preliminary, or present a concrete analysis of why token-based spatial pooling fails and propose and test an alternative strategy."
+    },
+    {
+      "severity": "minor",
+      "issue": "The hard-thresholding operation (z_i = z_pre,i if z_pre,i ≥ τ, else 0) is non-differentiable. How gradients flow through this threshold during SAE training is not described.",
+      "suggested_fix": "State whether a straight-through estimator or other gradient approximation is used, and cite or briefly justify it."
+    },
+    {
+      "severity": "minor",
+      "issue": "TCAV (Kim et al. 2018) is cited once but never compared against. As a class-sensitive concept-based interpretability method, it is a natural baseline for the class-correlation claim (Figure 5).",
+      "suggested_fix": "Add TCAV as a comparison condition in Figure 5 or at minimum discuss why it is not a fair comparison."
+    }
+  ],
+  "questions_for_authors": [
+    "How does the non-negative dictionary reconstruct channels with predominantly negative contributions? Can you show an example mode that has large negative-contribution channels and explain the decomposition?",
+    "Why 10 Integrated Gradients steps? Have you measured how attribution quality (e.g., per-channel contribution magnitude) changes from 10 to 50 to 300 steps on representative layers?",
+    "How does CODEC compare to an activation-SAE (same encoder architecture, same hyperparameters, trained on activations rather than contributions) in the class-correlation and ablation tasks? This is the most direct comparison missing from the paper.",
+    "The R² of 0.85 for SAE reconstruction: is this measured on a held-out set of images not used to train the SAE, or on the training distribution? If the latter, what is the held-out reconstruction quality?",
+    "For the retina model, the contribution target is surprisal estimated from the output covariance. Is this covariance estimated from the same validation set used to compute contributions, and if so, does this circularity affect the interpretation of which modes are identified?"
+  ],
+  "calibration_check": "The claims are substantially broader than the evidence: 'causal' is used for gradient attribution results that are only weakly interventional, generality across architectures is asserted but demonstrated primarily on one CNN, and the abstract's promise of a 'rich and interpretable framework' is not fully delivered given the inferior ViT results and the unexplained non-negative dictionary issue.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The contribution-mode unit of analysis is a meaningful advance over single-neuron attribution for both AI interpretability and computational neuroscience, but the practical gap over existing activation-SAE methods remains unquantified."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Applying SAEs to contributions (rather than activations) is a targeted and defensible novelty, but the core components are individually well-established and the paper does not engage the SAE interpretability literature that a reviewer would consider closest prior work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The non-negative dictionary / signed-contribution inconsistency, the underpowered 10-step Integrated Gradients, and the conflation of attributional and interventional causality are methodological gaps that undermine the paper's stronger claims."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No significance tests are reported for any comparative claim; seed variance for the SAE is mentioned qualitatively but not quantified; error bars are absent from the main figures showing CODEC vs. activation-mode performance."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'Causal' is used persistently for gradient-based results, the ViT's inferior performance is not framed as a limitation, and the breadth of the claimed framework exceeds what is empirically demonstrated."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level framing is clear and the four-stage CODEC pipeline is well-described; however, the mathematical treatment of the non-negative dictionary, the hard-threshold gradient, and the surprisal target for retina models leaves key implementation questions unanswered."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed, the paper is within a reasonable length, and distinct sections address method, ANN experiments, biological network experiments, and ViT."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters are provided with enough detail to re-implement, but the 10-step IG is unjustified, the SAE gradient approximation at the threshold is undescribed, and some experimental details (e.g., how the covariance for surprisal is estimated) are ambiguous."
+    },
+    "related_work": {
+      "score": 3,
+      "justification": "The SAE interpretability literature (Bricken, Cunningham, and related Anthropic-scale SAE work) is almost entirely absent, TCAV is not compared experimentally, and the positioning of CODEC against recent mechanistic interpretability methods is inadequate for a 2026 submission."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative comparisons (sparsity vs. activation, contribution-mode class correlation, ablation curves) that are appropriate to the claims; the retina IRF visualization (Figure 8) appears particularly well-motivated from the caption."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Main quantitative results are confined to ResNet-50 on ImageNet; the retina model provides a valuable but narrow second domain; the ViT section reports inferior performance without resolution; claims of architectural agnosticism are not substantiated."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper addresses a real gap and has interesting empirical findings, but the missing SAE-interpretability positioning, overclaimed causality, statistical gaps, and unresolved methodological inconsistencies collectively place it below the ICLR acceptance bar as submitted."
+    }
+  },
+  "publishability_probability": 0.18
+}

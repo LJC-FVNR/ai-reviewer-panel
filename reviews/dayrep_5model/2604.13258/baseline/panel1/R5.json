@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a principled attribution framework for decoder-only LLMs that combines causal attention-value rollout, Hessian-vector-product sensitivity, and KL-based masking into a single score. The problem is genuinely important and the three-component architecture is well-motivated. However, the reported performance margins are implausibly large (~5× over the nearest baseline on Soft-NC), the principal evaluation metric (DSA) is author-defined on an author-constructed dataset, the gold annotations are produced by AI systems (GPT-4o + GPT-5) but consistently described as 'human annotations,' and the computational cost relative to baselines is never quantified in the main paper. These issues jointly prevent accepting the empirical claims at face value.",
+  "strengths": [
+    "Clear and principled decomposition: causal gating enforces directionality, Hessian terms capture nonlinear regimes, KL masking provides an information-theoretic grounding — each component is motivated and isolated in ablations.",
+    "Evaluation breadth: four model families spanning 3B to 70B parameters, three established benchmark datasets (LongRA, TellMeWhy, WikiBio), plus a new controlled dataset with high inter-annotator agreement (κ=0.89).",
+    "Robustness analysis is thorough and relevant: sensitivity to Gaussian noise, syntactic rephrasing (active/passive), and a systematic decoding-hyperparameter grid (temperature, top-p, top-k, repetition penalty) — these are exactly the stress tests the field needs.",
+    "Ablation study isolates each component and tests six configurations, confirming that all three terms contribute meaningfully across multiple metrics and datasets.",
+    "Scalable approximation path (HVPs via Hutchinson, low-rank block estimator, windowing, layer sampling for 70B) is practically important and shows engineering awareness."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Implausibly large performance margins without mechanistic explanation. HETA achieves Soft-NC ≈ 10.3 on LongRA with GPT-J while the next-best baseline (Peering/PML) scores ≈ 2.15 — a roughly 5× gain. Across all three benchmark datasets and three models, HETA uniformly dwarfs all competitors by margins far outside what any single methodological improvement in this literature has produced. No calibration, unit analysis, or ceiling discussion is provided for the Soft-NC/Soft-NS scale; without this, readers cannot rule out metric inflation. Specifically, HETA's causal gate MT confines attribution mass to causally connected tokens under the decoder's causal mask; when Soft-NC/Soft-NS perturbations preferentially remove tokens that are causally reachable (i.e., exactly what HETA emphasises), these metrics may be artificially inflated by design rather than reflecting superior faithfulness.",
+      "suggested_fix": "Report the Soft-NC and Soft-NS scale and possible maximum. Add a controlled experiment perturbing tokens uniformly at random (ignoring attributions) to establish the baseline shift, and discuss why 10+ scores are achievable while most prior work sits near 1–2. If the metric is unbounded, discuss what absolute levels constitute meaningful faithfulness. Also test whether a baseline that simply assigns importance to causal-mask-reachable tokens uniformly replicates HETA's margin, to rule out trivial exploitation."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Gold annotations are labeled 'human annotations' in the abstract and metrics discussion, but are produced by GPT-4o and GPT-5 Thinking — two AI systems. Inter-annotator agreement is reported as agreement between these two AI systems (F1=0.91, κ=0.89), not between humans. Claims about 'alignment with human annotations' and 'human-annotated tokens' are materially misleading throughout.",
+      "suggested_fix": "Correct all references to 'human annotations' to 'AI annotations (GPT-4o ∩ GPT-5 Thinking).' Acknowledge that GPT-5 is itself a generative model whose attributions might be correlated with HETA's design, potentially inflating the F1 alignment metric. Either supplement with actual human annotations for a held-out subset, or scope the alignment claim explicitly to AI-derived labels and discuss potential biases."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric is defined by the authors on a dataset of their own construction, and its formal definition is ambiguous. The paper says 'let SNarrQA and SSciQ denote the set of model-selected important token indices' — selected by what criterion and by which model? If each attribution method selects its own top-k tokens to define its own SNarrQA and SSciQ, the metric is not a fixed external standard and could be inadvertently optimised by methods that concentrate mass. The formula DSA = Σ_i∈SSciQ ssi − Σ_j∈SNarrQA fsj lacks a clear normalization that prevents cherry-picking the set sizes.",
+      "suggested_fix": "Provide a complete, unambiguous definition of DSA: specify exactly how SNarrQA and SSciQ are determined (fixed by annotator, or per-method), clarify the normalization, and ideally publish the metric implementation for independent verification. Alternatively, use the F1-based alignment metric (which has a cleaner definition) as the primary DSA replacement."
+    },
+    {
+      "severity": "major",
+      "issue": "Computational cost relative to baselines is never quantified in the main paper. KL masking requires one forward pass per input token (O(T) passes per prediction for a sequence of length T); HVP estimation adds per-step costs; together these could be orders of magnitude more expensive than gradient-based baselines. HETA-LR+WIN approximations are described qualitatively but wall-clock latency, FLOPs, and memory usage per sample versus each baseline are deferred entirely to Appendix Tables 8–9, making it impossible to assess the faithfulness-efficiency tradeoff from the main paper.",
+      "suggested_fix": "Add a runtime/memory table to the main paper comparing HETA (full and LR+WIN) against at least the top-3 baselines on a common hardware setup, expressed in wall-clock seconds per example. This is necessary for readers assessing practical adoption."
+    },
+    {
+      "severity": "major",
+      "issue": "ReAgent is absent from Table 3 for GPT-J and Phi-3 but present for LLaMA. Since ReAgent is the strongest non-HETA baseline, omitting it from two-thirds of the main faithfulness table (Soft-NC/Soft-NS) is a meaningful gap, especially given that HETA's claimed margins are very large.",
+      "suggested_fix": "Report ReAgent results for all three models in Table 3, or provide an explicit justification for why it was not evaluated on GPT-J and Phi-3 (e.g., incompatibility). An unsupported omission of the strongest baseline weakens the core empirical claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "Qwen2.5-3B results are relegated to Appendix A3 'due to space constraints,' even though the abstract claims evaluation 'across four diverse decoder-only models.' Four models are part of the headline claim; readers should not need to check the appendix to verify it.",
+      "suggested_fix": "Consolidate the four-model table in the main paper (merging or compressing other appendix material if needed) to honour the stated scope."
+    },
+    {
+      "severity": "minor",
+      "issue": "Hyperparameters β and γ are fixed at 0.5 throughout without sensitivity analysis in the main paper. If results are sensitive to these, the strong gains could reflect tuning against the evaluation datasets.",
+      "suggested_fix": "Report Soft-NC/DSA as a function of (β, γ) on a held-out validation split, or justify theoretically why 0.5/0.5 is principled rather than tuned."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide the raw Soft-NC/Soft-NS scale — what are the theoretical minimum, maximum, and the score for a trivially random attribution? This is necessary to interpret a score of 10.3 versus baselines at 1–2.",
+    "Is there a simple non-HETA baseline (e.g., uniform mass over causally reachable tokens, or a threshold on attention rollout alone) that achieves comparable gains on Soft-NC/Soft-NS? If so, does the improvement over that baseline remain large?",
+    "The DSA definition states 'model-selected important token indices' — how are these indices selected? If selection is per-method, how does the formula avoid favouring methods that concentrate mass on fewer tokens?",
+    "What are the per-example latencies (in seconds) for HETA-LR+WIN versus ContextCite and ReAgent on GPT-J 6B with a 512-token input? Can HETA run at inference speed on commodity GPUs?",
+    "Since GPT-5 is used as one of the two annotators, and GPT-5 is itself a transformer generating next-token probabilities, could its annotations be systematically correlated with HETA's design (e.g., both attend to causally reachable tokens)? How do you rule this out?"
+  ],
+  "calibration_check": "The abstract's claim of 'establishing a new standard for interpretability' and 'consistently outperforms existing methods' is broadly supported by the experimental tables, but the 5× Soft-NC margin, the use of AI-derived 'human' labels, and an author-defined primary metric on an author-constructed dataset collectively make the magnitude of improvement unverifiable without additional controls — the claims are plausible in direction but likely overcalibrated in scale.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs at scale is a real and under-served problem, and if the claimed gains hold up they would be significant, but the evaluation validity issues prevent confident assessment of impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The three-way combination of causal attention rollout, Hessian-vector-product sensitivity, and KL masking is new as a unified framework, though each component individually builds on well-established ideas (Abnar & Zuidema, Kobayashi et al., Hutchinson estimators) without a strongly surprising integration insight."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Extraordinary performance margins (~5×) are presented without mechanistic explanation or ruling out metric inflation via HETA's causal gating; missing baseline (ReAgent) in two of three model rows; AI annotations mislabeled as human; computational overhead unquantified in main paper."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds are used, and while std < 0.06 (< 0.2 for DSA) is reported, the absolute margins are so large that significance is not the main concern — the issue is whether the metrics themselves are unbiased; no correction for multiple comparisons across 9 baselines × 3 datasets × 3 models."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The abstract claims 'alignment with human annotations' when annotations are from AI systems; SOTA claims are made without acknowledging that DSA is an author-defined metric on an author-constructed dataset; limitations section is brief and defers details to the appendix."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall writing is clear and the three-component decomposition is well-explained, but the DSA metric definition is ambiguous (undefined 'model-selected indices'), and Table 3 has apparent text-extraction artifacts that obscure the HETA rows."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure (Introduction, Motivation, Background, Method, Experiments, Related Work, Conclusion) within reasonable length, though the motivation and background sections are redundant and could be merged."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters (β=0.5, γ=0.5, rank=64, window=512, batch=16) are given; hardware is specified; but the DSA metric definition is ambiguous, the KL masking scheme has multiple options not fully specified, and runtime/memory details are appendix-only."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Core baselines (IG, attention rollout, ContextCite, TDD, ReAgent, PML) are cited and critiqued fairly; mechanistic interpretability and model-editing are mentioned; but the Kobayashi et al. (2020) norm-weighted attention — which is very close to the semantic transition component — is cited in Background but not compared as a standalone baseline."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figure 1 caption describes a three-panel pipeline overview that appears informative; Figure 2 and 3 captions describe ablation bar plots and robustness comparisons that directly support the claims; qualitative attribution examples (2d, 3d) are present but captions give insufficient detail about the specific examples shown."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four model families and four datasets provide reasonable breadth, but the primary metric (DSA) is author-defined, one model's results are pushed to the appendix, ReAgent is absent from two model rows, and no out-of-domain or non-English evaluation is attempted despite generality claims."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The core idea is principled and the problem is important, but the combination of implausible performance margins, mislabeled annotations, an ambiguous author-defined primary metric, and missing runtime analysis means the empirical claims cannot be accepted at face value without substantial revision."
+    }
+  },
+  "publishability_probability": 0.12
+}

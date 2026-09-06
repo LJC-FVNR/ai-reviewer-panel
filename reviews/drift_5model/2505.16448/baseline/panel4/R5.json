@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes that 'internal bias'—a model's pre-reasoning heuristic guess—is a causal driver of overthinking in chain-of-thought reasoning models. The core hypothesis is interesting and timely, the multi-model correlational evidence is internally consistent, and the two counterfactual interventions (question removal, bias injection) represent a creative attempt at causal identification. However, the work is undermined by inadequate statistical reporting (no error bars or significance tests on any primary results, AIME evaluations from n=30), a potentially confounded operationalization of internal bias, and a scope limited entirely to discrete-output tasks, which weakens the generality claim. The paper identifies the problem well but offers no viable mitigation.",
+  "strengths": [
+    "Timely and well-motivated problem: overthinking in reasoning models is a live efficiency concern for the ICLR community, and identifying root causes rather than patching symptoms is the right scientific approach.",
+    "Multi-model and multi-task sweep (DeepSeek-R1, QwQ-32B, R1-Distill-Qwen-14B; character counting, logical reasoning, mathematical olympiad problems; both English and Chinese prompts) makes the correlational signal more convincing than a single-model study would.",
+    "The question-removal counterfactual is methodologically creative: by pruning the question context after the first answer is generated, the authors isolate the model's self-consistency check from any fresh activation of input-dependent priors, yielding 31–54% length reductions while maintaining or improving accuracy on complex tasks.",
+    "Bias injection via targeted fine-tuning, with symmetric Low2Wrong / High2Correct conditions and Random baselines to control for training noise, provides an independent causal handle; the direction of effects (wrong bias increases reflection, correct bias decreases it) is internally coherent.",
+    "The attention analysis in §6 bridges mechanistic interpretability with behavioral findings; the per-layer ScReflection/ScOther ratio plot is a clear, quantitative illustration of the proposed mechanism rather than a mere qualitative visualization.",
+    "Limitation section is candid: restriction to discrete-output tasks, open questions about origins and remediation, and the preliminary status of the attention-based early-exit idea are all acknowledged."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No error bars, confidence intervals, or significance tests on any primary quantitative result. AIME 2024 and AIME 2025 results rest on n=30 problems, making the accuracy differences (e.g., 63.3% → 66.7% on AIME 2024; 36.7% → 46.7% on AIME 2025 under question removal) statistically uninterpretable—these span roughly one or two problems. The CharCount subsets (n=1000) and KnowLogic are larger but still lack variance reporting across seeds or runs.",
+      "suggested_fix": "Report mean ± standard deviation (or 95% CI via bootstrap) for all accuracy and length metrics. For AIME, either use the full available test set, pool across years, or explicitly note that individual differences are within noise and restrict to length metrics where power is adequate. Run all generation experiments with at least 3 random seeds."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The operationalization of 'internal bias' via forced early-exit (injecting '</think>' to suppress reasoning) is not validated as a faithful proxy for the model's implicit prior state during normal generation. A model forced to answer immediately under an adversarial prompt may activate different pathways than the hidden state that influences reflection decisions during unconstrained generation. The probing study mentioned in Appendix J.1 is described only in passing in the main text and its methodology and quantitative results are not summarized, leaving the core measurement instrument unjustified in the body of the paper.",
+      "suggested_fix": "Bring the key probing results (e.g., prediction accuracy or correlation coefficient between question-segment hidden states and direct answers) into §3 or §6 as primary evidence. Additionally, ablate the forced early-exit prompt: show that different template wordings yield similar bias distributions, and report the inter-template consistency of abias estimates."
+    },
+    {
+      "severity": "major",
+      "issue": "The generality of the central claim is substantially weaker than advertised. Every analysis—correlation, question removal, bias injection, attention analysis—is restricted to tasks with discrete or numerical outputs (character counting, multiple choice, olympiad math). The paper claims 'widespread influence on reasoning behavior' but explicitly defers open-ended tasks as out of scope. This gap is significant given that most production uses of reasoning models involve open-ended generation.",
+      "suggested_fix": "Either (a) narrow all generality claims to reflect the actual scope ('across tasks with verifiable categorical or numerical outputs'), or (b) include at least one open-ended task with a proxy bias measure (e.g., sentiment of answer, key argument position) to test whether the phenomenon extends. Adjust the abstract and introduction accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (§5.2) has a notable confound: fine-tuning on 50 rephrased declarative statements—even with Random baseline conditions—modifies general model behavior beyond changing the target bias. The Random2Wrong and Random2Correct baselines show this partially, but they test on different samples from the training distribution, not matched controls on the same questions, making it unclear how much of the length/accuracy shift is attributable to bias specifically versus domain adaptation to the CharCount distribution.",
+      "suggested_fix": "Add a truly neutral fine-tuning control: fine-tune on factually correct declarative statements from an unrelated domain (e.g., geography facts) and test on the CharCount set, to isolate the domain-adaptation confound from the bias injection signal. Report per-sample matched comparisons where possible."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention analysis in §6.2 interprets increased ScReflection for question tokens as evidence that 'internal bias is reactivated.' However, elevated attention to the question at reflection points could equally reflect the model legitimately re-reading the task specification to verify its answer, rather than being seduced by a prior guess. The paper does not rule out this alternative interpretation, and the probing evidence in Appendix J.1 is referenced but not summarized in the main text.",
+      "suggested_fix": "Directly test the reactivation hypothesis: compare ScReflection for the question segment on cases where the reflection leads to a correct versus incorrect final answer. If bias reactivation is the mechanism, elevated attention should be predictive of cases where overthinking produces wrong conclusions; if the model is legitimately self-checking, attention should be equally elevated in productive reflections."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 3 (bias injection) contains a labeling inconsistency: the paper defines four settings (Low2Wrong, High2Correct, Random2Correct, Random2Wrong) but Table 3 shows only four rows with length/accuracy figures without clear cross-referencing of which length applies to which baseline comparison; the inline text claims specific comparisons (e.g., Low2Wrong 355.5 → 454.9) but these numbers must be read as (Random2Wrong baseline) → (Low2Wrong result), which is not obvious from the table layout.",
+      "suggested_fix": "Restructure Table 3 to group paired comparisons explicitly (e.g., Baseline | Treatment | Δ Length | Δ Acc), and annotate which rows are baseline and which are interventions."
+    },
+    {
+      "severity": "minor",
+      "issue": "Section 7 (Mitigation Trials) trains FCS, SEAL, and PROBE methods on data from the CharCount dataset itself, which the authors acknowledge as potentially inflating performance. Yet the conclusion that these methods 'fail to eliminate the influence of internal bias' partly applies to an in-distribution setting, and it is unclear whether the observed resilience of internal bias generalises to out-of-distribution evaluation.",
+      "suggested_fix": "Train mitigation methods on one dataset and evaluate internal-bias metrics on a held-out dataset. At minimum, clarify the training/evaluation split and discuss the potential inflation."
+    }
+  ],
+  "questions_for_authors": [
+    "The correlation between high deviation degree and longer reasoning length is consistent across tasks, but complexity is controlled only by comparing first-answer length across groups. Have you verified that the groups are matched on objective difficulty measures (e.g., difficulty labels from dataset curators, or solve rates across independent model runs)? Could a residual difficulty difference within CharCount or KnowLogic explain part of the length difference?",
+    "In the question-removal experiment, removing the question after the first answer also removes the task specification that the model might use to verify a multi-step calculation. Could the accuracy improvements on AIME be explained by the model being 'freed' from a potentially misleading re-reading of problem constraints, rather than suppression of internal bias per se? How do you distinguish these mechanisms?",
+    "The 64-sample multi-template estimate of abias is reasonable, but how sensitive are the deviation-degree groupings and R statistics to this choice? What happens with 8 or 16 samples? If the results are robust, showing this would strengthen the measurement design.",
+    "Appendix J.1 describes a probing study showing hidden states from the question segment correlate with direct answers. Can you state the probe accuracy and methodology clearly: which layer(s), what classifier, what fraction of variance explained? This is central to the mechanistic claim and should not be deferred entirely to an appendix.",
+    "For the mitigation trials, why is SEAL evaluated only on CharCount and not on AIME, while FCSSFT is evaluated on both? Providing full cross-dataset comparisons for all methods would improve the takeaway."
+  ],
+  "calibration_check": "The claim of a 'causal relationship' is supported by two creative counterfactual interventions, but both have identified confounds and the evidence base is too narrow (discrete-output tasks only, underpowered AIME evaluations, no error bars) to fully sustain the strong causal language used throughout the abstract and contributions.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in test-time-compute models is a high-impact efficiency problem; identifying a root cause rather than patching symptoms is the right framing and will be of genuine interest to the ICLR community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Operationalizing 'internal bias' via forced early-exit and linking it causally to overthinking through counterfactual question-removal and bias injection is a genuinely new framing; the connection to existing unfaithfulness/shortcut literature is adequately positioned."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The counterfactual design is creative but both interventions carry significant confounds (question removal conflates bias suppression with removal of potential verification signal; bias injection is confounded by domain adaptation), and the core measurement instrument—forced early-exit as a proxy for internal bias—lacks in-paper validation."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars or confidence intervals anywhere; AIME experiments rely on n=30 samples rendering accuracy differences of a few points uninformative; no significance tests; unclear whether key results replicate across seeds."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitation section is candid about the discrete-output restriction and absence of effective mitigation; however, the repeated use of 'causal relationship' and 'rigorous evidence' in the abstract and contributions somewhat overstates what the current experimental evidence establishes."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is broadly readable and the core ideas are easy to follow, but there are grammatical errors throughout ('a overthinking tendency', 'Conterfactual'), notation is introduced piecemeal, and key evidence from appendices (probing study) is not summarised in the main text."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Introduction, Related Work, Methodology, Experiments, Interpretability, Conclusion) is followed; length appears appropriate for ICLR; some results are reasonably placed in appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "GPU setup, dataset sizes, sampling details (64 templates), and keyword lists are provided or referenced; fine-tuning hyperparameters and attention computation details are in appendices; the methodology is sufficiently described for reproduction in principle, though code is not included."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The three categories of overthinking mitigation are surveyed adequately, and the bias/unfaithfulness literature is connected; connections to mechanistic interpretability of attention and the broader 'System 1 vs System 2' framing could be stronger, and some citations use anonymised placeholders suggesting self-referential citations."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, Figure 2 (deviation-degree vs. reasoning length bars with first-answer position markers) and Figure 4 (layer-wise attention ratio) appear well-designed and directly support the core claims; Figure 3 (attention heat map for strawberry example) provides compelling qualitative illustration."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "All primary analyses are restricted to tasks with discrete or numerical outputs; only two model families; the generality claims in the abstract significantly outrun the experimental scope, and no open-ended task is included even as a preliminary probe."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising and timely hypothesis with creative experimental design, but blocked by absent statistical reporting, a confounded core measurement, and scope limitations that prevent the claimed generality; major revisions are needed before this is ready for publication."
+    }
+  },
+  "publishability_probability": 0.22
+}

@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free (frozen-MLLM) video anomaly detection framework that selects discriminative attention heads via a Fisher-style separability score (RSA) and applies a learned, context-conditioned element-wise gating (HMC) to their features, trained on 1% of labeled data. The idea is coherent and the ablations, seed-stability, and data-efficiency analyses are reasonable, but the empirical gains over the nearest tuning-free baselines are marginal and untested for significance, the 'manifold rectification' framing substantially over-theorizes a simple FiLM-like gate, and a critical methodological ambiguity (the label granularity required for RSA/calibration on datasets that officially provide only video-level labels) is unresolved. Combined with pervasive overclaiming, the paper needs substantive clarification and stronger evidence before acceptance.",
+  "strengths": [
+    "Clear and reasonable core mechanism: RSA is a simple, gradient-free inter/intra-class scatter (Fisher-like) head-selection criterion, and the seed-stability analysis (Table 3, identical LAEs across 10 runs, σ≈0.04% AUC) is a genuinely useful robustness check.",
+    "Good data-efficiency story with supporting evidence: performance saturates from 1% to 100% calibration data (Table 4), which is a meaningful practical result if the label-granularity question is answered.",
+    "Ablations isolate the intended design choices reasonably well (Table 2: GSG vs LGM vs additive vs static steering; expert-selection strategies), and hyperparameter sweeps over K and F are provided (Table 5).",
+    "Standard structure, adequate implementation details (backbone, K, HMC architecture, optimizer, epochs, λreg, σg), and a relevant related-work positioning against tuning-free and interpretability literature."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The RSA score and HMC training both require per-segment/frame normal-vs-anomalous labels to compute class centroids/variances and BCE loss, yet UCF-Crime and XD-Violence training sets officially provide only video-level (weak) labels. The paper never specifies the label granularity of the 1% calibration set, which is central to whether the method is fairly comparable to weakly-supervised and tuning-free baselines.",
+      "suggested_fix": "State exactly what labels D_calib contains (frame-level? segment-level? video-level with heuristic assignment?), how they were obtained, and re-examine whether comparisons to weakly-supervised/tuning-free methods use the same supervision granularity."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'manifold steering/rectification' and 'anisotropic manifold scaling' framing greatly overstates the actual operation, which is an element-wise gated modulation h'=h(1+s·g) — a FiLM/adapter-style feature gate. The claimed topological/geometric grounding lives entirely in an unshown Appendix A, so the central conceptual contribution is asserted rather than demonstrated in the body.",
+      "suggested_fix": "Either provide the geometric/topological analysis and an experiment that directly measures manifold-level quantities (e.g., separation/curvature changes) rather than downstream AUC, or reframe the method in plain terms as learned feature gating and temper the manifold language."
+    },
+    {
+      "severity": "major",
+      "issue": "SOTA claim rests on thin margins with no significance testing against the nearest competitors: on UCF-Crime SteerVAD is 87.15 vs HiProbeVAD 86.72 / VERA 86.55, and on XD-Violence 83.02 vs HiProbeVAD 82.15. Table 3 reports variance only for the proposed method; baselines have no error bars, and no paired significance test is reported.",
+      "suggested_fix": "Report variance for all reproduced methods (or cite reported variance), run a significance test on the AUC/AP differences, and soften 'state-of-the-art' claims to reflect the sub-1% margins."
+    },
+    {
+      "severity": "major",
+      "issue": "The t-SNE separation evidence (Figure 4) is largely circular: the LAE features are gated by a supervised controller and scored by a supervised classifier, so clean train-class separation is expected and does not independently validate 'bias mitigation' or 'manifold disentanglement.'",
+      "suggested_fix": "Show the rectification effect on held-out test data with quantitative separability metrics, and compare against a matched-capacity baseline (e.g., the same gate without RSA-selected heads) to demonstrate the effect is specific to the claimed mechanism."
+    },
+    {
+      "severity": "minor",
+      "issue": "Pervasive overclaiming ('definitive consistency proves,' 'geometric saturation,' 'establishing it as a powerful new direction') and internal tension in calling the method 'tuning-free' while it trains an HMC + logistic-regression scorer on labeled data. Generality is claimed but tested on only two datasets and one backbone (InternVL3).",
+      "suggested_fix": "Scope claims to the evidence, adopt 'parameter-efficient/few-shot calibration' terminology where accurate, and add at least one additional dataset (e.g., ShanghaiTech) and/or a second MLLM backbone to support generality."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the label granularity of the 1% calibration set, and how are per-segment normal/anomalous labels obtained given the datasets' video-level supervision?",
+    "Are the baseline numbers in Table 1 reproduced under identical segmentation/frame-sampling and supervision, or copied from original papers? Please provide variance and a significance test for the margins over VERA and HiProbeVAD.",
+    "Can you provide a matched-capacity control (same HMC applied to non-RSA-selected heads) to attribute gains specifically to RSA head selection versus the added trainable parameters?",
+    "Does the rectification improve separability on held-out test features (not just training/visualization), and can you quantify it with a metric independent of the downstream classifier?",
+    "What does the topological analysis in Appendix A actually establish, and how does it connect formally to the element-wise scaling in Eq. 4?"
+  ],
+  "calibration_check": "Claims are frequently over-scoped relative to the evidence: 'manifold steering' overstates a simple gated feature modulation, and 'state-of-the-art' rests on sub-1% margins with no significance testing against the closest baselines.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Tuning-free MLLM-based VAD is an active direction and head-selection + gating is a sensible contribution, but marginal gains and narrow evaluation limit likely impact."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combines known ingredients (Fisher-style head selection, FiLM/adapter-style gating, probing) under a new 'manifold steering' framing rather than introducing a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Unresolved label-granularity for RSA/calibration, over-theorized manifold claims resting on an unshown appendix, and circular t-SNE evidence weaken the claim–evidence link."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Strong seed-stability reporting for the proposed method, but no error bars or significance tests for baselines and sub-1% SOTA margins are left untested."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Grandiose language ('proves,' 'powerful new direction') and the 'tuning-free' framing while training a controller on labeled data overstate the contribution."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall pipeline is understandable and equations are given, but the writing is jargon-heavy and leans on unsubstantiated geometric claims."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure (abstract, intro, related work, method, experiments, conclusion) at an appropriate length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Backbone, architecture, and training hyperparameters are specified, but the critical calibration-label granularity is unstated and key derivations are deferred to unavailable appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers traditional VAD, MLLM-based VAD, and interpretability/model-editing adequately and delineates the passive-vs-active positioning."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative items (UMAP manifolds, framework diagram, t-SNE, ablation tables), but the t-SNE claim is circular and the framework figure caption is the main conceptual support."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two datasets and a single MLLM backbone are tested, insufficient to support the broad generality and 'new direction' claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A coherent idea with reasonable ablations but marginal, untested gains, an unresolved supervision-granularity question, and over-theorized framing place it at borderline reject pending substantive revision."
+    }
+  },
+  "publishability_probability": 0.28
+}

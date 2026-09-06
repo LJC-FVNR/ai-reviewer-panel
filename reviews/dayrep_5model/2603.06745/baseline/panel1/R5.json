@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "DIRECTER proposes a plausibility-guided decoding loop that dynamically modulates KV-cache steering strength via a layer ranking based on attention sensitivity, addressing oversteering in prior activation-steering methods. The core idea is well-motivated and the empirical evaluation spans multiple benchmarks and model families. However, the main results lack error bars and statistical significance tests despite margins of 2–4%, raising serious doubts about whether the improvements are reliable. The non-standard IFEval prompt rewriting and the absence of several relevant baselines further limit the strength of the claims.",
+  "strengths": [
+    "The plausibility-guided decoding loop is a practically clean solution to oversteering: it is training-free, adds only ~16% throughput overhead, and is modular enough to wrap existing steering methods.",
+    "Evaluation spans three benchmarks with distinct axes (strict constraint adherence, long-context, formatting+reasoning), multiple model families (Llama-3.1/3.2, Qwen-2.5), and scales from 1B to 14B, giving a reasonably broad picture of generality.",
+    "Ablations are well-designed: reversed ranking, random-layer steering, random-token steering, and fixed-strength variants each isolate distinct design choices and collectively provide solid motivation for each component.",
+    "Efficiency analysis (throughput, per-token latency, memory) is quantified against baselines and FlashAttention compatibility is a non-trivial practical advantage over attention-logit methods.",
+    "Human evaluation in Appendix E.3 corroborates the LLM-judge findings, adding credibility to the quality/fidelity claims."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The main results (Table 1 and Table 2) are reported as single numbers with no error bars, confidence intervals, or p-values. DIRECTER's advantage over the best tuned baseline on IFEval is ~2.5 prompt-accuracy points. The ablation table shows variances of ±0.7–1.1 even within DIRECTER variants, so significance of this margin is unclear. The claim of 'significant enhancement' cannot be accepted without proper significance testing across multiple seeds.",
+      "suggested_fix": "Run each model–benchmark combination with at least 3–5 different decoding seeds (or bootstrap-resample fixed-seed outputs), report mean ± std, and provide a statistical test (e.g., paired permutation test or McNemar's for binary instruction-level accuracy)."
+    },
+    {
+      "severity": "major",
+      "issue": "IFEval is evaluated on a modified version of the dataset (prompts rewritten by GPT-4o-mini to separate task from instruction), deviating from the official evaluation protocol used by virtually all prior work. This makes comparisons to numbers from the literature unreliable, and the effect of the rewriting on difficulty or the baseline score is not characterized.",
+      "suggested_fix": "Either (a) report results on the original unmodified IFEval alongside the rewritten version, or (b) clearly quantify how rewriting changes baseline performance and justify why the modification is necessary for fair evaluation of all methods."
+    },
+    {
+      "severity": "major",
+      "issue": "Several relevant inference-time instruction-following baselines are absent: Representation Engineering (RepE / Zou et al. 2023 full version), Contrastive Activation Addition (CAA), and output-space contrastive decoding methods (e.g., DoLa, CAD). The comparison set is limited to PASTA and SpotLight, which restricts the strength of the positioning claims.",
+      "suggested_fix": "Add at least one contrastive-decoding or residual-stream steering baseline to the comparison table, or explicitly discuss why they are inapplicable and cite the omission as a limitation."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention sensitivity metric (Eq. 2–3) is presented as a principled layer-selection strategy, but no formal theoretical justification is given for why summing cosine-distance deviations across all layers is the right proxy for steering influence. The empirical ablation (Table 3) shows it helps over random, but only by ~1.5–2 points—a margin that is itself unaccompanied by significance tests.",
+      "suggested_fix": "Provide either a theoretical grounding (e.g., relating the disturbance score to a bound on output distribution shift) or a more systematic empirical study comparing against alternative sensitivity proxies to validate the metric choice."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper does not evaluate models larger than 14B. The scalability of the plausibility loop overhead (which performs up to log2(L) extra forward passes per token in the worst case) is untested at 70B+ scales where memory and latency constraints are qualitatively different.",
+      "suggested_fix": "Include at least one experiment with a 70B-class model, or explicitly scope the contribution to sub-20B models with a clear discussion of anticipated scaling behavior."
+    },
+    {
+      "severity": "minor",
+      "issue": "Algorithm 1 as shown in the manuscript is incomplete—line 6 and the condition at line 10 ('not accepted') are truncated, and the gating condition from the main text (comparing top-2 probabilities) does not appear. This creates a reproducibility gap for readers implementing from the algorithm alone.",
+      "suggested_fix": "Ensure Algorithm 1 is complete and self-contained, explicitly including the gating shortcut and the full loop condition."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 4 (LLM-judge text quality and task fidelity) uses GPT-4o-mini as an automated judge without a discussion of the judge's known biases (e.g., verbosity preference, self-preference for GPT-style outputs). The task fidelity gap between DIRECTER (91.7%) and PASTA* (81.1%) is large enough that the choice of judge could affect conclusions.",
+      "suggested_fix": "Report inter-rater agreement between the LLM judge and the human annotators (Appendix E.3) and state whether judge scores correlate with human scores to establish judge reliability."
+    }
+  ],
+  "questions_for_authors": [
+    "The plausibility check in Eq. 1 compares the probability of the steered top-1 token under the raw distribution against β times the raw top-1 probability. Why is this token-level criterion sufficient? Have you considered distribution-level divergence measures (KL, TV) as the acceptance gate, and how do they compare empirically?",
+    "The scaling factor α is set to 100 across all tasks. Figure 3b shows saturation above α≈100. Does this saturation behavior hold across all model families and scales, or was it only characterized on Llama-3.1-8B? If it breaks for smaller models (1B), does DIRECTER still avoid oversteering?",
+    "In Table 2, DIRECTER's gains on the 1B Llama model are marginal (+0.3% vs zero-shot). Do you hypothesize this is because (a) the 1B model's KV cache is less semantically meaningful, (b) the instruction span is harder to identify, or (c) something else? Does plausibility guidance help or hurt at this scale?",
+    "The GSM8K-Format benchmark is introduced in this paper. How were the formatting constraints designed, and have you validated that GPT-4o-mini's formatting compliance judgment correlates with a gold-standard programmatic checker? Could the authors release this benchmark for community use?",
+    "For the gating mechanism that pre-skips the steered forward pass: what fraction of tokens actually trigger the full progressive loop vs. being skipped? Is this fraction consistent across benchmarks? A breakdown would clarify how much of the 16% overhead is from the ranking vs. the loop."
+  ],
+  "calibration_check": "The central claims are generally scoped appropriately ('up to 6.5% over baseline', 'approximately 4% over prior steering methods'), but the absence of significance tests means the framing of these margins as reliable improvements—rather than point estimates with unknown noise—is overconfident given the 2–3 point margins against the best tuned baselines.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Instruction following is a high-impact problem and inference-time methods that avoid training are practically valuable, but the gain over carefully tuned baselines is modest and the application scope (text instructions, decoder-only models ≤14B) is somewhat narrow."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The plausibility-guided decoding loop and attention-sensitivity layer ranking are a genuinely new combination, but each constituent piece—KV cache scaling, contrastive/plausibility filtering, layer sensitivity analysis—has clear antecedents, and the novelty is primarily in integration."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Ablations isolate each design choice clearly and the method logic is internally consistent, but the lack of statistical significance testing for the main results and the absence of a formal grounding for the sensitivity metric limit the evidentiary strength."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main results are single-seed point estimates with no error bars or significance tests; the reported improvements (2–4 points) are on the same order as the variance visible in the ablation table (±0.7–1.1), making the primary claims statistically unverified."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (informal sensitivity metric, clean instruction-span assumption, modest gains on 1B models) are acknowledged in the conclusion, and claims use hedged language ('up to', 'approximately'); the omission of significance testing is not flagged as a caveat, which is a minor calibration gap."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and the narrative flow from problem to method to experiments is clear; Algorithm 1 is unfortunately incomplete as printed, and the derivation of the sensitivity score would benefit from a worked example."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "The paper follows standard conference structure with appropriate section lengths; the inline table (Table 4) is unusual but acceptable for an ICLR-style paper."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key hyperparameters (α=100, β=0.5) are stated and fixed across tasks, model checkpoints are named, and greedy decoding is specified; however, the non-standard IFEval rewriting procedure introduces a reproducibility gap, and Algorithm 1 as printed is incomplete."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "PASTA and SpotLight are covered in fair depth and oversteering literature is cited, but contrastive activation addition, representation engineering, and output-space contrastive decoding methods are not discussed or compared, leaving the positioning incomplete."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe well-chosen comparisons—fixed-strength ablation, plausibility-filter compatibility, hyperparameter sweeps, and efficiency breakdowns—that directly support the paper's claims; the efficiency figure (Figure 4) and plausibility robustness (Figure 3) are particularly informative."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Testing across four model families and scales (1B–14B) and three benchmarks is better than average for an ICLR submission, but the absence of models above 14B, the paper-defined GSM8K-Format benchmark, and missing baseline classes limit the generality argument."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The work addresses a real problem with a clean method and good execution, but the blocking absence of statistical significance testing for 2–4 point margins, the non-standard dataset modification, and the incomplete baseline comparison prevent a confident accept recommendation in the current form."
+    }
+  },
+  "publishability_probability": 0.32
+}

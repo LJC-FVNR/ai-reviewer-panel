@@ -1,0 +1,104 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents a theoretical and empirical analysis of Differential Attention (DA) from an adversarial robustness perspective, identifying 'negative gradient alignment' as the mechanism through which DA's subtractive structure amplifies perturbation sensitivity. The core theoretical framework is internally consistent, and the depth-dependent robustness crossover is an interesting secondary finding. However, the empirical validation is materially compromised by an uncontrolled capacity confound (DiffViT uses two QK projections vs. one), absent statistical reporting, and a narrow experimental scope that omits language tasks despite DA being originally a language model contribution.",
+  "strengths": [
+    "First systematic study of DA from an adversarial robustness standpoint — the question is timely and practically relevant given DA's uptake in safety-critical framing.",
+    "The theoretical analysis is clearly organized: Lemmas 1–2 and Theorems 1–4 form a logically coherent chain from gradient norms to Lipschitz bounds to depth-dependent crossover, and the authors honestly delineate local-linearization and layer-isolation assumptions.",
+    "Depth-dependent robustness analysis (Theorem 4, Corollary 1) is a non-obvious secondary finding: the prediction that DA is fragile at shallow depth but gains robustness under small budgets at depth is supported empirically by both CW-L2 perturbation norms and PGD/AA ASR curves.",
+    "Evaluation spans multiple attacks (PGD, CW, AutoAttack), multiple architectures (ViT/DiffViT trained from scratch, pretrained CLIP/DiffCLIP), and multiple datasets (CIFAR-10/100, COCO, ImageNet), showing reasonable breadth for a mechanism-analysis paper.",
+    "The λinit ablation (Table 1) showing a non-monotone ASR peak at λinit = 0.8 is a concise, interpretable experiment that directly probes the theoretical parameter."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Uncontrolled capacity confound between ViT and DiffViT. DiffViT requires two separate QK projection pairs (W_Q1, W_K1, W_Q2, W_K2) versus one pair in standard ViT, roughly doubling attention-head parameter count. The paper never ablates for this: the observed higher ASR and Lipschitz constants in DiffViT could be entirely explained by greater over-parameterisation rather than the subtractive structure. Without a capacity-matched baseline (e.g., a ViT with the same total parameter count, or a DiffViT with shared QK plus subtraction ablated), the central empirical claim is confounded.",
+      "suggested_fix": "Add a capacity-matched ViT baseline (same total parameter count as DiffViT) and/or an ablation that replaces the DA subtraction with a simple weighted sum (A1 + λA2) at matched capacity, to isolate the subtractive operation from parameter count as the driver of fragility."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No statistical reporting across any experiment. No random seeds, no confidence intervals, no error bars, no variance metrics appear in the main paper or referenced appendices. All comparisons are single-run point estimates. For an empirical analysis paper making claims about 'higher ASR,' 'larger Lipschitz estimates,' and 'more frequent negative alignment,' the absence of significance testing makes it impossible to assess whether differences are real or within noise.",
+      "suggested_fix": "Report mean ± std over at least 3–5 seeds for all main results; add error bars to Figures 2–5; report whether key comparisons pass a basic significance threshold (e.g., paired t-test or bootstrap CI)."
+    },
+    {
+      "severity": "major",
+      "issue": "DA was introduced as a language model mechanism (Differential Transformer, Ye et al. 2025), yet all experiments are on vision encoders. The paper's claims about a 'fundamental trade-off' and implications for 'safety-critical applications' and 'future attention mechanisms' implicitly cover both modalities, but zero NLP experiments appear. The vision-only scope is underspecified in the title, abstract, and contributions.",
+      "suggested_fix": "Either (a) add a representative language experiment (e.g., evaluating a DiffTransformer on a standard NLP adversarial benchmark), or (b) explicitly scope every contribution statement to 'vision attention' and acknowledge the language-model gap as a key limitation."
+    },
+    {
+      "severity": "major",
+      "issue": "Local Lipschitz estimation via uniform random sampling (Eq. 4) is not a tight bound; it estimates the mean or max over a finite sample, not the supremum. The methodology is described only as 'sampling ξ uniformly from ∞-bounded noise with ‖ξ‖≤8/255,' with no statement of sample count, no convergence check, and no comparison to certified Lipschitz bounds. The claim that DA 'exhibits significantly higher Lipschitz estimates' depends entirely on the reliability of this estimator.",
+      "suggested_fix": "Report the number of samples used, confirm the estimator is the maximum over samples (not mean), run a convergence check by varying sample count, and ideally compare one setting against a certified upper bound (e.g., via spectral normalization estimates)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The depth-experiment comparison (Figure 3) conflates depth effects with capacity effects: a 12-layer DiffViT has 12× more parameters than a 1-layer model. The claim that depth yields robustness via DA's noise-cancellation mechanism—rather than via generic depth-induced compression or regularization available to any architecture—is not isolated.",
+      "suggested_fix": "Include depth-matched ViT curves in Figure 3(a)–(c); a depth-D ViT vs. depth-D DiffViT comparison at each depth would test whether the crossover is specific to DA or common to depth."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'over-cancellation' interpretation for the ASR drop at λinit > 0.8 (Table 1) is post-hoc and unexplained mechanistically. The same pattern could arise from degraded clean accuracy (0.8700 → 0.8468), which trivially reduces ASR. The paper does not disentangle the accuracy effect from a structural over-cancellation effect.",
+      "suggested_fix": "Normalise ASR by clean accuracy or restrict to correctly-classified clean samples; provide a brief mechanistic argument (e.g., in terms of Theorem 1) for why λ > 0.8 reverses the ASR trend."
+    }
+  ],
+  "questions_for_authors": [
+    "How do you address the capacity confound? A DiffViT single-layer model has ~2× the QK parameters of a ViT single-layer model. Have you compared against a ViT with matched parameter count, or against a DA variant without subtraction (A1 + λA2) as a structural ablation?",
+    "All main results appear to be single-run point estimates. What is the variance across training seeds for the key ASR comparisons in Figure 2? Are the reported differences statistically significant?",
+    "DA was originally introduced for language tasks, yet the paper focuses entirely on vision models. Do the Fragile Principle and depth-dependent crossover hold for language transformers? If not, how do you scope the generality claim in the abstract and contributions?",
+    "How many samples were used to estimate the local Lipschitz constant (Eq. 4), and did the estimate converge? Is the reported value the maximum over samples or the mean?",
+    "In Figure 2(d), DiffCLIP's patch-attack ASR on ImageNet is marginally lower than CLIP's — the only result that contradicts the Fragile Principle. The paper attributes this to 'dataset scale and diversity,' but this explanation is not theoretically grounded. What mechanism could cause DA to be less fragile under patch attacks specifically on ImageNet at scale?",
+    "The depth experiments stack D∈{1,2,4,8,12} DA layers, but deeper models also have more parameters. Have you verified that the robustness crossover effect disappears for standard ViT at the same depths — confirming it is structurally specific to DA rather than a generic depth/capacity effect?"
+  ],
+  "calibration_check": "The abstract and contributions claim a 'fundamental trade-off' and 'first theoretical investigation' with strong generality, but the experiments cover only vision architectures, use single-run point estimates without variance reporting, and do not control for the capacity difference between ViT and DiffViT — a gap significant enough that the core empirical claim cannot be taken as established without revision.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The question — does DA's noise-suppression design inadvertently harm adversarial robustness — is timely and practically relevant for safety-critical deployments, but the vision-only scope and lack of actionable mitigation beyond 'tune λ or use adversarial training' limit near-term impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "First adversarial-robustness analysis of DA is a genuine gap filled, but the theoretical machinery (gradient norm decomposition, local Lipschitz bounding) is a direct application of techniques already standard in the robustness-analysis literature."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The uncontrolled capacity confound between ViT and DiffViT is a material threat to the main empirical claim, and the layer-isolation assumption — while standard — is not empirically stress-tested against cross-layer interaction effects."
+    },
+    "statistical_soundness": {
+      "score": 2,
+      "justification": "No error bars, no seeds, no variance, and no significance tests appear anywhere in the main paper; all claims of 'higher' or 'more frequent' rest on single-run point estimates, making it impossible to assess whether differences are reliable."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The authors honestly acknowledge local-linearization and layer-isolation limitations, but characterise a vision-only, single-seed result set as demonstrating a 'fundamental trade-off' in attention mechanisms broadly, which is overclaimed relative to the evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-structured, notation is consistent, and the progression from theoretical motivation to Lemmas/Theorems to empirical validation is easy to follow; some experimental details (Lipschitz sampling procedure, training hyperparameters) are underspecified."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed cleanly, the Limitations section is appropriately placed before the Conclusion, and the paper appears within reasonable length bounds."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Key hyperparameters (λinit, depth D, attack budgets) and datasets are stated, but ViT/DiffViT training details (optimizer, LR schedule, batch size, total epochs) are missing from the main text, and the Lipschitz estimation sampling count is unspecified."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of Lipschitz/attention-robustness prior work is adequate and the DA paper itself is properly cited, but recent work on vision transformer robustness (e.g., robust ViT variants, certified defenses for ViTs) is only cursorily surveyed."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, the figures address the key claims (ASR comparisons, depth effects, Lipschitz estimates, gradient alignment frequency) and are logically organised, though the absence of error bars in all figures is a presentation deficiency tied to the missing statistical reporting."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Experiments cover only vision encoders despite DA being a language-model contribution, the capacity confound is unablated, and language/NLP adversarial benchmarks are entirely absent, substantially narrowing the supported scope of the paper's generality claims."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising mechanism-analysis contribution with a clear theoretical story, but the blocking capacity confound, absent statistical reporting, and vision-only scope require major revision before the core claims can be trusted at ICLR's evidentiary standard."
+    }
+  },
+  "publishability_probability": 0.18
+}

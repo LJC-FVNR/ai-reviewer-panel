@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes combining attention-rollout-style semantic gating, Hessian-vector-product curvature, and KL-divergence masking into a unified attribution score for decoder-only LLMs. The problem is timely and well-motivated, and the paper makes a genuine effort to evaluate across four models and multiple metrics. However, the reported performance gains (4–6× over the next-best baseline on Soft-NC) are extraordinary and not adequately explained; the paper's own DSA metric is defined in contradictory/ambiguous terms; the ground-truth annotation pipeline is circular; and computational costs are described but never quantitatively compared to baselines, which is critical given the O(T) forward-pass requirement for the KL component.",
+  "strengths": [
+    "Well-motivated problem: the limitations of first-order and attention-based methods for autoregressive generation are clearly articulated with a concrete mathematical example (flat-gradient / saturated regime in Eq. 1–3).",
+    "Broad evaluation suite: four diverse decoder-only models spanning 6B–70B parameters, three benchmark datasets, nine strong baselines including recent methods (ReAgent, SEA-CoT, Progressive Inference), and both perturbation-based faithfulness (Soft-NC/NS) and alignment-based (DSA) metrics.",
+    "Ablation study is structured and component-wise (Transition-only, Hessian-only, KL-only, No Gating, Uniform Gating, Full HETA), and the robustness experiments (Gaussian perturbation sensitivity, active/passive rephrasing, decoding hyperparameter sweep) are a genuine addition to the evaluation.",
+    "The curated 2,000-instance dataset combining NarrativeQA distractors with SciQ evidence segments is an interesting controlled probe, and the inter-annotator agreement (F1 = 0.91, κ = 0.89) is reported."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric definition is internally contradictory. The text states 'let S_NarrQA and S_SciQ denote the set of model-selected important token indices,' implying the sets differ per method. If model-selected, the metric is circular: a method that concentrates mass on SciQ tokens will trivially have a high S_SciQ and inflate its own score. Elsewhere the paper says labels come from GPT-4o/GPT-5 annotation (inter-annotator F1 = 0.91), suggesting the sets are pre-defined ground-truth. These two accounts are irreconcilable as written, and the entire Table 1 result rests on this metric.",
+      "suggested_fix": "Precisely define S_SciQ and S_NarrQA: if they are fixed annotated sets, state that clearly and confirm they do not change across evaluated methods. If they are method-derived, justify why this avoids circularity. Provide the formal definition in a self-contained equation with no ambiguity."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The performance margins in Table 3 are extraordinary (HETA Soft-NC 10.3 vs. next-best ~2.1 on LongRA/GPT-J, a >4× gap; HETA 9.9 vs. ReAgent ~1.55 on LLaMA-70B, a >6× gap) and are entirely unexplained. Gains of this magnitude over recent, dedicated baselines like ReAgent would represent a paradigm shift, not an incremental improvement, yet no analysis explains the source or mechanism of the gap. This raises serious concerns about baseline implementation fidelity.",
+      "suggested_fix": "Provide a per-baseline analysis of why the gap exists. Are baselines run with their published hyperparameters? Reproduce at least one strong baseline (ReAgent) from its official code and compare. Report absolute Soft-NC/NS ranges for context. If the gap survives independent re-implementation, dedicate a section to explaining the mechanism."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The KL component (Eq. 4) requires a separate masked forward pass for each of the T input tokens, making HETA O(T) in forward passes per attribution. For T=512 and a 70B-parameter model this is prohibitively expensive. The paper states all experiments ran on 'a single NVIDIA A100 (80 GB)' but provides no absolute runtimes and no comparison of HETA's wall-clock cost against baselines. Without this, practitioners cannot assess whether HETA is usable in practice.",
+      "suggested_fix": "Add a Table (or Appendix Table) reporting per-method wall-clock time and peak GPU memory for a standardized sequence length (e.g., 256 tokens) on each model. If O(T) is unavoidable, frame HETA explicitly as an analysis tool rather than an online method, and compare against the subset of baselines with similar cost profiles."
+    },
+    {
+      "severity": "major",
+      "issue": "The sensitivity and information components (S^(T)_i and I(x_i→x_T)) are on entirely different scales with different units, yet are linearly combined in Eq. 5 with a fixed β=γ=0.5 with no ablation of these weights. The claim that β=0.5, γ=0.5 generalizes across four architecturally distinct models is implausible without evidence.",
+      "suggested_fix": "Ablate β and γ systematically (e.g., β ∈ {0.2, 0.5, 0.8}, γ ∈ {0.2, 0.5, 0.8}) on a held-out portion of one dataset/model combination, and report sensitivity. Alternatively, learn or normalize the components before combination."
+    },
+    {
+      "severity": "major",
+      "issue": "The curated dataset uses GPT-4o and 'GPT-5 Thinking' as annotators, whose outputs are treated as gold-standard ground truth. This is methodologically circular: if evaluated models (e.g., LLaMA-3.1-70B, Phi-3) share representational biases with GPT-family annotators, HETA components derived from similar transformer internals may systematically align with GPT annotations regardless of true faithfulness. The annotation quality of LLM-generated labels for attribution evaluation has not been validated against human annotators.",
+      "suggested_fix": "Either supplement with human annotation on a subset (even 200 instances) to validate GPT annotation quality, or add a robustness check showing DSA rankings are consistent when only GPT-4o annotations (without GPT-5) are used. Discuss the potential for annotator-model bias explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "Qwen2.5-3B results are listed in Table 1's column headers and mentioned in the experimental setup but deferred to the appendix 'due to space constraints,' while Table 1 itself already shows Qwen2.5 DSA scores in the main body. This is inconsistent.",
+      "suggested_fix": "Either include Qwen2.5 fully in the main body or remove it from Table 1 and consistently refer readers to the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Hutchinson estimator formula in Eq. 3 is ambiguous: the notation '||Π_i H_T (Π_i r_k)||_1' is used but it is unclear whether this estimates tr(Π_i H_T Π_i) (trace, standard Hutchinson) or the L1-norm of the HVP, and the sign of the Hessian (which can be negative for log-probability) is not discussed.",
+      "suggested_fix": "State explicitly what scalar quantity Eq. 3 estimates, whether negative values are clipped or signed, and why the L1-norm (or trace, whichever is intended) is the appropriate sensitivity measure."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide a precise, unambiguous formal definition of S_SciQ and S_NarrQA in the DSA metric: are these fixed pre-annotated token sets or method-derived top-k selections? If the former, why does the text say 'model-selected'?",
+    "What are the wall-clock runtimes per sequence (at T=256 and T=512) for HETA and each baseline on GPT-J-6B? How does HETA-LR+WIN compare to ContextCite and ReAgent in total compute?",
+    "The Soft-NC gap between HETA and the next-best method is 4–6×. Have you verified that baselines are running with their published, correctly-tuned hyperparameters? Can you provide the code or config used to run, e.g., ReAgent?",
+    "Were the β=0.5, γ=0.5 weights selected on the test datasets, or held out? If selected post-hoc on test, this inflates reported gains.",
+    "For LLaMA-3.1-70B, Hessian terms are computed only in the last six layers. How sensitive is performance to this choice (e.g., last 3, 6, 12, all layers)? Is there a principled reason why the last six layers suffice?",
+    "The Hessian can be negative-definite (indicating local maxima in log-probability). How does Eq. 3 handle negative curvature — are S^(T)_i values signed or rectified, and how does this interact with the β weighting in Eq. 5?"
+  ],
+  "calibration_check": "The paper claims 'a new standard for interpretability' and 'consistently outperforms existing methods,' but the extraordinary magnitude of the performance gaps (4–6×) and the ambiguous DSA metric undermine confidence in these claims; the work would be more credibly scoped as 'a competitive method with favorable robustness properties pending independent validation.'",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only generative LLMs is an active and important problem, but the proposed combination of attention rollout, Hessian sensitivity, and KL masking is incremental relative to recent dedicated methods; acceptance would require the extraordinary performance claims to be validated."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component — causal attention rollout (Abnar & Zuidema 2020 + Kobayashi et al. 2020 value-norm weighting), Hessian-vector-product sensitivity (prior work from Dong et al. 2025, Alvarez-Melis & Jaakkola 2018), and KL-masking — is individually established; the gated multiplicative combination is a design choice but not a conceptual breakthrough."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The DSA metric definition is internally contradictory; extraordinary performance gains are unexplained and not independently validated; the sign/semantics of the Hessian block estimator are ambiguous; ground-truth annotation via LLMs is potentially circular."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Three seeds with small reported standard deviations (< 0.06 / < 0.2) are provided, but no significance tests accompany the 4–6× performance gaps; the absence of confidence intervals around such large claimed improvements is a notable gap."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Computational limitations are acknowledged and low-rank approximations discussed, but the paper does not acknowledge that its ground-truth annotations may be unreliable, does not explain the extraordinary performance gaps, and the claim of a 'new standard' is not proportionate to the evidence."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The DSA metric is defined with contradictory language ('model-selected' vs. 'annotated by GPT'); the Hessian estimator notation is ambiguous about what scalar is estimated; and the Qwen results appear inconsistently across the main body and appendix."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Motivation, Background, Method, Experiments, Ablation, Related Work, Conclusion) at a reasonable length, with appropriate use of appendices for extended results."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core hyperparameters (β, γ, rank, window size, sequence lengths, batch sizes, hardware) are stated, and the HVP/Hutchinson approach is described at a reasonable level, but the sign handling of the Hessian, the exact KL masking scheme, and the inference-time token selection procedure are underspecified."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Recent baselines (ReAgent 2024, SEA-CoT 2025, ContextCite 2024, TDD 2024) are included and their limitations are discussed; the coverage of second-order methods in background could be more thorough given that Hessian-based attribution is central to the contribution."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, the figures appear to communicate component ablations (bar plots for Soft-NC/NS/DSA), robustness comparisons (sensitivity, active/passive, F1), and qualitative token attribution examples; the information density appears appropriate for the claims being made."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and four datasets (three benchmarks plus the curated set) with nine baselines is a reasonable scope, but Qwen2.5 results are inconsistently handled; no encoder-based or encoder-decoder comparison is provided to situate the decoder-only claims; and generalization to other task types (summarization, dialog) is not explored."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper addresses a real problem with a principled design and broad evaluation, but the unresolved ambiguity in the DSA metric, the unexplained 4–6× performance margins over recent baselines, the missing runtime comparison, and the circular annotation pipeline collectively place this below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.11
+}

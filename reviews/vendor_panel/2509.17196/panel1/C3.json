@@ -1,0 +1,120 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper adapts crosscoders from cross-layer to cross-snapshot analysis to track SAE-style feature evolution across Pythia pre-training checkpoints, reporting initialization vs. emergent feature classes, a striking directional turning point near step 1,000, an emergence hierarchy ordered by feature complexity, attribution-based links to downstream tasks, and evidence for a statistical-to-feature-learning phase transition. The research question is timely and several observations (especially the near-orthogonal feature rotation around step 1,000 and the dimensionality compression-then-expansion dynamics) are genuinely interesting. However, the central measurement instrument (decoder norms as feature-strength proxies) is validated only in appendices, no run-to-run variance or seeds are reported anywhere, the headline turning point has an obvious unaddressed confound (LR warmup/schedule), and the ablation studies lack random-feature controls. This is a promising borderline submission that needs substantial added rigor before acceptance.",
+  "strengths": [
+    "Novel and well-motivated adaptation of crosscoders to the time axis, yielding a unified feature space across training snapshots — a clean methodological contribution to developmental interpretability.",
+    "Several non-obvious empirical findings: the universal directional turning point around step 1,000, the complexity-vs-emergence-time correlation, and the previous-token → induction → context-sensitive emergence hierarchy that is consistent with known circuit dependencies.",
+    "Goes beyond descriptive analysis by connecting feature emergence to downstream task performance via integrated-gradient attribution patching with complementary ablations (remove-top-k and keep-only-top-k).",
+    "Honest limitations section covering generalizability, task simplicity, and the discrete-snapshot requirement; claims in the conclusion are mostly hedged ('roughly divided').",
+    "Two model scales (Pythia-160M and 6.9B) with consistent qualitative trends, and a sensible stratified snapshot sampling design that front-loads temporal resolution where change is fastest."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No statistical robustness anywhere: a single crosscoder per (model, dictionary size) configuration, no training seeds, no error bars on explained variance/L0/emergence-time distributions, and no significance analysis beyond one p-value. SAE/crosscoder training is known to be seed-sensitive, so findings like feature lifetimes, splitting rates, and the dimensionality curve could be run-specific.",
+      "suggested_fix": "Train at least 3 crosscoders per setting with different seeds and data orderings; report means ± std for all quantitative claims and test which findings (turning point, lifetime distribution, dimensionality trajectory) replicate across runs."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The core measurement — decoder norm ∥W_dec,i∥ as a proxy for feature presence/strength, and the 0.3 threshold defining feature 'lifetime' — is justified only by a plausibility argument plus an unseen appendix probe check. If the proxy is biased (e.g., norms shrink under competition for reconstruction credit rather than because features disappear), the emergence/persistence/phase-transition conclusions all weaken.",
+      "suggested_fix": "Move the linear-probe validation into the main text, add a ground-truth-style validation (e.g., synthetic or known features such as induction/previous-token whose emergence can be independently measured via behavioral probes), and show sensitivity of lifetime/emergence statistics to the 0.3 threshold."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'universal directional turning point' near step 1,000 has an unaddressed confound: it coincides with the typical LR warmup region of Pythia-style schedules (and early optimization transients), so the near-orthogonality of pre/post-1,000 feature directions may reflect optimizer/schedule dynamics rather than a representational phase change.",
+      "suggested_fix": "Overlay the LR schedule on the projection plots, repeat the analysis on a model trained with a different schedule/warmup (or on Pythia's deduped variant), and compare against a null of random-direction drift expected under pure SGD noise."
+    },
+    {
+      "severity": "major",
+      "issue": "Feature alignment across snapshots is substantially enforced by construction (shared encoder), so the claim that crosscoders 'successfully align' features is partly circular; the two failure modes are discussed only qualitatively, with feature splitting admitted but unquantified ('rare cases').",
+      "suggested_fix": "Quantify splitting/merging rates, validate alignment with an independent method (e.g., per-snapshot SAE feature matching via decoder cosine similarity, or causal interchange tests), and report how often top-attributed downstream features are split."
+    },
+    {
+      "severity": "major",
+      "issue": "Ablation experiments lack negative controls: showing that ablating the top-k attributed features disrupts (or that keeping them recovers) SVA/IOI/induction performance does not establish necessity/sufficiency without comparing to k randomly chosen features or k features matched by activation frequency.",
+      "suggested_fix": "Add random-feature and frequency-matched ablation baselines at each k, and report the gap between attributed and control subsets across snapshots."
+    },
+    {
+      "severity": "major",
+      "issue": "The statistical-to-superposition phase-transition claim rests on correlational timing evidence (unigram/bigram KL convergence + dimensionality dip) and is described as 'deeply consistent' with information-bottleneck theory, which overstates what is shown; the dimensionality metric from Elhage et al. was designed for toy models with ground-truth features and its validity for crosscoder features is assumed.",
+      "suggested_fix": "Soften the IB framing to 'consistent with', provide a mechanistic sanity check of the dimensionality metric (e.g., on synthetic superposition data processed through the same crosscoder pipeline), and test whether the transition timing shifts predictably with model size or data composition."
+    },
+    {
+      "severity": "minor",
+      "issue": "Complexity scoring uses a single LLM judge (Claude Sonnet 4) on only 100 features with no human validation or inter-rater agreement, yet the r = 0.309 correlation is used to support an emergence-by-complexity narrative.",
+      "suggested_fix": "Validate the LLM rubric against human ratings on a subset, report inter-rater agreement, and increase the sample; consider a model-free complexity proxy as a robustness check."
+    },
+    {
+      "severity": "minor",
+      "issue": "Notation is sloppy in places: a_θ denotes both the true activation and its reconstruction (Eq. 1), and ε/θ(x) for reconstruction error collides with θ as the snapshot index; figure cross-references are inconsistent (text cites 'Figure 9a/9b/9c' where the caption shown is Figure 3).",
+      "suggested_fix": "Distinguish reconstruction with a hat symbol, rename the error term, and fix figure numbering."
+    },
+    {
+      "severity": "minor",
+      "issue": "Analysis is restricted to a single middle layer per model; feature evolution may differ qualitatively at early vs. late layers, which limits the generality of the claimed developmental patterns.",
+      "suggested_fix": "Run the crosscoder on at least one early and one late layer of Pythia-160M and report whether emergence timing, turning point, and hierarchy replicate."
+    }
+  ],
+  "questions_for_authors": [
+    "How many crosscoder training runs/seeds underlie each reported result, and do the step-1,000 turning point and the lifetime distribution replicate across seeds?",
+    "Does the step-1,000 directional turning point coincide with the end of LR warmup in Pythia's schedule, and does it persist under a different schedule or warmup length?",
+    "Can you provide evidence independent of the crosscoder itself (e.g., behavioral probes or per-snapshot SAE matching) that decoder-norm trajectories track genuine feature presence rather than reconstruction-credit allocation?",
+    "What fraction of features exhibit splitting/merging, and are the top-attributed downstream features in Section 5 ever split across dimensions?",
+    "In the ablation studies, how does ablating k random (or frequency-matched) features compare to ablating the top-k attributed features at each snapshot?",
+    "Why was the dimensionality metric of Eq. 6 expected to remain valid when applied to learned crosscoder features rather than ground-truth toy features, and does it behave sanely on a synthetic superposition control?",
+    "How were λ_sparsity and dictionary size chosen per model, and how sensitive are the main findings (emergence times, phase-transition timing) to these choices?"
+  ],
+  "calibration_check": "Most claims are appropriately hedged and limitations are stated, but the information-bottleneck 'deep consistency' framing and the necessity/sufficiency language for the ablation results slightly outrun the correlational and control-free evidence presented.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Developmental/mechanistic accounts of pre-training are of clear interest to the interpretability community, and the turning-point and phase-transition observations would be cited if they hold up."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Cross-snapshot crosscoders are a genuinely new adaptation, but the individual analyses (emergence timing, complexity ordering, attribution patching, n-gram KL) are established techniques recombined rather than new methods."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The core proxy metric is under-validated in the main text, alignment is partly by construction, and a major schedule confound for the headline turning point is unaddressed."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, error bars, or variance estimates anywhere; single crosscoder runs; one n=100 LLM-scored correlation is the only inferential statistic in the paper."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "A real limitations section and mostly hedged language, with modest overreach in the IB-theory framing and the necessity/sufficiency claims."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Well-organized and readable with a logical arc from method to findings, marred by notation collisions and inconsistent figure references."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (intro, related work, method, analyses, limitations, conclusion) at reasonable length; the empty abstract in this extraction is treated as an anonymization artifact."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, layers, snapshot selection, data source, and attribution method are specified, but key hyperparameter and validation details are deferred to appendices not assessable here."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Fair and current coverage of SAEs/crosscoders, learning-dynamics theory (NTK, IB, SLT), and prior feature studies, with clear delineation of the contribution."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting displays (Pareto fronts, norm trajectories, attribution-over-time, KL/dimensionality curves) rather than decoration."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two sizes of one model family, one layer each, three simple downstream tasks, and no architecture/data variation — adequate for a first study but thin for the generality implied by the title."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: interesting question and several compelling observations, but acceptance requires seed-replication, confound controls, ablation baselines, and main-text validation of the decoder-norm proxy."
+    }
+  },
+  "publishability_probability": 0.35
+}

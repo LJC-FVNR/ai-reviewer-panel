@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes 'internal bias' — a model's preliminary, unreasoned guess about an answer — as a key driver of overthinking in o1/R1-style reasoning models, and supports this with correlation analyses, two counterfactual interventions (question removal and bias injection via fine-tuning), and attention analysis. The core claim is timely and the question-removal finding (31–53% reduction in post-first-answer tokens with maintained or improved accuracy) is the strongest empirical contribution. However, the causal interpretation of the question-removal intervention is conflated with a separate confound, statistical reporting is insufficient throughout (no error bars, key AIME results drawn from N=30), and the primary claim of universality is weakened by reliance on three closely related model families and closed-answer tasks only. The paper would be substantially stronger with statistical rigor, larger sample sizes, alternative-explanation controls, and broader model/task coverage.",
+  "strengths": [
+    "The question-removal intervention is an original and clever design: by truncating the prompt after the model's first self-derived answer, the authors isolate the effect of the question context on post-answer reflection, yielding a striking 31–53% redundancy reduction with equal or improved accuracy across diverse benchmarks.",
+    "The paper is timely and addresses a practically important problem (compute waste in long-CoT inference); the internal-bias framing is intuitive, connects to the unfaithfulness/bias literature in a novel way, and could directly inspire inference-time mitigation methods.",
+    "Cross-model validation spanning three families (DeepSeek-R1 671B, QwQ-32B, R1-Distill-Qwen-14B) and diverse task types (character counting, logical reasoning, AIME math) provides breadth relative to typical mechanistic studies.",
+    "The attention analysis (Figure 3/4) is well-motivated: the sharp increase in question-token attention at reflection tokens vs. answer tokens is a concrete mechanistic signal that bridges the behavioral and representational levels.",
+    "The bias injection experiment, while limited in scope, provides a complementary causal probe: intentionally wrong biases increase reasoning length and intentionally correct biases reduce it, directionally consistent with the hypothesis."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The question-removal intervention changes more than just bias reactivation. Removing the question mid-generation creates an out-of-distribution context in which the model may reduce reflection simply because the task statement is absent (it no longer 'knows what to verify'), not because an internal bias was suppressed. This alternative — call it the 'no-task-anchor' explanation — would predict exactly the same pattern (shorter reasoning, performance unchanged or improved by avoiding loops) without invoking internal bias. The authors use first-reasoning-length to rule out complexity confounds but do not address this distinct alternative.",
+      "suggested_fix": "Add a control condition: replace the question with a semantically neutral filler of equal length (e.g., random tokens or unrelated text) so that the position-based context is preserved but content is eliminated. If the reduction is comparable to full removal, the mechanism is content-independent truncation; if it is smaller, it specifically implicates question-content-driven bias. A second control: remove only the answer options (for KnowLogic) while keeping the question text, to see whether the reduction requires removing the whole question."
+    },
+    {
+      "severity": "blocking",
+      "issue": "AIME 2024/2025 experiments use N=30 problems. A single wrong answer changes accuracy by 3.3 percentage points; the reported improvements (e.g., AIME 2025: 36.7%→46.7% after question removal) correspond to only 3 extra correct problems. No error bars or confidence intervals are reported anywhere in the main tables, making it impossible to assess whether any tabulated difference is statistically real.",
+      "suggested_fix": "Report bootstrap 95% confidence intervals or binomial CIs for all accuracy figures. For reasoning-length results, report standard deviations (the distributions are heavy-tailed). Increase AIME sample size by including AIME 2022/2023/other competition years, or conduct multiple generation passes and average. At minimum, acknowledge in the text that AIME results should be treated as exploratory given N=30."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'first reasoning length as task difficulty proxy' argument in Section 4.3 is unconvincing. First-reasoning-length captures the model's initial approach to a problem, not the problem's intrinsic difficulty; harder problems within a difficulty-stratified dataset could still have similar first-pass lengths if the model always attempts a canonical approach before deviating. The claim that 'complexity of questions are almost the same in different groups in the same task' requires an independent difficulty measure (e.g., human ratings, number of reasoning steps in ground-truth solutions, or per-problem accuracy across many runs).",
+      "suggested_fix": "Supplement with an independent difficulty proxy: compute per-question accuracy over many rollouts (e.g., pass@k) and show that high-deviation and low-deviation groups have similar per-question accuracy distributions. This would more convincingly rule out complexity as a confound."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (Section 5.2) has a methodological gap: the Low2Wrong and High2Correct conditions are fine-tuned on task-specific declarative statements about the test sample itself, while the Random2Wrong/Random2Correct baselines use statements about different samples. Thus the baselines do not fully control for the training signal — the experimental conditions get sample-specific information that the baselines do not. Any improvement/degradation could be attributed to sample memorization rather than bias manipulation.",
+      "suggested_fix": "Construct matched baselines where the test sample is the same as the training sample but the injected answer is drawn from a different incorrect/correct answer not the target. Alternatively, use held-out test samples that were not used in fine-tuning for the bias-injection training, and measure generalization of injected biases."
+    },
+    {
+      "severity": "major",
+      "issue": "The three tested model families (DeepSeek-R1, QwQ, R1-Distill-Qwen) share training data and RLVR paradigm origins; they are not truly independent data points for a claim of universality. The paper explicitly claims universality across 'multiple models' but these models are all from the same narrow lineage.",
+      "suggested_fix": "Include at least one model from a substantially different training paradigm: e.g., Gemini Thinking, o3-mini via API, or a non-RLVR chain-of-thought model fine-tuned differently. Even a brief qualitative check would strengthen the universality claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "The direct answer measurement relies on a fixed prompt template with </think> termination. The content generated after this prompt may partly reflect the model's response to the prompt itself ('Let me answer without thinking more') rather than a pure pre-reasoning internal state, introducing prompt-sensitivity that is not fully characterized.",
+      "suggested_fix": "Report variance across the 64 prompt templates for at least a representative subset of questions, showing that the distribution of direct answers is relatively stable across templates. A sensitivity analysis varying the no-reasoning prompt wording would increase confidence in the measurement."
+    },
+    {
+      "severity": "minor",
+      "issue": "The mitigation trials (Section 7) test FCS, SEAL, and PROBE, but these methods were not designed to specifically address question-attention-driven bias — they target general reasoning length. The conclusion that 'existing methods fail to eliminate internal bias' is expected given the mismatch; a more informative mitigation trial would test the attention-based early-exit idea mentioned in the conclusion/appendix as a main result.",
+      "suggested_fix": "Move the attention-based early exit results from Appendix I.3 to the main paper as a proof-of-concept mitigation, and compare it to FCS/SEAL/PROBE on the same benchmark. This would complete the paper's narrative arc from diagnosis to mitigation."
+    }
+  ],
+  "questions_for_authors": [
+    "In the question-removal intervention, is the model explicitly told that the question has been removed, or is the context silently truncated? How does the model's behavior differ under explicit vs. silent removal, and does this affect the interpretation of the results?",
+    "For the AIME results with question removal, the AIME 2025 accuracy improves from 36.7% to 46.7% — a 10-percentage-point jump from 3 extra correct answers. Can you provide bootstrap confidence intervals and explain whether this improvement is robust across multiple generation passes?",
+    "The attention analysis is conducted on CharCount (zh) specifically. Do the same attention patterns (sharp increase in question-token attention at reflection tokens) hold on KnowLogic and AIME tasks, where the reasoning chains are qualitatively different and much longer?",
+    "In Table 4, FCSDPO achieves R=46.3%, which is worse than baseline (31.5%), meaning DPO training actually increases the gap between high- and low-bias groups. What is the mechanistic explanation for this degradation? Does DPO training shift the bias distribution in a way that makes more cases high-deviation?",
+    "How sensitive is the 'deviation degree' metric to the choice of distance function? For AIME tasks where direct answer accuracy is 0%, the deviation is essentially maximal for all samples — does this saturate the Dbias measure and limit its discriminative power for the AIME analysis?",
+    "The probing study (Appendix J.1) claims that hidden states from the question segment encode internal bias. What linear probe accuracy is achieved, and on which layer(s)? This seems like important mechanistic evidence that should be in the main paper."
+  ],
+  "calibration_check": "The abstract's claim of demonstrating 'the causal relationship more rigorously' via 'counterfactual interventions' is somewhat inflated — the question-removal intervention has an uncontrolled confound (task-anchor removal vs. bias suppression) and the bias injection experiment has sample-overlap issues, so 'causal evidence' would be more accurate than 'causal relationship demonstrated rigorously'; the main text is more careful in places but the framing in the abstract and contributions list oversells the causal claim.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in long-CoT models is a high-impact problem, and identifying a concrete mechanism (question-attention-driven bias reactivation) with an immediately actionable intervention (question removal reducing redundant tokens by 31–53%) is practically valuable; this would likely be built upon by the efficient-reasoning community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The 'internal bias as overthinking trigger' framing is distinct from prior unfaithfulness and bias work, the question-removal counterfactual is an original diagnostic tool, and the attention-at-reflection-token analysis is a novel mechanistic angle; the general idea that models have pre-reasoning priors is not new (Ameisen et al. is cited) but the connection to overthinking is."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The question-removal intervention conflates bias suppression with task-anchor removal, the first-reasoning-length proxy for complexity is insufficiently validated, the bias injection experiment has sample-overlap between conditions and baselines, and attention analysis is conducted only on CharCount; the causal chain is suggestive but not watertight."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars or confidence intervals appear anywhere in the main tables; AIME results are drawn from N=30 problems where a 3.3% accuracy change represents one problem; reasoning-length comparisons lack standard deviations; no significance tests are reported; these are not minor omissions but pervasive gaps."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper honestly acknowledges the limitation to closed-answer tasks and notes that existing mitigations do not fully solve the problem, but the abstract and contribution list overstate causal certainty ('demonstrate the causal relationship more rigorously') relative to what the interventions actually establish."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is generally well-organized and the 'strawberry' running example effectively grounds abstract claims; some notation in Section 6.2 is dense and the attention formula presentation is not typeset cleanly (likely a PDF extraction artifact), but the core ideas are accessible."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed; the paper is appropriately dense for the page limit with a heavy but organized appendix; the mitigation trials section could be positioned earlier in the experimental narrative rather than as a separate late section."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models are publicly available and named, datasets are identified (CharCount described in Appendix C, KnowLogic/AIME are open), and the question-removal procedure is clearly described; however, bias injection training details are in the appendix, the 64-template set is not included in the main paper, and NVIDIA RTX A6000 GPU count and inference batch size are unspecified."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of overthinking mitigation approaches is thorough and organized into three categories; the unfaithfulness/bias literature is fairly represented; the connection to Ameisen et al.'s separate neural pathway finding is appropriately drawn; a few key citations are anonymized but the coverage is substantively adequate."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, Figure 2 (deviation degree vs. reasoning length) and Figure 4 (group-level attention scores) are informative and directly support the paper's central claims; the 'strawberry' attention visualization (Figure 3) is a well-chosen illustration; Table 1/2 column headers are self-explanatory and the R metric is clearly defined."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "The paper claims universality but restricts detailed analysis to CharCount (a synthetic character-counting task), tests only three closely related RLVR-trained models, limits scope explicitly to closed-answer tasks, and the causal interventions are validated only on R1-Distill-Qwen-14B; the AIME sample size of 30 is too small to anchor quantitative claims about complex reasoning benchmarks."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper has a genuinely interesting core hypothesis and the question-removal finding is the kind of surprising empirical result ICLR values, but the lack of error bars throughout, the N=30 AIME problem, the uncontrolled confound in the main intervention, and the narrow model coverage collectively place this below the ICLR acceptance bar in current form; a revised version addressing statistical rigor and the task-anchor confound could be competitive."
+    }
+  },
+  "publishability_probability": 0.25
+}

@@ -1,0 +1,98 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER introduces a plausibility-guided dynamic rejection mechanism for KV cache activation steering that directly addresses the oversteering failure mode of prior instruction-following methods. The core contribution — progressively reducing the number of steered layers when the steered output distribution deviates implausibly from the raw distribution — is novel and practically motivated, requiring no additional data or training. Experiments across multiple benchmarks and model families (1B–14B) show consistent improvements in instruction adherence without sacrificing generation quality or task fidelity. The paper is well-organized and the ablations are largely convincing, but the lack of statistical uncertainty reporting on main results, a narrow baseline comparison set, and an unvalidated deviation from the standard IFEval evaluation protocol require attention before the work is fully publishable.",
+  "strengths": [
+    "The plausibility-guided decoding loop elegantly diagnoses oversteering at the token level without any external oracle or validation set, and the progressive layer-halving reduction scheme provides a principled continuum of intervention strengths.",
+    "The layer sensitivity ranking (Eq. 2–3) inverts the logic of KV quantization to find high-impact rather than low-impact layers; the reversed-ranking and random-layer ablations in Table 3 cleanly confirm that the ranking is doing real work.",
+    "Integrating the plausibility filter as a drop-in safety gate that improves PASTA and SpotLight performance (Figure 2b) is a compelling demonstration of modularity and substantially broadens the paper's practical contribution beyond DIRECTER itself.",
+    "Evaluation spans multiple architectures (Llama-3.2, Qwen-2.5) at 1B–14B scale, three benchmark types (strict constraint following, long-context instruction following, and reasoning under formatting constraints), and includes LLM-judge and human evaluation of generation quality, providing reasonable evidence of generality.",
+    "Efficiency analysis (Figure 4) is thorough and practically informative: a ~16% throughput reduction versus zero-shot, over 2× faster than SpotLight, and negligible memory overhead, with compatibility with FlashAttention noted as a concrete advantage over attention-level interventions."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The steering baseline set is limited to PASTA and SpotLight. Residual-stream steering methods (contrastive activation addition / Turner et al. 2023; representation engineering / Zou et al. 2023) are cited in related work but not included in Table 1. The headline claim of ~4% improvement over 'prior steering methods' is therefore measured against only two baselines, and both are attention-level methods; the claim cannot be extended to the broader steering literature without these comparisons.",
+      "suggested_fix": "Add at least one residual-stream steering baseline (e.g., CAA or RepE) to Table 1 and Table 2, even if only on IFEval, to support the generality of the claim."
+    },
+    {
+      "severity": "major",
+      "issue": "The IFEval prompts were rewritten with GPT-4o-mini to separate tasks from instructions, deviating from the original IFEval evaluation protocol used in almost all published comparisons. This makes the reported IFEval numbers incomparable to the broader literature and introduces an uncontrolled confound: GPT-4o-mini rewriting may systematically alter constraint difficulty or distribution. The same concern applies to all baselines evaluated on the modified prompts.",
+      "suggested_fix": "Report results on the original, unmodified IFEval split alongside the rewritten variant, or provide a statistical analysis (e.g., correlation of per-prompt difficulty before and after rewriting) showing that the modification does not systematically shift the evaluation."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 (main results) and Table 2 (cross-model generalization) report no confidence intervals, standard errors, or bootstrap uncertainty estimates. While greedy decoding on a fixed model is deterministic per example, accuracy aggregated over a finite test set carries sampling uncertainty from the benchmark's construction, and the custom GSM8K-Format benchmark numbers are effectively unverifiable as single-run point estimates. Table 3 provides standard deviations for random-layer and random-token variants but not for the main DIRECTER entry.",
+      "suggested_fix": "Report bootstrap 95% CIs on all aggregate accuracy metrics in Tables 1–2, or at minimum across the four prompt variants already tested in Figure 3c to give a within-paper variance estimate."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention sensitivity metric (Eq. 2) additively combines direct and propagated cosine-distance differences, but there is no formal or empirical justification for this additive structure or for the choice of cosine distance over L2 or KL divergence. The paper mentions Appendix D.1 contains alternative formulations, but the body text does not summarize those findings.",
+      "suggested_fix": "Add a one-sentence summary in the body of which alternatives were tested and why the chosen formulation was selected; alternatively, include a small comparison table in the ablation section."
+    },
+    {
+      "severity": "minor",
+      "issue": "α=100 (100× key scaling) is used as the fixed default, which is a very large perturbation before softmax renormalization. The robustness analysis in Figure 3b shows stability across orders of magnitude, but the mechanistic reason why such extreme scaling followed by softmax normalization is effective — and what it does to instruction-token attention mass at runtime — is never explained.",
+      "suggested_fix": "Add a brief analysis (a single figure or table in the appendix is sufficient) showing mean instruction-token attention mass as a function of α, connecting the hyperparameter to an interpretable quantity."
+    }
+  ],
+  "questions_for_authors": [
+    "How were the GPT-4o-mini rewritten IFEval prompts validated? Is there a human or automatic check confirming that rewriting preserves the original constraint type, difficulty, and constraint count, rather than simplifying them?",
+    "Why is the plausibility acceptance criterion defined over the top-1 token probability ratio (Eq. 1) rather than a full distributional divergence such as KL or total variation distance? Would a distributional criterion yield qualitatively different behavior on long-tail tokens?",
+    "The gating mechanism skips the steered forward pass when the top-2 token probability spread is narrow (pt,i_t < β·pt,i_t). Since narrow top-2 spread often coincides with syntactically constrained positions (e.g., the middle of a number or a named entity), does the gating disproportionately skip steering on instruction-relevant versus instruction-irrelevant tokens?",
+    "The layer sensitivity ranking is computed once from the prefill representations of the input prompt. For tasks where the instruction's effect on generation is most pronounced at later decoding steps (e.g., a formatting constraint first triggered near the end of a long response), does the static prefill-based ranking remain a good proxy for runtime influence?",
+    "Table 3 reports standard deviations of ±0.7 and ±1.1 for the random-layer and random-token ablation variants, respectively. What is the standard deviation (or range across independent runs, if any) of the main DIRECTER entry at 81.8%?"
+  ],
+  "calibration_check": "Claims are largely appropriately scoped — the paper does not claim broad NLP SOTA and acknowledges theoretical and practical limitations in the conclusion — but the headline figures of '6.5% over baseline' and '~4% over prior steering methods' cannot be considered fully calibrated without confidence intervals and a broader set of steering baselines.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Oversteering in inference-time activation steering is a recognized and actively studied problem; a practical, training-free method that subsumes and improves prior approaches is useful to the ICLR community, though the scope is narrow within the broader alignment and generation quality space."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The combination of progressive layer-halving rejection, KV cache key scaling, and a prefill-based sensitivity ranking is genuinely new; each component has precedents (contrastive decoding, KV manipulation, attention profiling), but their integration and the dynamic rejection mechanism are original contributions."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is correctly specified mathematically, the ablations isolate key design choices well, and the compatibility experiment (Figure 2b) is a rigorous test of modularity; the main gaps are the ad hoc sensitivity metric formulation and the unvalidated IFEval prompt rewriting."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main results in Tables 1–2 are reported as single-run point estimates with no confidence intervals; while greedy decoding is deterministic, bootstrap uncertainty over finite test sets is standard practice at ICLR and is absent throughout the main paper."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations — lack of formal grounding for the sensitivity metric, reliance on separable task/instruction spans, and the fixed-threshold plausibility check — are explicitly disclosed in the conclusion, and the paper avoids overclaiming generalization beyond the tested settings."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The RQ-framed experimental section and Algorithm 1 make the paper easy to follow; notation is consistent and the method description is precise, though the gating mechanism is introduced in prose before the algorithm and described somewhat redundantly."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed, the paper fits a typical ICLR length, and appendices appropriately offload implementation and additional analysis details."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model identifiers, hyperparameters (α=100, β=0.5), and evaluation protocols are reported, but the GPT-4o-mini prompt rewriting procedure for IFEval and the GSM8K-Format benchmark construction are not described in enough detail to reproduce from the main text alone."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "PASTA and SpotLight are thoroughly positioned and the oversteering literature is well-cited, but residual-stream steering methods (CAA, RepE, steering vectors) are briefly mentioned then excluded from experiments, leaving the competitive landscape incompletely characterized."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the display items appear well-designed and directly claim-supporting: Figure 2's paired bar charts for fixed-strength and compatibility ablations, Figure 3's three-panel robustness sweep, and Figure 4's three-metric efficiency comparison each map cleanly to a specific research question."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Three benchmark categories and four model families across 1B–14B provide reasonable but not exceptional breadth; the exclusive use of greedy decoding and the modified IFEval protocol limit direct comparison with the published literature and leave open questions about behavior under stochastic sampling."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A well-motivated, clearly presented, and empirically solid contribution to inference-time instruction following; the dynamic rejection mechanism is novel and the ablations are convincing, but statistical rigor gaps and the limited baseline set must be addressed for a clear accept."
+    }
+  },
+  "publishability_probability": 0.4
+}

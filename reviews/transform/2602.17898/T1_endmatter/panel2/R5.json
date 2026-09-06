@@ -1,0 +1,108 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper presents a theoretically grounded analysis of the PCC plateau phenomenon in attention-based regression, identifying two concrete limitations: a gradient attenuation bottleneck (1/σ_ȳ decay) and a PCC capacity ceiling for convex aggregators. The proposed ECA framework directly addresses each identified limitation with motivated components. The theoretical core is the paper's strongest contribution, and experiments span four settings with encouraging results. However, the experimental section has material weaknesses in statistical reporting and baseline coverage that limit the strength of empirical claims.",
+  "strengths": [
+    "The MSE decomposition (Proposition 2.1) cleanly situates PCC as one of three optimization targets and gives a precise, model-agnostic explanation for why MSE can decrease while PCC stagnates.",
+    "Theorem 2.2 derives an explicit, closed-form PCC gain ceiling for any convex aggregator as a function of convex-hull radius and mean-pooling baseline variance — a non-trivial, novel theoretical result.",
+    "The Corollary 2.1 gradient-ratio bound (O(1/σ_ȳ^{3/2})) is empirically validated on synthetic data, tightly connecting theory to observed dynamics.",
+    "ECA's three components (SRA, DATS, DNPL) each have direct theoretical motivation, and per-component ablations are provided.",
+    "Experiments cover four qualitatively distinct settings (synthetic controllable homogeneity, tabular UCI, spatial transcriptomics, multimodal sentiment analysis), providing broad scope."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No error bars or multi-seed variance are reported for the three UCI experiments in Table 1, making it impossible to assess whether improvements such as Online News PCC 0.408→0.420 (+0.012) or Appliance PCC 0.556→0.598 (+0.042) are statistically reliable rather than run-to-run noise.",
+      "suggested_fix": "Report mean ± std over at least 5 random seeds for all UCI results; add a significance test (e.g., Wilcoxon or t-test) for per-dataset comparisons."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The spatial transcriptomics results (Table 3) show standard deviations of ±0.160–0.202 for PCC values that differ by ~0.087–0.088, meaning the intervals overlap substantially across only 3 folds; the claimed '+14.64% PCC@F' gain may not be statistically significant.",
+      "suggested_fix": "Report p-values or confidence intervals, increase the number of evaluation folds if computationally feasible, or explicitly acknowledge this limitation and avoid 'significant improvement' language for this experiment."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage is insufficient for the empirical claims. The only attention comparison is against vanilla fixed-temperature softmax. Obvious alternatives that should appear: (i) manually-tuned temperature softmax, (ii) multi-head attention with learned temperatures, (iii) simply increasing λ_PCC, (iv) gradient clipping or adaptive learning-rate per-objective, (v) other multi-task loss-reweighting methods (e.g., GradNorm, uncertainty weighting). Without these, it is hard to conclude that ECA specifically — rather than any gradient-rebalancing heuristic — is responsible for the gains.",
+      "suggested_fix": "Add at least two ablative baselines that address the MSE/PCC imbalance without the full ECA machinery (e.g., loss reweighting schedule, fixed low-temperature softmax) to isolate ECA's specific contribution over simpler remedies."
+    },
+    {
+      "severity": "major",
+      "issue": "Theorem 2.2 requires the condition R < σ_0/∥w∥_2. This condition is not verified empirically on any benchmark, and it is unclear how often it is satisfied in practice. If it frequently fails, the bound may be vacuous and the theoretical motivation for SRA weaker than presented.",
+      "suggested_fix": "Measure R and σ_0/∥w∥_2 on each real benchmark and report whether the theorem's precondition holds; discuss what the bound implies when it does not."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim 'first theoretical investigation' is asserted without surveying the multi-task learning literature on MSE/correlation interaction or gradient-interference between jointly trained objectives; works on gradient-conflict in multi-task learning (e.g., PCGrad, MGDA) are not discussed.",
+      "suggested_fix": "Add a brief comparison to multi-task gradient-conflict analysis; clarify in what specific sense the contribution is 'first' (e.g., the first specific to PCC+MSE under convex attention aggregation)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Key hyperparameters (T_min, β for DATS; γ_max, λ_γ for SRA regularizer; λ_PCC) are deferred entirely to the appendix with no guidance in the main text about their sensitivity, making the method harder to apply.",
+      "suggested_fix": "Add a short hyperparameter sensitivity figure or table in the main paper, or at minimum state the ranges found to be robust."
+    },
+    {
+      "severity": "minor",
+      "issue": "The MSA experiment compares ALMT+ECA against baselines (TFN, MulT, MISA, etc.) that may use different modality combinations and features; the comparison is not apples-to-apples and the source of gains is ambiguous.",
+      "suggested_fix": "Focus the MSA comparison on the controlled ALMT vs. ALMT+L_PCC vs. ALMT+ECA trio; the broader baseline table should be clearly flagged as contextual rather than a direct comparison."
+    }
+  ],
+  "questions_for_authors": [
+    "Corollary 2.1 bounds the PCC/MSE gradient ratio as O(1/σ_ȳ^{3/2}). Could you provide a tighter, empirically verified tracking of whether this bound is approached at the values of σ_ȳ observed during real training runs, rather than only on the synthetic dataset?",
+    "DNPL multiplies the PCC loss by StopGrad(σ_ȳ), which counteracts the 1/σ_ȳ attenuation in the gradient. But the absolute PCC gradient magnitude also depends on within-sample dispersion σ_s (Corollary 2.2). Does DNPL fully restore PCC gradient magnitude, or does the σ_s bottleneck remain active? Is a dispersion-adaptive re-weighting also needed?",
+    "For SRA, the learnable γ_s is conditioned on the mean embedding s̄. Is the MLP for γ_s shared across samples or sample-specific? What is its depth and size? Does conditioning on s̄ (rather than on the full set {h_si}) limit its ability to detect within-sample contrast?",
+    "In the DATS formula (Eq. 10), lower σ_s (more homogeneous) yields lower τ_s (sharper softmax). But the input logits z_si also have lower variance under homogeneity. Does the sharpening actually produce meaningfully non-uniform α_si when logit variance is small? Could this interact badly with SRA when the residual direction is noise?",
+    "Theorem 2.2 is stated for the final aggregation layer. Section E (appendix) argues applicability to deep architectures. Can you summarize the key assumption needed for the theorem to propagate to earlier layers, and provide at least one concrete experiment with a 3+ layer backbone where the plateau and ECA gains are measured at intermediate feature depths?"
+  ],
+  "calibration_check": "The high-level claims are broadly supported by the theory and experiments; however, the language 'significant improvements' and 'consistently breaks the PCC plateau' overstates results in settings where improvements are within unreported variance (UCI) or over a small number of folds with large standard deviations (spatial transcriptomics).",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "The PCC plateau is a real, practically relevant failure mode in a wide class of regression models, and providing both a theoretical explanation and a targeted fix would be directly useful to practitioners in pathology, genomics, and multimodal analysis."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The MSE–PCC gradient decomposition and Theorem 2.2 are genuinely novel theoretical results; the three ECA components individually are incremental (residual scaling, temperature adaptation, and gradient re-weighting each have precedents), but their motivated combination targeting a specific identified failure mode gives them sufficient originality."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "The mathematical derivations appear internally consistent and the assumptions are stated; the main caveat is the precondition of Theorem 2.2 (R < σ_0/∥w∥_2) which is not verified on real benchmarks, leaving open whether the theorem's scope covers the experimental regimes."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "UCI results have no error bars across seeds; spatial transcriptomics results have high variance over only 3 folds that prevents strong significance claims; MSA results are single-run comparisons; several headline improvements are small enough that run-to-run variability could explain them."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper correctly notes limitations of convex aggregation and discusses when ECA's gains are smaller, but uses 'significant improvements' for results without significance testing, and the 'first theoretical investigation' claim is stronger than the related-work survey justifies."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and the narrative from theory to method to experiments is logical; some notation is dense and the ablation table in the rendered text appears truncated, but the overall exposition is above the ICLR median."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Abstract, Introduction, Theory, Method, Experiments, Conclusion) is followed, section lengths are reasonable, and the paper appears within typical page constraints."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key architectural and loss components are described at a level sufficient for re-implementation, but critical hyperparameters (T_min, β, γ_max, λ_γ, MLP architecture for γ_s) are relegated to the appendix, and the main text gives no ranges or defaults a practitioner could start from."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attention expressivity limits and PCC-as-loss literature is adequate; however, multi-task gradient-conflict methods (GradNorm, PCGrad, MGDA) that directly address MSE/PCC imbalance are absent, weakening the claim that ECA is the right solution relative to existing multi-task approaches."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From the captions, figures appear well-targeted: Figures 3 and 4 directly validate theoretical claims, Figure 5 tests the key σ-stratified synthetic conditions, and Figure 6 shows fold-wise training curves rather than just final numbers, supporting the plateau-breaking narrative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four domains are covered, which is commendable, but the core comparison in every setting is only against one attention baseline (vanilla softmax); the absence of alternative gradient-rebalancing or temperature-adaptation baselines means generality of the specific ECA design choices is not established."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline accept: the theoretical contribution is solid and the problem setting is well-motivated, but statistical reporting gaps and thin baseline coverage prevent full confidence in the empirical claims at the current state."
+    }
+  },
+  "publishability_probability": 0.38
+}

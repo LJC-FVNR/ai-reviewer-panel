@@ -1,0 +1,123 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper adapts crosscoders from cross-layer/model-diffing use to cross-checkpoint use, training a single sparse dictionary jointly over 32 Pythia pre-training snapshots so that features are aligned across training time, and then uses per-snapshot decoder norms as a proxy for when a feature 'exists'. On top of this it reports emergence/lifetime/rotation statistics, an LLM-scored complexity-vs-emergence-time correlation, attribution-patching experiments linking features to SVA/IOI/induction performance, and a proposed statistical-learning-to-feature-learning phase transition supported by n-gram KL curves and a total-feature-dimensionality measure. The direction is genuinely valuable and the empirical program is broad for an interpretability paper, but the central measurement instrument (decoder norm as feature presence) is defended mainly by argument rather than by ground-truth validation or a competing tracking baseline, there are no seeds or error bars anywhere, and the Section 6 conclusion that 'no features are formed' early is at risk of circularity because the instrument is a sparse dictionary that would be expected to fail on dense representations. With a validated measurement story, an alternative-tracking baseline, and de-escalated causal language, this would be a solid accept.",
+  "strengths": [
+    "Timely and under-explored question: nearly all SAE/crosscoder work studies final checkpoints, and a principled way to obtain a *shared* feature basis across pre-training time is a real methodological gap that the crosscoder adaptation addresses cleanly.",
+    "The method section is precise: the architecture (Eq. 1), the loss with the decoder-norm-weighted sparsity term (Eq. 2), and the explicit justification for including the decoder norm in the penalty (to block the shrink-activation/inflate-norm degenerate solution) are stated well enough to implement.",
+    "The crosscoder is not simply asserted to work: it is compared against per-snapshot SAEs trained with identical settings on both explained variance and L0, plus a Pareto-frontier comparison at the final snapshot (Figure 3), which is the right sanity check that the shared basis is not bought at a large reconstruction cost.",
+    "Two model scales (Pythia-160M with 98,304 features and Pythia-6.9B with 32,768 features) show the same qualitative dimensionality trend, which is more than many interpretability papers provide.",
+    "Section 4.3 grounds the abstract statistics in independently known feature families (previous-token, induction, context-sensitive) and recovers an ordering consistent with the known causal dependency of induction heads on previous-token heads — a useful external consistency check that the tracking is not measuring noise.",
+    "Section 5 goes beyond description: attribution patching with integrated gradients plus complementary ablations (keep-top-k and remove-top-k) is the correct pair of interventions, and running it at every snapshot to show features 'alternately dominating' the metric is a genuinely novel observation about circuit-level turnover during training.",
+    "The Limitations section is specific and honest about model-family scope, downstream task simplicity, and the discrete-snapshot cost, rather than being boilerplate."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The paper's central inferential step — that the per-snapshot decoder norm ||W^θ_dec,i|| measures the strength/presence of feature i at snapshot θ — is justified by an intuitive optimization argument in prose, not by evidence in the body. Every downstream claim (emergence times, lifetimes, the step-1,000 turning point, the dimensionality curve in Eq. 6, the entire phase-transition narrative) is a function of this proxy. Known artifacts of the crosscoder objective in the model-diffing setting (a shared sparsity penalty can drive a decoder norm toward zero for a feature that is in fact present, and can also decouple a single concept into separate latents) produce exactly the 'feature absent here, present there' signature the paper interprets substantively. Appendix C is said to contain a linear-probe sanity check, but the body reports no number from it, so a reader cannot judge the validity of the instrument.",
+      "suggested_fix": "Promote the validation into the main text with quantitative results: (i) for a sample of features and snapshots, report the correlation between decoder norm and an independent measure of presence, e.g. linear-probe recoverability of the feature's concept from that snapshot's activations, or the causal effect of ablating the direction; (ii) construct a synthetic/controlled setting with known ground-truth feature birth times (a toy model trained with features switched on at known steps) and show the crosscoder recovers those birth times; (iii) explicitly test for the shrinkage/decoupling failure modes rather than arguing they cannot occur."
+    },
+    {
+      "severity": "blocking",
+      "issue": "There is no baseline for the paper's actual core capability, cross-snapshot feature tracking. The SAE comparison in Figure 3 evaluates reconstruction and sparsity, which is not the contested quantity — nobody doubts a crosscoder can reconstruct. The obvious alternative (train per-snapshot SAEs and match features across snapshots by activation-pattern correlation, decoder-direction similarity, or Hungarian matching) is never run, so the reader cannot tell whether the crosscoder's shared basis buys anything over cheap post-hoc matching, nor whether the two methods agree on emergence times.",
+      "suggested_fix": "Add a matched-SAE tracking baseline and report agreement with the crosscoder on emergence step, lifetime, and the step-1,000 rotation. Disagreement would be informative; agreement would substantially strengthen the measurement-validity case."
+    },
+    {
+      "severity": "major",
+      "issue": "Section 6's argument is circular in its current form. The premise 'no features are formed at this period' is derived from the crosscoder finding low decoder norms early, but a sparse dictionary is precisely the instrument expected to fail when representations are dense and non-sparse. The n-gram KL evidence establishes that the model fits unigram/bigram statistics early, which is a well-documented and largely uncontested fact; it does not independently establish that no sparse features exist. The conclusion that there is a statistical-to-superposition *transition* therefore rests on the same proxy whose validity is at issue.",
+      "suggested_fix": "Provide feature-independent evidence for early density, e.g. participation ratio / effective rank / kurtosis of raw activations per snapshot, or the L0 an SAE trained *only* on an early snapshot can achieve at fixed explained variance. Additionally, control for the Pythia learning-rate warmup schedule, which ends in the same step range as the reported turning point and is an obvious alternative explanation for both the step-128 dip and the step-1,000 rotation."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is essentially absent. No result in the paper carries seeds, error bars, or variance across crosscoder training runs; every curve appears to come from a single crosscoder per configuration. Since SAE/crosscoder training is well known to be seed-sensitive (feature sets differ substantially across runs), distributional claims such as 'most features persist above 60% of snapshots' and 'most features rotate to near-orthogonality around step 1,000' cannot currently be distinguished from run-specific idiosyncrasy.",
+      "suggested_fix": "Train at least 3 crosscoders per configuration with different seeds and report the emergence-time, lifetime, and projection distributions with variability across runs; report how stable the recovered feature set itself is across seeds."
+    },
+    {
+      "severity": "major",
+      "issue": "Section 5 concludes that the ablations confirm 'our method identifies necessary and sufficient task components', which is stronger than the evidence. There is no random-feature or matched-magnitude control reported in the text for the keep-top-k / remove-top-k curves, no comparison against neuron-level or per-snapshot-SAE attribution, and the attribution is a first-order (IG-corrected) approximation applied at a single layer, so 'necessary and sufficient' is not established in the technical sense the phrase invokes.",
+      "suggested_fix": "Add random-k and norm-matched-k ablation baselines and at least one alternative attribution method, and rewrite the claim as 'a small set of features suffices to recover / disrupt the metric under our attribution ranking', dropping 'necessary and sufficient'."
+    },
+    {
+      "severity": "major",
+      "issue": "The complexity-vs-emergence-time result (Pearson r = 0.309, p = 0.002, n = 100) is weak, single-rater, and unvalidated. Complexity is scored by one LLM (Claude Sonnet 4) from top activations with no human agreement study, no inter-model agreement, and no check that the scorer is not simply keying on features that are hard to summarize. The confidence interval on r at n = 100 is roughly 0.12–0.48, i.e. the effect could be small; the text's 'non-trivial correlation with moderate strength' slightly overstates it. Top-activation-only interpretation is also known to inflate apparent monosemanticity.",
+      "suggested_fix": "Report a confidence interval, add human annotation on a subsample with agreement statistics, and cross-check with a second scorer model; consider sampling activations across the full activation range rather than top-only."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several thresholds and design choices are unmotivated and unablated: the lifetime threshold ||W_dec|| > 0.3 after rescaling to max 1, the stratified snapshot schedule (20 of 32 snapshots before step 10,000, which non-uniformly weights early training and can visually distort trajectory shapes and the emergence-time distribution in Figure 5a), the single mid-layer per model, and the choice of dictionary sizes. Figure 5a in particular is a distribution over a non-uniformly sampled time axis.",
+      "suggested_fix": "Show that the lifetime and emergence conclusions are insensitive to the threshold over a range, report emergence-time distributions on a log-step axis or reweighted for the sampling schedule, and add at least one additional layer for Pythia-160M."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that the two-stage structure is 'deeply consistent with the fitting-to-compressing phase transition predicted by the information bottleneck theory' is asserted without engaging the substantial literature disputing the generality of the IB compression phase (notably that it depends on the saturating nonlinearity and estimator used). Positioning the paper's empirical finding as confirmation of a contested theory weakens rather than strengthens it. Relatedly, the related work does not discuss known crosscoder-specific artifacts, which is the most relevant prior work for the paper's own validity.",
+      "suggested_fix": "Soften to a loose analogy, cite and address the critiques of the IB compression phase, and add a paragraph on crosscoder failure modes documented in the model-diffing literature with an explanation of why they do or do not apply here."
+    },
+    {
+      "severity": "minor",
+      "issue": "Internal referencing errors: the text describing the crosscoder-vs-SAE comparison points to 'Figures 9a and 9b' and 'Figure 9c' while the accompanying display item is captioned Figure 3 with exactly panels (a), (b), (c) describing that comparison; Figure 2 and Figure 3 also appear out of narrative order. The abstract is missing from the manuscript as presented. Notation is dense in places (the reconstruction â^θ vs a^θ distinction is hard to follow in Eq. 1–3 as typeset).",
+      "suggested_fix": "Fix cross-references and ordering, and add distinguishing notation for reconstructions."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the quantitative result of the Appendix C linear-probe sanity check — specifically, what is the correlation between per-snapshot decoder norm and probe-recoverability of the corresponding concept, and does it hold for features with intermediate (not just near-zero vs. large) norms?",
+    "Pythia's learning-rate warmup spans roughly the first ~1,400 steps. How do you rule out that the step-128 dip/recovery and the near-orthogonal direction change around step 1,000 are consequences of the LR schedule or of early optimizer transients rather than of representational reorganization?",
+    "If you train an SAE on an early snapshot alone (say step 500) at the same dictionary size, what explained variance and L0 does it reach relative to a late snapshot? This would separate 'the model has no sparse features yet' from 'the crosscoder cannot find them yet'.",
+    "In Figures 7b and 7c, what do random-k and norm-matched-k ablation curves look like? Without those, how much of the recovery/disruption is attributable to the specific features identified rather than to removing k directions of comparable magnitude?",
+    "How stable is the recovered feature set across crosscoder training seeds, and do the emergence-time and lifetime distributions replicate?",
+    "How sensitive is the 'above 60% of snapshots' persistence claim to the 0.3 decoder-norm threshold, and how does the non-uniform snapshot schedule affect the lifetime statistic (which counts snapshots, not steps)?",
+    "For the complexity analysis, what is the human-LLM agreement on a subsample, and does the correlation survive when complexity is scored by a second, different model?",
+    "Does the total-feature-dimensionality curve in Figure 8c depend on dictionary size? Since you attribute the lower Pythia-6.9B values to the smaller dictionary, a dictionary-size sweep on one model would be needed to show the U-shape is not itself a capacity artifact."
+  ],
+  "calibration_check": "The limitations section is genuinely candid about scope, task simplicity, and snapshot granularity, but the core claims are still somewhat over-scoped relative to the evidence: 'necessary and sufficient task components', 'a universal directional turning point', and framing the n-gram/dimensionality correlations as establishing a phase transition all outrun what a single-seed, single-proxy, single-model-family study with no tracking baseline can support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Bringing dictionary learning to the training-dynamics question fills a real gap and the shared-basis-across-checkpoints idea is one interpretability researchers would plausibly adopt and build on, especially the observation of circuit component turnover during training."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Applying crosscoders across checkpoints rather than across layers or model variants is a new and non-obvious use, though the architecture, loss, attribution machinery, and dimensionality metric are all taken essentially off the shelf, so the novelty is in the application and analysis rather than in method design."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The claim-evidence chain hinges entirely on the unvalidated decoder-norm-equals-presence proxy, the failure modes are dismissed by argument rather than experiment, the Section 6 'no early features' premise is circular with respect to the instrument, and an obvious confound (LR warmup coinciding with the reported turning point) is not controlled."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, no error bars, no variance estimates anywhere despite well-known seed sensitivity of sparse dictionary training; the single reported inferential statistic (r = 0.309, n = 100) is weak, has no confidence interval, and rests on unvalidated single-LLM annotation."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The Limitations section is specific and useful and the paper flags rare feature splitting, but 'necessary and sufficient', 'universal turning point', and 'deeply consistent with' a contested IB prediction are all stronger than the evidence, and the contested status of the IB compression phase is not acknowledged."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall narrative arc from method to feature statistics to circuits to phase transition is easy to follow and the crosscoder formulation is precisely stated, but figure cross-references are wrong (Figure 3 caption vs. 'Figure 9' in text), the reconstruction notation is hard to parse, and key validations are deferred to appendices without any numbers surfaced in the body."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization with a clear contributions list, related work, method, three analysis sections, an explicit Limitations section, and appropriate length; the main structural weakness is that load-bearing validation lives in appendices while the body reports none of it."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, layer choices, snapshot selection schedule, corpus, dictionary sizes, task construction, corruption schemes, and sample counts are all specified, but the sparsity coefficient, chosen activation and regularization functions, optimizer settings, and activation-token budgets are deferred or omitted, so an exact reimplementation would require guessing."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of learning-dynamics theory (NTK, IB, SLT) and the sparse dictionary learning lineage including transcoders and model-diffing crosscoders is broad and the contribution is clearly delineated as the first checkpoint-wise adaptation, but the paper omits critiques of the IB compression phase and, more importantly, the literature on crosscoder-specific artifacts that bears directly on its own validity."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The captions describe display items that are well matched to the claims they support — the SAE-vs-crosscoder Pareto comparison, the norm-trajectory overviews at two model scales, the three-panel emergence/lifetime/projection statistics, and the paired keep-k/remove-k ablations are each the right visualization for their argument — though none appear to carry error bars or control conditions."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Evidence comes from a single model family, one mid layer per model, one corpus, and three comparatively simple circuit tasks, with no tracking baseline and no dictionary-size or layer sweep, which is thin support for claims phrased as general properties of LLM pre-training even though the Limitations section acknowledges the scope."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A genuinely interesting and well-motivated study whose descriptive findings would interest the community, but as submitted the measurement instrument is unvalidated in the main text, the core tracking capability has no baseline, no result carries variance estimates, and the headline phase-transition and causal claims outrun the evidence, which places it below the acceptance bar pending substantial added experiments."
+    }
+  },
+  "publishability_probability": 0.35
+}

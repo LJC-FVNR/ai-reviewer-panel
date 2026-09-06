@@ -1,0 +1,110 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper introduces a principled single-location regression (SLR) framework to study why softmax attention outperforms linear alternatives, using tools from statistical physics of learning. It proves that softmax attains the Bayes risk on this task while linear attention has a fundamental gap, characterizes other activations (elementwise erf, softplus kernel) via order parameters, and extends the analysis to the finite-sample proportional regime via a replica computation with numerical validation. The theoretical story is coherent, honestly scoped, and complements a growing body of work using solvable models to explain architectural choices in Transformers; the main limitations are the simplicity of the synthetic task, the manifold restriction, and reliance on non-rigorous replica arguments.",
+  "strengths": [
+    "Addresses a genuinely poorly-understood question (why softmax beats linear/kernelized attention on retrieval-style tasks) with a well-chosen minimal model that supports closed-form comparisons.",
+    "Cleanly separates approximation (population risk, Prop 4.1–4.4, Cor 4.3–4.4) from statistical (finite-sample, Result 5.1) advantages, with rate-level comparisons (linear risk ~1/ν vs softmax exponential decay; L→∞ separation for max-SLR).",
+    "The corollaries on when activation gradients vanish at initialization (Cor 4.1) and the sequence-length variance hurting linear attention are conceptually illuminating and match the empirical folklore around softmax normalization.",
+    "Honest calibration: the manifold assumption, the non-rigorousness of the replica step, the absence of learnable queries, and the mismatch with the Bayes-optimal risk at finite α are stated rather than hidden.",
+    "Extends prior sequence multi-index model machinery (Cui 2025; Troiani et al. 2025) to variable sequence length and a generic weighting function gν, which is a non-trivial technical contribution and gives a unified umbrella for spiked-SLR and max-SLR.",
+    "Fair positioning against very recent concurrent work (Dohmatob 2025, Barnfield et al. 2026, Dragutinović et al. 2025) rather than ignoring it."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The core empirical validation is a single synthetic task (SLR) with L ≤ 10 and no learnable query. The paper motivates itself with real retrieval benchmarks (Figure 1 from Shen et al., NIAH, MQAR) but never returns to bridge the toy result back to any real or semi-real retrieval setting (e.g., MQAR, a small trained Transformer where linear vs softmax can be swapped). This leaves a gap between the abstract claim ('statistical advantage of softmax') and the evidence, which is really about one very specific single-token-dependent task.",
+      "suggested_fix": "Add at least one experiment on a slightly more realistic testbed — e.g., a small trained attention layer on MQAR or a shifted-Gaussian mixture with learnable Q — comparing softmax, linear, softplus-kernel and 1+erf, to check that the population/finite-α ordering predicted by the theory carries over."
+    },
+    {
+      "severity": "major",
+      "issue": "The analysis relies on the 'manifold assumption' M = {mkv = mvk = qvk = 0}. Section 4.2 acknowledges that local minima outside M exist and defers a formal proof. Since the paper's central claim depends on comparing minima on M for linear vs softmax, the reader is asked to trust that GD converges to the on-M minimum. The evidence given (initialization lands near M, M is invariant under GD in the D→∞ limit, empirical stability) is suggestive but not tight.",
+      "suggested_fix": "Either (a) prove that with random Gaussian initialization at finite D the GD trajectory stays within an ε-neighborhood of M w.h.p., or (b) show numerically over multiple seeds and initializations that the softmax model never converges to a lower-risk off-M minimizer. As written, the statement 'we know that a global minimizer is on M' for softmax should be tied to Prop 4.2 explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "Result 5.1 is presented as a prediction from the (non-rigorous) replica method, but the paper's story leans heavily on it (Fig 3, the finite-α comparison, the softmax-still-beats-linear headline for the empirical regime). The replica step, the replica-symmetric ansatz, and the diagonal-order-parameter simplification are stacked assumptions. The paper hedges with 'we expect a proof under the replicon condition', but does not check replicon numerically or provide a stability check.",
+      "suggested_fix": "Include (i) a numerical check of replica symmetry / de-Almeida–Thouless-style stability for representative (α, ν, L), and (ii) explicit statement that Result 5.1 is a conjecture supported by simulation (Fig 3) rather than a theorem. The current 'Result' framing risks reading as a theorem to a fast reader."
+    },
+    {
+      "severity": "minor",
+      "issue": "The linear-attention baseline is defined as σ(χ) = 1 + χ, and the paper acknowledges the constant is needed to break symmetry. But this is a non-standard choice: much of the theoretical literature the paper cites (Ahn et al., von Oswald et al., Zhang et al., etc.) works with softmax linearizations that include a learnable temperature/scaling. It's not obvious whether the linear-attention gap is intrinsic or an artifact of the specific parameterization.",
+      "suggested_fix": "Add a short ablation comparing σ(χ)=1+χ against σ(χ)=a+bχ with (a,b) learnable, and against σ(χ)=χ, to confirm the population-risk gap is robust to reasonable linear parameterizations."
+    },
+    {
+      "severity": "minor",
+      "issue": "The comparison to kernelized attention is done via σ = softplus/normalization, but Fig 2 does not include the widely used ELU+1 kernel (Katharopoulos et al.) or the RFA/Performer-style feature maps. The 'kernel has to be tuned' takeaway is important but is supported by only one kernel choice.",
+      "suggested_fix": "Include at least one more kernel in Fig 2 (e.g., ELU+1, ReLU^2, or 1+ReLU) so the sweep over kernels is not a single point."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some notation is dense and occasionally inconsistent — e.g., the switch between fσ,k,v and fσ,k̂,v̂, the reuse of ν both as noise level in output channel (Eq. 2) and as signal strength for gν, and the mixture of ‖k‖ vs q_{kk}. Prop 4.4 introduces R_kk, R_vv without stating dimension. This slows a first read.",
+      "suggested_fix": "A short 'notation' box near Section 3.3, and a rename of the output-noise σ (currently just labeled with an unset symbol in Eq. 2) to η or similar, would help. Also state explicitly that R_kk, R_vv ∈ R in Prop 4.4."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper mentions gradient-based optimization matches ERM predictions (Fig 3) but does not report seed variance, timing, or sensitivity to initialization for the quasi-Newton runs. Given the non-convex empirical risk, the 'no bad local minima' claim needs quantification.",
+      "suggested_fix": "Report, in Appendix D, the fraction of seeds that reach the theoretical Eσ(α) within tolerance, across (α, ν, L, activation)."
+    }
+  ],
+  "questions_for_authors": [
+    "For the max-SLR at ν → ∞, softmax is proven well-specified and reaches Esoftmax = 0. What happens at large but finite ν for the linear activation as L grows: does the O(logL / L) rate in Cor 4.3 empirically match, and is the constant sharp?",
+    "Does the ordering (softmax < normalized-softplus < 1+erf < linear) predicted by Fig 2 continue to hold when learnable query vectors are introduced, or when the max-SLR is replaced by a two-token dependency (concurrent Barnfield et al. 2026 setting)?",
+    "How does the ERM prediction of Result 5.1 depend on the replica-symmetric ansatz — have you checked replicon/AT stability, and are there parameter regions where you expect replica symmetry breaking?",
+    "The manifold assumption is central. Can you quantify the basin-of-attraction of the on-M minimizer under random Gaussian init at finite D (e.g., probability of GD escaping M as D varies)?",
+    "The Bayes-optimal error in Fig 3 has a discontinuity ('hard phase'). Does softmax with a smarter initialization (e.g., spectral/PCA on X) close the gap to Bayes-optimal below the hard-phase threshold, or is it always stuck at the algorithmic Bayes-optimal?",
+    "How sensitive is the linear-attention gap to the specific choice σ(χ) = 1 + χ vs a learnable affine σ(χ) = a + bχ, and vs a rescaled-linear that mimics softmax temperature?"
+  ],
+  "calibration_check": "Claims are largely well-scoped: the paper repeatedly says 'on the SLR task', 'under the manifold assumption', 'under replica symmetry', and does not over-claim about real LLMs; the main overreach is that the abstract's framing ('statistical advantage of softmax attention') is broader than the evidence, which is specifically about one class of single-token retrieval tasks.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Provides a principled answer to a widely-asked question (why softmax dominates for retrieval) in a tractable model; likely to be cited by the statistical-physics-of-learning subcommunity and by theorists working on attention."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Extends the sequence multi-index framework to variable sequence length and general gν, and derives new separation results for softmax vs linear/kernelized activations that go beyond the prior spiked-token analyses; concurrent works exist but tackle different models."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "Propositions 4.1–4.4 and Corollaries are proven (in appendices); the manifold restriction and the replica step are non-rigorous but explicitly flagged, and the closed-form comparisons for linear vs softmax are clean."
+    },
+    "statistical_soundness": {
+      "score": 6,
+      "justification": "Fig 3 shows theory-vs-simulation agreement, but seed variance, replicon/AT stability, and sensitivity to initialization are not reported; Result 5.1 is a replica prediction, not a theorem."
+    },
+    "calibration_honesty": {
+      "score": 8,
+      "justification": "The paper is unusually forthright about the manifold assumption, the non-rigorous replica method, the absence of learnable queries, and the fact that softmax is not Bayes-optimal at finite α — limitations are stated in the body, not buried."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The core narrative is well-organized (population → finite-sample), but notation is dense (dual use of ν, ambiguous σ, unset noise symbol in Eq. 2, undeclared dimensions of R_kk, R_vv), and the self-consistent equations block (Eqs 17–25) is hard to parse on first read."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure with abstract, intro, related work, model, population analysis, finite-sample analysis, and appendices for proofs and details; length appears appropriate."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Task, activations, regularization scheme, high-dim scaling, and numerical procedures are described; hyperparameters said to be in Appendix D; code is mentioned. The theoretical procedure (fixed-point iteration on Eqs 18–22) is implementable from the paper."
+    },
+    "related_work": {
+      "score": 8,
+      "justification": "Comprehensive coverage of alternatives (kernelized, SSM), of the retrieval-benchmark literature motivating the question, and of directly relevant concurrent theoretical work (Dohmatob 2025, Barnfield et al. 2026, Dragutinović et al. 2025); positioning against Marion et al. 2025 / Cui 2025 / Troiani et al. 2025 is clear."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Fig 1 grounds the empirical motivation from Shen et al.; Fig 2 sweeps activations across (task, L, ν) and cleanly supports the population-risk claim; Fig 3 compares theory and simulation for finite α — informative and load-bearing rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Evidence is confined to one synthetic task family (spiked-SLR / max-SLR) with small L and one kernel choice among many; the paper motivates via LLM-scale retrieval but never bridges back to a semi-realistic setting like MQAR or a trained small attention layer."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Solid theoretical contribution with clear separations, honest scoping, and useful methodology; sits at borderline-accept given the reliance on the manifold + replica assumptions and the narrow empirical scope, but with the fixes above would clearly clear the ICLR bar."
+    }
+  },
+  "publishability_probability": 0.55
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token attribution framework for decoder-only LLMs that combines attention-weighted semantic flow (via causal rollout), Hessian-based second-order sensitivity (via scalable HVPs), and KL divergence from per-token masking. The scope is broad—four models up to 70B, nine baselines, three established benchmarks, and a new curated evaluation—and the ablation structure is reasonable. However, the reported margins are implausibly large (Soft-NC of 10+ vs. baselines near 1–2), a potentially circular relationship exists between HETA's KL masking component and the masking-based faithfulness metrics, the primary curated benchmark and its DSA metric are both author-designed, and several core claims are overclaimed. These issues must be resolved before the work can be recommended.",
+  "strengths": [
+    "Tackles a genuine and well-motivated gap: most prior attribution work targets encoder models, and applying such methods directly to causal decoder-only LMs is non-trivial.",
+    "Three complementary components (causal rollout gating, Hessian curvature, KL masking) are individually motivated and an ablation of each is provided, confirming each contributes positively.",
+    "Experimental breadth is commendable: four models spanning 3B–70B, nine baselines including recent generative-LM-specific methods, decoding-hyperparameter sweep (temperature × top-p × top-k × rep-penalty), and syntactic-rephrasing robustness tests.",
+    "The curated mixed-paragraph dataset (NarrativeQA + SciQ interleaved with distractor context) is an interesting controlled evaluation design, and inter-annotator agreement (F1=0.91, κ=0.89) is high.",
+    "Decoding hyperparameter sensitivity analysis (Table 2, <1% variation for HETA vs 2–5% for baselines) is a practical and novel robustness check seldom reported in attribution papers."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Potential evaluation circularity between HETA's KL component and the Soft-NC/Soft-NS metrics. HETA's information term I(xi→xT) = KL(P_orig || P_masked_i) is computed by masking token xi and measuring the induced shift in the output distribution. Soft-NC/Soft-NS evaluate faithfulness by removing the top-attributed tokens and measuring the resulting output-distribution shift. A method that directly encodes per-token masking impact into its attribution scores will, by construction, assign high scores to exactly the tokens whose removal maximally perturbs the output—which is precisely what Soft-NC/Soft-NS reward. This structural alignment likely explains a large fraction of the extraordinary margins (HETA Soft-NC ≈ 10 vs. baselines ≈ 1–2 on LongRA GPT-J), not any deeper faithfulness property. The paper must report results on at least one masking-independent faithfulness metric (e.g., sufficiency/comprehensiveness using log-likelihood rather than distribution shift, or causal scrubbing) and demonstrate that margins persist.",
+      "suggested_fix": "Add evaluation on metrics that are structurally orthogonal to masking—e.g., log-probability comprehensiveness/sufficiency (remove top-k tokens, measure log-prob drop vs. baseline), AOPC, or an interventional causal metric. Report whether the gap shrinks substantially on these metrics and discuss the relationship between HETA's KL term and the perturbation-based metrics explicitly."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Implausibly large Soft-NC margins are unexplained. Soft-NC/Soft-NS values reported for HETA (e.g., 10.3 on LongRA GPT-J; 9.9 on LongRA LLaMA-70B) are 5–7× higher than the next-best method and far exceed typical values in the attribution faithfulness literature where this family of metrics originates. No calibration, sanity check, or comparison with the values reported in Zhao and Aletras (2023) or Zhao and Shan (2024) is provided. The paper must either show that such values are achievable under the stated formulation or identify and correct an implementation discrepancy.",
+      "suggested_fix": "Provide the exact Soft-NC/Soft-NS formulas used, compare computed scores for at least one shared baseline against previously published values, and include a bound or normalization argument explaining why scores can exceed typical ranges."
+    },
+    {
+      "severity": "major",
+      "issue": "ReAgent—described in the prose as 'consistently ranks second' and cited as the strongest non-HETA baseline—appears absent from Table 3 for GPT-J 6B and Phi-3-Medium-14B (it is present only for LLaMA-3.1 70B). Omitting the strongest baseline from the headline results table for two of three models significantly weakens the comparison.",
+      "suggested_fix": "Include ReAgent in Table 3 for all three models, or explicitly state in the caption that it was omitted and provide the numbers in the appendix with a pointer."
+    },
+    {
+      "severity": "major",
+      "issue": "The curated benchmark and DSA metric are both designed by the same authors. DSA contrasts SciQ vs. NarrativeQA attribution mass—a structure that maps almost perfectly onto HETA's target-conditioned causal gating design (distractors are semantically rich but causally irrelevant). Using a self-designed benchmark and metric as primary evidence for a newly proposed method creates a risk of inadvertent overfitting in evaluation design.",
+      "suggested_fix": "Evaluate on at least one externally curated attribution alignment benchmark not designed in this work, or include a dedicated analysis of how DSA would rank a purely masking-based oracle (which would reveal whether the metric is independent of HETA's specific design)."
+    },
+    {
+      "severity": "major",
+      "issue": "The combination hyperparameters β = γ = 0.5 are fixed throughout all experiments with no ablation over their values. Since these weights control the relative contribution of the curvature and information terms, the choice of equal weighting could be tuned (even inadvertently) to benefit HETA on the specific evaluation datasets. The ablation in Figure 2 shows component importance but does not explore sensitivity to β/γ.",
+      "suggested_fix": "Report a 3×3 or 5×5 grid over (β, γ) on a held-out subset and show that performance is robust to a range of values, or provide a principled derivation of why equal weighting is optimal."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DSA metric definition is textually garbled due to apparent formula extraction issues: the formal definition reads 'DSA = P j∈SNarrQA fsj, with ... i∈SSciQ ssi - P' which is ambiguous. The threshold defining SNarrQA and SSciQ (model-selected important token indices) is also not specified in the main text.",
+      "suggested_fix": "Restate the DSA formula cleanly in the paper, define the threshold for top-attributed token selection, and verify the formula matches what was actually implemented."
+    },
+    {
+      "severity": "minor",
+      "issue": "The method requires N forward passes for per-token KL masking plus HVP computation. The paper defers runtime/memory comparison to the appendix and does not include a wall-clock cost table comparing HETA (and its LR+WIN variant) against baselines such as ReAgent and ContextCite in the main paper.",
+      "suggested_fix": "Add a concise runtime-vs-performance table in the main body (tokens/second or seconds per sequence for each method at each model scale) to help practitioners make cost-accuracy trade-offs."
+    }
+  ],
+  "questions_for_authors": [
+    "Can the authors provide the exact Soft-NC/Soft-NS implementation (formula, normalization, token-removal procedure) and compare computed scores for one shared baseline (e.g., ReAgent on LongRA LLaMA-70B) against the values reported in Zhao and Shan (2024)? If the values differ, what explains the discrepancy?",
+    "HETA's KL term I(xi→xT) is structurally similar to what Soft-NC/Soft-NS measure (masking a token and observing output change). Do the authors agree there is a potential circularity? What results look like on a masking-independent faithfulness metric?",
+    "Why is ReAgent absent from Table 3 for GPT-J 6B and Phi-3-Medium-14B? Was it omitted due to space, or did it fail to run on those models?",
+    "The β = γ = 0.5 weighting is used everywhere. Was any hyperparameter search performed, even informally? Reporting sensitivity to these weights would substantially strengthen the ablation.",
+    "For the curated dataset, what is the threshold used to determine SNarrQA and SSciQ (the 'model-selected important token indices')? Is it top-k tokens, a fixed mass threshold, or something else?",
+    "The conclusion states HETA 'establish[es] a new standard for interpretability in autoregressive language models.' Given evaluation is confined to four transformer decoder-only models (all English) and two benchmark families, what is the basis for this generality claim? Have the authors tested on any non-English data or non-transformer architectures?"
+  ],
+  "calibration_check": "The core empirical claims (large improvements in Soft-NC/Soft-NS, DSA) are inadequately calibrated against the evident risk of evaluation circularity, and the conclusion's 'new standard' framing significantly overreaches what four models on four datasets can establish.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Token-level attribution for decoder-only LLMs is an important and underserved problem; if the method and evaluation are sound, the contribution is meaningful for the interpretability community."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Each individual component (attention rollout, Hessian HVPs, KL masking) exists in prior literature; the novelty lies in the specific combination and the target-conditioned causal gating structure, which is non-trivial but not a fundamental conceptual breakthrough."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The structural circularity between HETA's KL component and the masking-based evaluation metrics is a serious validity threat that is neither acknowledged nor controlled for, and the extraordinary margins (5–7× over strong baselines) are not explained or verified against published baselines using the same metrics."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Three seeds are run and standard deviations are reported (std < 0.06 for Table 3, < 0.2 for DSA), but no formal significance tests are provided for the main claims, and the margins are so extreme that they raise suspicion rather than confidence."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The abstract claims HETA 'establishes a new standard for interpretability in autoregressive language models' and the limitations section is generic and non-specific, neither acknowledging the evaluation circularity risk nor bounding the scope of the empirical conclusions to the settings tested."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method description is largely clear at a high level, but the DSA formula is textually garbled, key algorithmic details are deferred to the appendix, and Table 3's inline text mixes baseline names with numbers in a way that makes it difficult to parse which entry belongs to ReAgent."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Motivation, Background, Method, Experiments, Related Work, Conclusion/Limitations) with appropriate section lengths; the separate Limitations section is a positive addition even if its content is generic."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters (β, γ, rank, window size, batch size, GPU) are stated, models are identified by name and size, and datasets are cited, but the full algorithmic procedure and error bounds are in appendices unavailable for review, and the exact Soft-NC/Soft-NS formulas are not provided in the main text."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of relevant prior work is good and largely accurate, including recent generative-LM-specific methods (ContextCite, TDD, PML, ReAGent) with specific and mostly fair characterizations of their limitations."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, the ablation bar plots (Figure 2a–c) and robustness comparisons (Figure 3a–c) appear well-designed and directly support the claims; the qualitative attribution visualizations (Figures 2d, 3d) are standard but useful."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models (3B–70B), nine baselines, three established benchmarks, and one new curated dataset is solid breadth for a conference paper, but the self-designed benchmark and metric limit independence, and ReAgent is missing from two of three models in the main faithfulness table."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting and broadly evaluated method, but the evaluation circularity between HETA's KL component and the masking-based faithfulness metrics is a potentially result-invalidating issue that must be resolved; as submitted, the extreme margins cannot be taken at face value."
+    }
+  },
+  "publishability_probability": 0.18
+}

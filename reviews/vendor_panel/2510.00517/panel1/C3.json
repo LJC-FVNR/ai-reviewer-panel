@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents the first robustness-focused analysis of Differential Attention (DA), arguing that its subtractive structure encourages negative gradient alignment between its two attention branches, amplifying local sensitivity and adversarial vulnerability, while stacking layers yields a depth-dependent noise-cancellation effect that partially restores robustness at small budgets. The topic is timely, the empirical program (ASR, Lipschitz estimation, alignment frequency, depth sweeps across five datasets) is well conceived, and the limitations are stated unusually honestly. However, the theory is largely elementary algebra plus assumption-driven bounds (the depth results essentially assume the cancellation factor they conclude), the central premise that DA training functionally necessitates negative gradient alignment is asserted rather than established, and the experiments lack seeds, error bars, significance testing, and a clearly parameter-matched ViT/DiffViT comparison. This is a promising borderline submission that needs substantially stronger controls and statistical rigor before it meets the ICLR bar.",
+  "strengths": [
+    "Novel and timely angle: the first adversarial-robustness analysis of Differential Attention, a mechanism gaining rapid adoption, with a non-obvious and practically relevant finding (a fragility/robustness crossover with depth).",
+    "Coherent empirical program that aligns with the theory: attack success rates under PGD/CW/AutoAttack, per-layer local Lipschitz estimates, direct measurement of negative gradient alignment frequency, and depth sweeps, spanning ViT/DiffViT and pretrained CLIP/DiffCLIP over five datasets.",
+    "Commendable calibration: an explicit limitations section (local linearization, layer isolation, lambda-init-only study, gradient-based perturbations only), and honest reporting of the ImageNet patch-attack results that partially contradict the fragility claim.",
+    "Clear, well-organized writing in standard conference structure; the Fragile Principle and the two-mechanism interpretation (alignment-driven amplification vs. cancellation-driven attenuation) are easy to understand and the figures (per captions) directly support each claim."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The fairness of the core ViT vs. DiffViT comparison is not established: DA introduces a second set of Q/K projections, so DiffViT plausibly has more parameters per layer, and no parameter/FLOP matching (e.g., head-splitting as in the original DA paper) or clean-accuracy matching is reported for the main ASR comparisons. Higher ASR may reflect capacity or clean-accuracy differences rather than the subtractive structure.",
+      "suggested_fix": "State and enforce parameter-matched configurations (e.g., halved head dimension per branch as in Ye et al.), report parameter counts, FLOPs, and clean accuracy for every model/depth, and show the ASR gap survives clean-accuracy-matched comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "No statistical rigor anywhere: ASR, Lipschitz estimates, and alignment frequencies are reported as single point values (Table 1 to four decimals) with no seeds, error bars, confidence intervals, or significance tests, so it is impossible to tell whether the reported gaps (some described as 'small' or 'marginal') are real.",
+      "suggested_fix": "Run at least 3-5 seeds per configuration, report mean +/- std for ASR/Lipschitz/alignment metrics, and apply paired significance tests for ViT-vs-DiffViT and CLIP-vs-DiffCLIP comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical contribution is thin relative to its framing. Lemma 1 and Theorem 1 are the law of cosines applied to a difference of gradients; Theorem 4 and Corollary 1 assume a per-layer cancellation factor alpha < 1 for DA and alpha ~ 1 for standard attention, i.e., they assume the conclusion and derive arithmetic consequences; Lemma 2 gives only an upper bound on the Lipschitz ratio, which by itself cannot establish that subtraction 'structurally shifts sensitivity upward'; and the key claim that 'rho and theta can be adversarially controlled' is asserted without proof.",
+      "suggested_fix": "Reframe Section 4 as a hypothesis-generating sensitivity decomposition rather than a proof of fragility, or strengthen it: prove existence of amplifying perturbations under explicit conditions on trained weights, derive lower bounds on the Lipschitz ratio under negative alignment, and provide a mechanistic argument (or training-dynamics evidence) that gradient descent on DA objectives actually induces cos theta < 0."
+    },
+    {
+      "severity": "major",
+      "issue": "The central premise that negative gradient alignment is a 'functional necessity' of DA is argued only by intuition. Since A1 and A2 are both softmax maps meant to overlap on redundant regions, one could equally expect their values (and gradients) to align positively there; the paper does not rule out this alternative or show alignment emerging from training rather than initialization.",
+      "suggested_fix": "Measure cos(theta) at initialization versus after training, correlate per-layer alignment with lambda and with the degree of attention-map overlap, and/or construct a toy optimization showing the DA loss drives gradients toward opposition."
+    },
+    {
+      "severity": "minor",
+      "issue": "Attack and estimation hyperparameters are absent from the main text: PGD step count/step size/restarts, CW confidence and iterations, AutoAttack version, and the number of samples used in the Monte-Carlo local-Lipschitz estimate are all unspecified, and training hyperparameters (optimizer, LR, epochs, augmentation) for the from-scratch ViT/DiffViT models are not given.",
+      "suggested_fix": "Add a setup table with full attack budgets, step sizes, iteration counts, Lipschitz sample sizes, and training hyperparameters (or an explicit pointer to a complete appendix)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Generality is narrower than the framing suggests: the depth-crossover evidence is essentially CIFAR-scale (Tiny ImageNet only at depth 4, in an appendix), the ImageNet patch results mildly favor CLIP over DiffCLIP, and no other selective-attention variants are compared, so 'structural fragility of subtractive attention' is supported only for one mechanism at small scale.",
+      "suggested_fix": "Extend depth sweeps to Tiny ImageNet and at least one larger-scale ViT/DiffViT setting, discuss the ImageNet patch exception more quantitatively, and temper generality language accordingly."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation slips: 'ViT and DiffViT trained from for controlled studies' (missing word), the definition of gamma in Theorem 2 is garbled, and Table 1's accuracy row shows clean accuracy degrading for lambda_init > 0.8, which is an alternative explanation for the ASR drop ('over-cancellation') that is not disentangled.",
+      "suggested_fix": "Fix typos/notation, and for Table 1 report the ASR-accuracy relationship explicitly (e.g., ASR conditional on clean-correct examples) to separate robustness from accuracy effects."
+    }
+  ],
+  "questions_for_authors": [
+    "Are ViT and DiffViT matched in parameter count and FLOPs at each depth? If so, how (head splitting, reduced head dimension)? Please report exact parameter counts and clean accuracies per configuration.",
+    "How many random seeds underlie each reported ASR/Lipschitz/alignment number, and what is the run-to-run variance? Are the DiffCLIP-vs-CLIP gaps on ImageNet statistically significant?",
+    "What are the full attack configurations: PGD iterations, step size, restarts; CW confidence/iterations; AutoAttack version (standard or custom); and how many perturbation samples are used for the local Lipschitz estimates?",
+    "Is negative gradient alignment present at initialization or does it emerge during training? A plot of cos(theta) over training would directly test the 'structurally induced' claim.",
+    "For Table 1, is the ASR decline beyond lambda_init = 0.8 still present when conditioning on cleanly-correct examples, given that clean accuracy also drops?",
+    "Does the depth crossover (DA becoming more robust than standard attention at small budgets) replicate on Tiny ImageNet and under AutoAttack at intermediate budgets, and can you provide any evidence at ImageNet scale?"
+  ],
+  "calibration_check": "The empirical claims are mostly well scoped and limitations are stated candidly (including results that cut against the thesis), but the theoretical claims ('structurally induces', 'key driver', 'fundamental trade-off') outrun what is essentially algebraic restatement plus assumed cancellation factors, so the theory framing is mildly overclaimed relative to the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A robustness caveat for an increasingly adopted attention variant is useful and likely to be cited by DA follow-up work, though the toy-scale evidence limits near-term impact on practice."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The DA-specific fragility analysis, the negative-gradient-alignment observation, and the depth-crossover finding are genuinely new, even though the mathematical tools employed are elementary."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theory is mostly trivial algebra and bounds that assume their conclusions (alpha < 1), the bound in Lemma 2 points the wrong way to establish amplification, and the necessity of negative alignment is asserted rather than shown; the empirical logic is sound in design but undermined by uncontrolled confounds."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, confidence intervals, or significance tests appear anywhere, and several headline gaps are described as small or marginal, leaving the reality of the improvements unestablished."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Explicit limitations, honest reporting of contradictory ImageNet patch results, and scoped experimental claims, tempered by overstrong theoretical framing ('first', 'fundamental trade-off', 'structurally induces')."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Well organized and readable with a clear two-mechanism narrative, marred by a few typos, a garbled definition of gamma, and occasional conflation of upper bounds with evidence of amplification."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (intro, related work, preliminaries, theory, experiments, discussion, conclusion) at a reasonable length with appendices for proofs and extra results."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Models, datasets, attack families, lambda_init, and depth grid are specified, but training hyperparameters, attack configurations, Lipschitz sampling details, and seed protocols are missing from the main text, leaving full reproduction uncertain."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Fair coverage of attention robustness, interpretability, and Lipschitz analyses with clear delineation (mechanism-level analysis rather than a defense), though no comparison to other selective/sparse attention variants is offered."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative, claim-aligned displays (ASR vs. budget/patch size, depth-dependent ASR/CW/Lipschitz curves, per-layer alignment frequencies) plus a lambda-init ablation table; the ImageNet nuance is visible rather than hidden."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Five datasets and two model families is reasonable breadth, but the depth study is essentially CIFAR-only, the ImageNet patch results partially contradict the thesis, parameter-matched baselines are not demonstrated, and no other attention variants are compared."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline: a novel, honest, and potentially influential analysis whose value is currently undercut by a thin theoretical contribution, absent statistical rigor, and an uncontrolled key baseline comparison."
+    }
+  },
+  "publishability_probability": 0.32
+}

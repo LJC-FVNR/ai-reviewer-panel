@@ -1,0 +1,121 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes Neighbor Distance Minimization (NDM), an unsupervised method for finding interpretable non-basis-aligned subspaces of a model's representation space by learning an orthogonal rotation that minimizes nearest-neighbor distance within candidate subspaces, with a mutual-information–driven procedure for choosing the dimension configuration. The motivation via mutual exclusiveness / feature groups is thought-provoking, and the method is evaluated in a toy setting, on known GPT-2 Small circuits via subspace patching, and qualitatively on 2B-scale models for context-vs-parametric knowledge routing. However, the empirical support is thin (few tests, no seeds/CIs, one main quantitative benchmark, borderline Gini values on several tests), and several core claims (mutual-exclusiveness ⇒ orthogonal subspaces, MI reduction, knowledge-routing subspaces) are argued heuristically rather than validated with adequate controls, leaving the paper promising but not yet convincing at ICLR's bar.",
+  "strengths": [
+    "Tackles an important and under-explored problem in mech-interp: unsupervised, non-basis-aligned decomposition of representation space, which if successful would offer a cleaner alternative to per-input SAE features.",
+    "The mutual-exclusiveness / feature-group framing is a genuinely useful conceptual reframing of when superposition is expected, and connects sensibly to multi-dimensional feature literature (Engels et al.).",
+    "Evaluation combines a controlled toy setting, a causally-grounded circuit-based quantitative test on GPT-2 Small using subspace patching, and qualitative interpretation via preimages (InversionView-style), which is a reasonable multi-pronged validation strategy.",
+    "Baselines are sensible for an unsupervised method (Identity, Random, two PCA variants, SAE-feature clustering) and NDM shows meaningful improvement on average.",
+    "The authors are relatively candid about limitations: some subspaces are not clearly interpretable, some Gini scores fall below the stated satisfactory threshold, and caveats around the 2B knowledge-routing experiment are explicitly stated.",
+    "The paper motivates a plausible downstream research direction (input-independent 'variable' circuits) that would matter to the interpretability community."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is essentially absent: no seeds, no confidence intervals, no significance tests. Table 1 reports single-run Gini coefficients, and the paper compares 0.71 to a 0.60 'satisfactory' threshold without any measure of variability across R initializations, MI thresholds, activation samples, or configurations. Several NDM entries (e.g. Test 4 'Vars' 0.38, Test 5 '-' 0.50) actually fall below the paper's own satisfactory threshold, but this is treated as noise.",
+      "suggested_fix": "Report mean ± std over multiple random inits of R, multiple activation-sample draws, and multiple MI thresholds. Add paired tests (e.g. per-example Gini or per-example concentration) vs. baselines so the improvement can be shown to be significant, not just numerically larger."
+    },
+    {
+      "severity": "major",
+      "issue": "The main benchmark rests on only 5 tests taken from 2 GPT-2 Small circuits (IOI, greater-than). This is a very narrow evidentiary base for a method claiming to reveal 'natural' subspaces in general LMs, and the '2B applicability' experiment reduces to a single knowledge-conflict setup on two models without ground truth. Generality claims outrun the evidence.",
+      "suggested_fix": "Extend the quantitative suite: additional known circuits (indirect object identification variants at more layers, docstring, colored-objects, arithmetic), additional models with published circuits, and at least one setting with ground-truth abstract variables (e.g. RAVEL as designed, entity-tracking benchmarks) where DAS-style upper-bound comparisons are possible."
+    },
+    {
+      "severity": "major",
+      "issue": "No comparison to the closest supervised baseline (DAS / Boundless DAS / DBM), which the paper itself calls out as the most relevant prior work. Without a supervised upper bound or a matched-dimension DAS reference, it is unclear whether NDM approaches or badly underperforms what supervision would give on the very same target variables in Table 1.",
+      "suggested_fix": "For each of Tests 1–5, run DAS on the specified target variable at the same layer with the same dimension budget, and report NDM vs DAS Gini/patching effect. Even a partial DAS comparison would meaningfully calibrate the numbers."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical argument that NDM minimizes total correlation is only sketched (App. B.1) with 'loosely speaking, neighbor distance reflects entropy.' Nearest-neighbor distance is a very rough proxy for differential entropy (a la Kozachenko–Leonenko), and this proxy is applied to per-subspace projections without discussing bias, scaling with d_s, or the effect of orthogonality constraints on the argument. The MI/total-correlation justification is load-bearing (invoked whenever the strict feature-group hypothesis fails) and needs to be made rigorous.",
+      "suggested_fix": "Either (a) formalize the connection with an explicit inequality/bound relating expected 1-NN distance in R^{d_s} to entropy of the projected distribution and the orthogonality-invariance argument, or (b) tone down the claim to 'heuristic motivation' and show empirically that the trained R actually reduces an unbiased TC estimator across a range of settings, not just MI between pairs."
+    },
+    {
+      "severity": "major",
+      "issue": "The dimension-configuration procedure (start small, merge on high MI, stop below threshold) is heuristic and inherits several fragile choices: KSG estimator's bias in high dimensions, an ad hoc MI/(d_s1+d_s2) normalization, the merging threshold, and the starting granularity. The final partition in Table 1 is selected as 'best configuration according to test results,' which is close to tuning on the evaluation set.",
+      "suggested_fix": "Report full sensitivity analysis over threshold and starting granularity, hold the final configuration selection strictly independent of the Table 1 tests (e.g. select by MI on held-out activations or by a proxy on separate prompts), and report Table 1 for the automatically-selected configuration, not the best-of."
+    },
+    {
+      "severity": "minor",
+      "issue": "The knowledge-routing experiment (Sec. 5.3) is interesting but does not verify that the identified subspaces are the ones the model actually uses. That some subspace, when patched with Param-Corrupt, flips predictions is necessary but not sufficient; a random subspace with enough dimension can also flip predictions. The current display only shows selected favorable subspaces.",
+      "suggested_fix": "Add a distributional comparison: histogram of per-subspace 'directional' effects (Δ context-answer under Param-Corrupt minus Δ parametric-answer under Context-Corrupt) for NDM vs. random rotations at matched dimensions, and show NDM's distribution is meaningfully more separated. Include the 'full' partition table for both models, not only two highlighted subspaces."
+    },
+    {
+      "severity": "minor",
+      "issue": "There is no dedicated Related Work section; prior work is discussed briefly under 'Discussions' and is somewhat sparse relative to the density of adjacent work (DAS/Boundless DAS, subspace probing, iterated nullspace projection, unsupervised concept discovery, disentanglement/ICA on activations, sparse dictionaries, etc.). ICA in particular is an obvious unsupervised baseline that is neither discussed nor compared against.",
+      "suggested_fix": "Add a proper Related Work section positioning NDM against (i) supervised subspace methods (DAS/BDAS/DBM), (ii) unsupervised disentanglement (ICA, non-Gaussian component analysis, InfoMax), (iii) SAE-based decomposition, and add ICA / FastICA as a baseline row in Table 1."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity issues: notation in Eq. (2)-(4) is garbled in the extraction (h^(s)_n vs h^(s)_n̂, missing arg-min brackets), and Table 1 headers ('-', 'ds', 'Vars') are only introduced in a dense footnote-like caption. Multi-column parsing of the table in the extraction is genuinely ambiguous even accounting for extraction artifacts.",
+      "suggested_fix": "Re-typeset the method section with clearer notation for the nearest-neighbor argmin, make explicit that the argmin is over m ≠ n, and reorganize Table 1 with grouped columns and a legend inside the table body rather than only in the caption."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: number of activations used, batch size, R parametrization details, MI threshold, KSG k, subspace starting sizes, and stopping criterion are described only in prose and appendix pointers; hyperparameter grids are not fully reported. Even ignoring the redacted code link (per anonymization), the training recipe is not fully specified in the body.",
+      "suggested_fix": "Add a compact 'training recipe' table (activation source, N, optimizer, learning rate, initial d_s, MI threshold(s) tried, KSG k, iterations, stopping rule) for each of the toy / GPT-2 / 2B settings."
+    }
+  ],
+  "questions_for_authors": [
+    "How does NDM compare to DAS/Boundless DAS at matched dimension on the same 5 test targets in Table 1, and what is the gap between unsupervised NDM and the supervised upper bound?",
+    "Across multiple random initializations of R and multiple MI thresholds, how stable is the resulting partition (rotation subspace agreement, dimension configuration)? Any measure like Grassmannian distance between resulting subspaces across seeds?",
+    "Have you tried FastICA (or non-Gaussian component analysis) as an unsupervised baseline row in Table 1? A priori it seems like a natural competitor to a mutual-information-reducing rotation.",
+    "In Sec. 5.3 (knowledge routing), how does the effect profile of NDM-identified 'parametric' and 'context' subspaces compare with random rotations at the same d_s? A per-subspace scatter of (context-effect, parametric-effect) for NDM vs. random would clarify separation.",
+    "The final configuration used in Table 1 is described as the 'best' from a set — is 'best' selected on the test suite itself, or on independent held-out prompts / MI on held-out activations?",
+    "For subspaces you could not qualitatively interpret (App. E.3), what fraction of the partition do they constitute, and do they still receive nontrivial patching effect? Are they compressible into orthogonal linear features, or do you have evidence they may be non-linear (Csordás et al. 2024)?",
+    "Do you have any evidence that NDM subspaces are more 'input-independent' than SAE-based decompositions in the sense required for the proposed 'subspace circuits' future direction — e.g., consistent identity of the current-token / prior-token subspace under distribution shift?"
+  ],
+  "calibration_check": "Claims are broadly reasonable when scoped as 'promising evidence,' but framing such as 'strong connection between subspaces and circuit variables' and 'applicability to 2B models' overstates evidence built on 5 tests from 2 GPT-2 circuits and one hand-designed knowledge-conflict prompt on two models; overall calibration is acceptable but needs tightening.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Unsupervised discovery of causally-relevant subspaces is a live and important problem in interpretability, and even partial success would matter to the ICLR interp community, but the current evidence base doesn't yet justify practice-change."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combines the learned-orthogonal-rotation idea from DAS with an unsupervised nearest-neighbor objective and an MI-based merging procedure — a genuinely new combination, though each ingredient has clear precedent."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is internally sensible and the toy validation is clean, but the theoretical MI/TC justification is hand-wavy and the LM evaluation lacks upper-bound (DAS) and unsupervised (ICA) controls."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, no error bars, no significance testing; the paper compares single-run Gini coefficients against a hand-picked 0.6 threshold, and several NDM cells fall below that threshold with no analysis of variance."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are acknowledged (non-interpretable subspaces, caveats on the knowledge-routing experiment), but some headline framings ('strong connection', 'applicability to 2B') overreach given the evidence."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The intuition figures and toy story are clear, but the method section's notation is dense/garbled, Table 1's layout is hard to parse, and many crucial details are pushed to the appendix."
+    },
+    "structure_compliance": {
+      "score": 5,
+      "justification": "Standard ICLR structure with one notable gap: no dedicated Related Work section — prior work is compressed into a paragraph inside Discussion, weakening positioning."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Algorithm 1 and appendices describe the pipeline in enough detail that a competent reader could re-implement, but hyperparameter grids, stopping criteria, and sensitivity to MI-threshold / KSG-k are not fully consolidated in the body."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "The most-relevant supervised subspace work (DAS/BDAS) is cited but not compared against quantitatively; unsupervised alternatives like ICA are not discussed; the coverage is adequate but not thorough."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figures (per captions) map cleanly onto the claims — Fig. 1 for intuition and toy result, Fig. 3/5 for qualitative and knowledge-routing evidence — though Table 1's presentation is cramped and the Fig. 5 evidence is limited to hand-picked subspaces."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Toy + GPT-2 Small (2 circuits, 5 tests) + 2 x 2B models on a single knowledge-conflict setup is a modest evidence base for the paper's general 'natural subspaces in real-world models' claim."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: interesting direction and non-trivial results relative to unsupervised baselines, but limited breadth, missing critical baselines/upper-bounds (DAS/ICA), and weak statistical reporting keep it below the acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.32
+}

@@ -1,0 +1,114 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper identifies 'internal bias' — a model's preliminary, non-reasoned guess elicited by the input question — as a driver of overthinking in reasoning models, and supports the claim with correlational statistics, two counterfactual interventions (question removal and bias injection), and attention/interpretability analysis. The hypothesis is clean, the causal design (especially question removal) is well-motivated, and results are consistent across three model sizes and several tasks. Weaknesses are moderate scale (a single 14B model carries most of the causal work, and mitigation trials use only one dataset for the main table), some conflation between attention-as-mechanism and attention-as-correlate, and a narrow task set (numerical/MCQ only, as the authors acknowledge). Overall a solid, useful contribution on an important topic that would benefit from tightening rather than a redo.",
+  "strengths": [
+    "Well-scoped, testable hypothesis (internal bias -> overthinking) with a clean operationalization via forced direct-answer sampling and a deviation-degree metric.",
+    "Two genuine counterfactual interventions (question removal during reasoning; sample-wise bias injection with Random baselines) that go beyond correlational evidence and are appropriately paired with Random controls.",
+    "Consistency across three model families/sizes (DeepSeek-R1 671B, QwQ-32B, R1-Distill-Qwen-14B), two languages, and three task types (character counting, KnowLogic MCQ, AIME math).",
+    "Honest negative result in the mitigation section: existing overthinking-reduction methods shorten traces but do not eliminate the bias-driven pattern, and can hurt accuracy on AIME — this is a useful, non-cherry-picked finding.",
+    "Attention analysis is tied back to the hypothesis via a probing study (Appendix J.1) linking question-region hidden states to direct answers, which strengthens the mechanistic story beyond raw attention weights."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Causal claims lean heavily on a single 14B model. The two counterfactual experiments (question removal, bias injection) and the attention/mitigation analyses are all conducted only on R1-Distill-Qwen-14B, while the universality argument rests on correlational Table 1 alone. This weakens the 'causal + universal' framing.",
+      "suggested_fix": "Replicate at least the question-removal intervention on QwQ-32B and DeepSeek-R1 (even on a small subset) to show the causal effect is not model-specific. If compute is prohibitive, scope claims accordingly in the abstract/intro."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'direct answer' operationalization of internal bias is prompt-dependent and may itself introduce artifacts. Forcing </think> after 'Let me answer him without thinking more.' may not measure an internally held bias so much as a distributional prior conditioned on that specific instruction. The 64-sample multi-template protocol helps but does not fully address this.",
+      "suggested_fix": "Report sensitivity of Dbias and the length-vs-deviation trend to the template choice; ideally show that a logit-lens or activation-based probe over hidden states (of which Appendix J.1 is a step) yields the same ordering of examples as the prompt-based direct answer."
+    },
+    {
+      "severity": "major",
+      "issue": "Question removal is a confounded intervention: it also removes any residual task specification the model might re-consult (e.g., which letter to count, numeric constraints). Length reduction could partly reflect the model giving up rather than shedding redundant reflection. Case-study evidence is provided but not systematic.",
+      "suggested_fix": "Add a control that removes/replaces only the specific span carrying the 'bias-inducing' surface form while keeping the task specification, or replaces the question with a paraphrase that preserves task content but changes surface tokens. Report per-item whether the retained answer matches the pre-removal answer to rule out the 'giving up' explanation."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin: no seeds, confidence intervals, or significance tests are reported for the length/accuracy differences in Tables 1–4, and AIME 2024/2025 have only 30 items each — the accuracy jumps (63.3->66.7, 36.7->46.7) are within plausible sampling noise for n=30.",
+      "suggested_fix": "Report multiple decoding seeds with mean ± std or bootstrap CIs for every accuracy and length number, and add paired significance tests (e.g., paired bootstrap or Wilcoxon) for the intervention deltas, especially on AIME."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention analysis conflates 'attention to question increases at reflection points' with 'attention causes reflection'. The design shows a correlate; the causal step (that attenuating question attention reduces reflection) is only alluded to via Appendix I.3.",
+      "suggested_fix": "Either promote the attention-based early-exit result from the appendix into the main text as the causal counterpart, or explicitly soften the attention-as-mechanism claim to 'attention pattern is a plausible route consistent with the reactivation hypothesis'."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reflection is measured mainly by counting keywords ('wait', etc.), which is a proxy that can be gamed by surface style and differs across model families; this is acknowledged only implicitly.",
+      "suggested_fix": "Add at least one complementary measure of reflection (e.g., chunk-level restarts detected by LLM judge, or repeated-answer count) and show the main trends hold under it."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work does not compare directly to prior 'post-hoc rationalization' / faithfulness work (Turpin et al., Arcuschin et al.) beyond noting a difference. The distinction — that here the model reasons correctly and is still perturbed by bias at reflection — is important and deserves an empirical contrast, not just a claim.",
+      "suggested_fix": "Add a short experiment or discussion tying Dbias to CoT-faithfulness metrics from prior work, showing they measure different things."
+    },
+    {
+      "severity": "minor",
+      "issue": "Bias injection via 50 rephrased declarative statements per sample is a fairly heavy intervention (finetuning) and could bias the model in ways beyond 'internal bias', e.g., by teaching a shortcut. The Random baselines partially control for this but are on different sample splits (low- vs high-Dbias), so the comparison is not fully symmetric.",
+      "suggested_fix": "Report Low2Correct and High2Wrong as additional cells for full 2x2 coverage, and verify that finetuning without any bias-relevant content leaves length unchanged on the exact test items."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are Dbias and the length-vs-deviation curves to the specific direct-answer prompt template? Do results replicate with a logit-lens or hidden-state probe that does not require an explicit 'skip thinking' instruction?",
+    "For the question-removal intervention, what fraction of retained answers actually match the pre-removal answer (as opposed to the model outputting a placeholder or 'I don't know')? This would help separate 'less redundancy' from 'model gives up'.",
+    "Does the question-removal effect replicate on QwQ-32B and DeepSeek-R1, or is it specific to the 14B distilled model?",
+    "AIME 2024/2025 each contain 30 problems. Can you report bootstrap CIs or per-problem paired comparisons for the accuracy and length changes under intervention?",
+    "For the attention analysis, if you causally suppress attention to the question region at reflection candidate points (e.g., attention ablation or masking), does the reflection rate drop as the reactivation hypothesis predicts?",
+    "How does 'internal bias' quantitatively differ from 'model prior over answers' as measured by, e.g., first-token logits? Is Dbias just a proxy for calibration error?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped — 'one important reason', 'may reactivate', and an explicit limitations paragraph — but the abstract's causal framing overstates the breadth of the causal evidence given that both interventions are only on the 14B model.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking is a live, widely-discussed problem in reasoning models, and identifying an internal-bias driver plus showing mitigation methods do not remove it is a useful, citable contribution."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The specific framing of pre-reasoning 'internal bias' as a cause of reflection, operationalized via forced direct answers and Dbias, is a fresh angle distinct from CoT-faithfulness work; the individual ingredients (probing, attention analysis) are standard."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Hypothesis, controls, and counterfactuals are thoughtfully designed, but question removal has residual confounds and the causal experiments are single-model, which limits the strength of the causal claim."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, no CIs, no significance tests; AIME sample sizes of 30 make several headline accuracy deltas plausibly within noise, which is a real weakness for an ICLR-caliber empirical claim."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper explicitly acknowledges limitations (open-ended tasks, task scope), reports a genuine negative result on mitigation methods, and generally hedges with 'one important reason'; the abstract slightly overstates causal breadth."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The writing is generally clear and the argument flow (definition -> correlation -> two interventions -> mechanism -> mitigation) is logical; some passages (Section 3 formulas, ScG derivation) are a bit dense and text has visible typesetting artifacts."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed cleanly (Abstract, Intro, Related Work, Method, Experiments, Interpretability, Mitigation, Conclusion) and length appears appropriate for ICLR."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, datasets, prompts, and intervention procedures are described with enough detail to be plausibly reproduced, and appendices are referenced for templates/hyperparameters; missing seeds and variance reporting hurt replicability of specific numbers."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of overthinking-mitigation and faithfulness/bias literature is reasonable and the contribution is positioned against it, though the boundary with post-hoc rationalization work (Turpin, Arcuschin) is stated rather than empirically demonstrated."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative displays — the qualitative bias examples (Fig.1), deviation-vs-length bars with reflection-keyword overlay (Fig.2), 'strawberry' attention heatmap (Fig.3), and group-level attention statistics (Fig.4) — each tied to a specific claim rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Correlational evidence spans three models, two languages, and three task types, but the causal interventions and mitigation table rely heavily on a single 14B model and CharCount, and tasks are limited to numeric/MCQ outputs — narrower than the general 'reasoning models' framing suggests."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: an interesting, well-motivated hypothesis with two genuine counterfactual designs and an honest negative mitigation result, held back by single-model causal experiments, thin statistics on small benchmarks, and residual confounds."
+    }
+  },
+  "publishability_probability": 0.45
+}

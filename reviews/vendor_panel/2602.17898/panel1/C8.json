@@ -1,0 +1,129 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies a concrete and practically relevant failure mode — the 'PCC plateau' when attention-based regressors are trained with a joint MSE + (1-ρ) objective — and offers two simple analyses: an MSE decomposition showing that the PCC-gradient/MSE-gradient RMS ratio is bounded by O(σ_ŷ^{-3/2}), and a perturbation bound showing that any convex aggregator can shift PCC away from the mean-pooling baseline by at most 2R/(σ0/||w||−R). It then proposes ECA (residual extrapolation with learnable γ_s ≥ 1, dispersion-adaptive softmax temperature, and a stop-grad σ_ŷ rescaling of the PCC loss) and reports gains on a synthetic set, three UCI tabular tasks, a spatial-transcriptomics dataset, and MOSI. The phenomenon and the framing are worth publishing, but the empirical case is currently too thin to support the claims: no seeds or error bars on three of four settings, three-fold results whose standard deviations dwarf the reported gains, and — most importantly — the absence of the one control the theory demands, a λ_PCC sweep, since DNPL is functionally an adaptive loss weight. Several theoretical claims (that SRA 'fundamentally bypasses' Theorem 2.2, that StopGrad leaves stationary points unchanged) are stated more strongly than the math supports.",
+  "strengths": [
+    "The target phenomenon is real, common, and under-analyzed: joint MSE+PCC training is standard practice in affective computing, spatial transcriptomics, and pathology, and the plateau is a familiar practitioner annoyance that has not been formalized.",
+    "Proposition 2.1 plus Lemma 2.1 give a clean and correct explanation of why MSE can keep falling while PCC stalls (MSE is affine-sensitive, PCC is affine-invariant), and Theorem 2.1 / Lemma 2.3 correctly isolate the shared local factor α_si w'(h_si − v_s) so that the MSE-vs-PCC difference reduces to global batch-statistic scalings — a genuinely illuminating decomposition.",
+    "The link from each theoretical bottleneck to a specific architectural component (attenuation → DNPL, flat attention under homogeneity → DATS, convex-hull ceiling → SRA) is explicit and makes the method easy to understand and reimplement.",
+    "The homogeneity axis is operationalized rather than asserted: the synthetic generator sweeps σ ∈ {0.10, 0.24, 0.42, 0.73}, and the real datasets are characterized quantitatively (σ = 0.068 vs σ0 = 0.164 for 10xProteomic; σ = 0.098 vs σ0 = 0.170 for MOSI), which makes the theory's key variable measurable.",
+    "Evaluation spans four qualitatively different settings (synthetic, tabular, pathology/omics, multimodal video) with the module inserted into three different existing backbones (FT-Transformer, EGN, ALMT), which is the right way to test a drop-in claim.",
+    "Figures 2, 3, 4, and 5 are chosen to test specific theoretical predictions (plateau existence, ratio bound tightness, σ_ŷ growth, homogeneity dependence) rather than to decorate."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The decisive control for the central claim is missing. DNPL multiplies the PCC term by StopGrad(σ_ŷ), which is exactly a time-varying λ_PCC schedule; since σ_ŷ grows from near zero toward σ_y during training, DNPL is a warm-up-then-plateau reweighting. The paper asserts the plateau persists 'even when λ_PCC is large' but never reports a λ_PCC sweep, nor a fixed-λ baseline matched to the average effective weight DNPL induces. Without this, the reader cannot distinguish a theoretically motivated mechanism from hyperparameter tuning.",
+      "suggested_fix": "Add a λ_PCC sweep (at least an order of magnitude in each direction) on the synthetic and UCI settings, plus a 'constant-λ matched to mean(StopGrad(σ_ŷ))' arm and a linear/cosine λ-schedule arm, and show DNPL beats all of them."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical support is inadequate for the size of the reported effects. Tables 1 and 2 report single numbers with no seeds, error bars, or tests; the Online News gain (PCC 0.408 → 0.420) and the Superconductivity ablation deltas (0.930 vs 0.920/0.922) are well within the run-to-run variance typical of these benchmarks. Table 3 does report variability, but 0.690 ± 0.202 versus 0.602 ± 0.160 over three folds is a heavily overlapping comparison, and the MSE comparison (0.051 ± 0.048 vs 0.056 ± 0.047) is essentially null, yet the text reports it as a '9.83% reduction'.",
+      "suggested_fix": "Rerun every table with at least 5 seeds, report mean ± std, and apply paired tests (or bootstrap CIs) on per-fold/per-seed differences; restate percentage improvements only where the interval excludes zero, and explicitly retract the MSE-reduction claim on 10xProteomic if it does not survive."
+    },
+    {
+      "severity": "major",
+      "issue": "SRA does not bypass Theorem 2.2 as claimed. Scaling the residual by γ_s simply replaces the effective hull radius R with γ_s R, so the same bound applies as 2γR/(σ0/||w|| − γR); with the recommended clip γ_max = 2 the ceiling is loosened by a small constant, not removed. The only genuinely new expressivity comes from γ_s being sample-dependent (a global γ would be invisible to PCC by Lemma 2.1), and that mechanism is never analyzed. The sentence 'fundamentally bypasses the capacity limit derived for convex aggregators' is not supported.",
+      "suggested_fix": "State the γ-scaled version of Theorem 2.2 explicitly, replace 'fundamentally bypasses' with the accurate 'relaxes by a factor γ', and add a theoretical or empirical account of why sample-conditioned γ_s(h̄_s) — rather than mere hull enlargement — is what buys the PCC gain."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that StopGrad 'leaves the learning objective's stationary points unchanged' is incorrect for the joint objective. Rescaling one term of L_total by a parameter-dependent factor changes the relative weighting of the MSE and PCC gradients, so the stationary points of ∇L_MSE + λ σ_ŷ ∇(1−ρ) generally differ from those of ∇L_MSE + λ ∇(1−ρ); moreover the resulting update field is not the gradient of any scalar loss, so standard convergence reasoning does not transfer.",
+      "suggested_fix": "Either prove the invariance claim under stated assumptions or replace it with an honest statement that DNPL modifies the effective multi-objective trade-off, and discuss the non-conservative-field implications for optimization stability."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines are too narrow to establish that ECA is the right remedy. The only aggregation comparators are vanilla softmax attention and mean pooling. Absent are: fixed/learnable global temperature softmax (which isolates DATS), sparse attention variants, max pooling or set-transformer PMA, gated attention pooling, output batch-normalization or prediction standardization (which trivially removes the mean/std-matching pressure Proposition 2.1 blames), and alternative shape objectives (CCC, soft-rank/Spearman surrogates, listwise ranking losses). Gradient-balancing methods such as GradNorm or uncertainty weighting are the natural multi-task baselines for the Corollary 2.1 conflict and are not tested.",
+      "suggested_fix": "Add at least a learnable-global-temperature arm, a prediction-standardization arm, one non-convex pooling arm, and one gradient-balancing multi-task arm on the synthetic and UCI settings."
+    },
+    {
+      "severity": "major",
+      "issue": "The O(σ_ŷ^{-3/2}) 'attenuation' narrative is drawn from an upper bound on the ratio, and an upper bound that shrinks does not establish that the actual ratio shrinks. It is also a bounded, one-time effect: σ_ŷ rises from near zero to approximately σ_y, so the ratio bound settles at roughly 1/(2σ_y²) rather than decaying without limit, and it can be altered simply by rescaling targets. The rhetoric of 'rapid attenuation' and 'gradient bottleneck' overstates a finite, data-scale-dependent factor.",
+      "suggested_fix": "Report the measured ratio (not only the bound) across training on all four settings, state the σ_ŷ → σ_y limiting value of the bound, and add an experiment showing whether target standardization alone changes the plateau."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is claimed well beyond what is shown. The theory assumes a single convex attention pooling followed by a linear head; the deep-architecture justification is deferred entirely to an appendix section (E) not present in the reviewed body. Empirically, the multimodal claim rests on one dataset (MOSI, 2199 clips) with MOSEI absent, the omics claim on one dataset with three folds, and the tabular claim on three UCI datasets — yet the abstract asserts ECA 'consistently' improves 'across diverse benchmarks'.",
+      "suggested_fix": "Add MOSEI (and ideally a second spatial-transcriptomics cohort), and move the essential part of the deep-architecture argument into the main text with an experiment inserting ECA at intermediate layers rather than only the final pooling."
+    },
+    {
+      "severity": "minor",
+      "issue": "Text and table appear to disagree in the ablation discussion: the prose states that removing SRA reduces Online News PCC to 0.418, but the '+ECA (w/o SRA)' row for Online News reads 0.410 while '+ECA (w/o DATS)' reads 0.418. The narrative also cherry-picks one dataset per component instead of reporting the ablation pattern across all three, which is uneven (e.g., w/o SRA leaves Superconductivity PCC at the baseline 0.920, suggesting SRA carries the effect there and DATS does not).",
+      "suggested_fix": "Correct the mismatch, report all three components on all three datasets with seeds, and discuss the cases where a component contributes nothing rather than reporting only the favorable one."
+    },
+    {
+      "severity": "minor",
+      "issue": "No limitations section or negative results are presented anywhere in the main text, despite obvious candidates: γ_s clipping sensitivity, the extra hyperparameters (T_min, β, λ_γ, γ_max) and how they were tuned, computational overhead of the per-sample MLP, and the settings where gains vanish.",
+      "suggested_fix": "Add an explicit limitations paragraph and a hyperparameter-sensitivity study for T_min, β, and γ_max."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is two short paragraphs and does not engage the closest technical neighbors: prior work on attention temperature and entropy sharpening, attention/rank collapse analyses, non-convex or signed-weight pooling, and the substantial literature on rank-correlation surrogate losses. The claim of being 'the first rigorous theoretical analysis' of this behavior is therefore weakly defended.",
+      "suggested_fix": "Expand related work to position DATS against learned-temperature attention, SRA against existing extrapolative/residual pooling, and DNPL against adaptive loss-weighting, and soften the primacy claim accordingly."
+    }
+  ],
+  "questions_for_authors": [
+    "How does a simple λ_PCC sweep, or a hand-designed λ schedule matching the trajectory of StopGrad(σ_ŷ), compare to DNPL? If a tuned constant λ closes most of the gap, what remains of the DNPL contribution?",
+    "Since PCC is invariant to a global positive rescaling of predictions, all of SRA's benefit must come from γ_s varying across samples. What does the learned γ_s distribution look like, and does it correlate with in-sample dispersion σ_s as the theory would predict?",
+    "Applying Theorem 2.2 with the effective radius γR gives a bound of 2γR/(σ0/||w|| − γR). With γ_max = 2, this is only a factor-of-roughly-two relaxation. Do the observed PCC gains exceed what this relaxed bound permits, and if not, what distinguishes SRA from simply enlarging the hull?",
+    "Can you justify the claim that StopGrad leaves stationary points unchanged, given that the modified update is generally not the gradient of any scalar objective?",
+    "On 10xProteomic, per-fold standard deviations (±0.16 to ±0.20) exceed the reported PCC gains. What is the paired per-fold difference, and does it survive a significance test with more seeds per fold?",
+    "In Table 1, does '+ECA (w/o SRA)' on Online News give 0.410 or 0.418? The prose and table appear to disagree.",
+    "What happens if predictions are standardized (e.g., output batch-norm) so that the mean- and std-matching terms of Proposition 2.1 are trivially satisfied? Does the plateau persist?",
+    "Does the analysis and the benefit of ECA hold when attention pooling is not the final operation — for example, ECA inserted in intermediate Transformer layers of a deep backbone?",
+    "How were T_min, β, λ_γ, and γ_max selected for each benchmark, and how sensitive are the reported gains to them?",
+    "Why is MOSEI omitted from the MSA evaluation, given that it is the standard companion benchmark to MOSI and would test whether the homogeneity story generalizes?"
+  ],
+  "calibration_check": "Claims are meaningfully over-scoped relative to the evidence: 'fundamentally bypasses the capacity limit', 'first rigorous theoretical analysis', 'consistently breaks the PCC plateau', and 'significant improvements' are asserted on the basis of upper bounds that a scalar rescaling does not escape and on single-run or three-fold results with no significance testing and overlapping variance.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Joint MSE+PCC training is genuinely widespread in affective computing, spatial transcriptomics, and clinical regression, so a principled account of the plateau plus a drop-in module would be useful to a real if moderately sized slice of the ICLR audience."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The formalization of the plateau via the affine-sensitivity/affine-invariance mismatch and the convex-hull PCC ceiling is a fresh framing, but the three ECA components are recognizable variants of adaptive loss weighting, learned attention temperature, and residual pooling rather than new mechanisms."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The derivations I can check (Proposition 2.1, the shared local factor in Theorem 2.1 versus Lemma 2.3, and the RMS ratio yielding √(1+ρ)/(2√2·√σ_y·σ_ŷ^{3/2})) are correct and elementary, but the causal narrative rests on upper bounds rather than measured quantities, the StopGrad stationary-point claim is wrong, and SRA is presented as escaping a bound it merely rescales."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Three of four experimental settings report single runs with no seeds or error bars, the one setting with variability shows standard deviations larger than the claimed gains over only three folds, no significance test appears anywhere, and percentage improvements are reported for differences (notably MSE 0.051 vs 0.056) that are clearly within noise."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "There is no limitations section, no reported negative result, and repeated strong language ('fundamentally bypasses', 'first rigorous', 'significant', 'consistently') that the bounds and the untested effect sizes do not license."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The logical arc from decomposition to two bottlenecks to three matched components is easy to follow and the notation is defined carefully, though the method section leaves the interaction between DATS sharpening and the R-dependent bound implicit, and the results prose does not always match the tables."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization is followed cleanly (abstract, introduction with itemized contributions, theory, method, related work, experiments, conclusion) at appropriate length, with proofs deferred to appendices; the main gap is the absence of a limitations subsection."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets, backbones, integration points, the synthetic generator, and the parameterizations (γ_s = 1 + Softplus(MLP(h̄_s)), τ_s = T_min + β·dispersion) are described well enough to attempt a reimplementation, but the actual hyperparameter values, tuning protocol, seeds, and optimizer settings are not given in the body."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Positioning against joint MSE+PCC practice is adequate, but the section is only two paragraphs and omits the nearest technical relatives — learned attention temperature, non-convex/extrapolative pooling, rank-correlation surrogate losses, and multi-task gradient balancing — which is precisely where the novelty of each ECA component must be defended."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that test specific predictions (Figure 3 plots the measured ratio against the theoretical bound; Figure 5 sweeps four homogeneity levels; Figure 6 shows per-fold plateau-breaking), which is the right design, though Tables 1 and 2 present bare point estimates with no dispersion and Figure 2 illustrates the phenomenon on only two unnamed datasets."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings across three backbones is a reasonable spread, but each real-world claim rests on a single dataset (one omics cohort, one MSA benchmark with MOSEI missing), the baseline set contains no alternative aggregators or alternative shape losses, and the theory-to-deep-architecture bridge is deferred entirely to an appendix."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A worthwhile phenomenon with correct if elementary theory and a plausible remedy, held below the bar by missing decisive controls (λ_PCC sweep, alternative aggregators), absent statistical support for effects that are small relative to plausible variance, and overclaimed theoretical conclusions — all fixable with substantial added experiments rather than a redesign."
+    }
+  },
+  "publishability_probability": 0.24
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper introduces DIRECTER, an activation-steering method that couples KV-cache key scaling with a plausibility-guided decoding loop and an attention-sensitivity-based layer ranking to dynamically modulate steering strength. Empirically it improves instruction-following on IFEval, LIFBench, and a new GSM8K-Format benchmark across several model scales (1B–14B), and comes with reasonable ablations and efficiency analysis. The core idea is novel and useful but the theoretical grounding of the sensitivity metric is thin, statistical reporting is weak (mostly single-seed with greedy decoding), and some claims (e.g., 'general mechanism for mitigating oversteering') are stronger than the evidence.",
+  "strengths": [
+    "Novel and cleanly motivated coupling of KV-cache steering with a plausibility check + progressive layer reduction; avoids costly per-task hyperparameter search common in prior steering methods.",
+    "Reasonably broad empirical evaluation: IFEval, LIFBench (list/OD/MD), a new GSM8K-Format benchmark, plus generalization across Llama-3.1/3.2 and Qwen-2.5 at 1B–14B scale.",
+    "Useful ablations isolating (i) plausibility gating vs fixed strength, (ii) layer-ranking direction (reversed/random), (iii) steering random tokens, and (iv) compatibility of the plausibility filter with PASTA/SpotLight.",
+    "Attention to practical concerns: efficiency analysis (throughput/latency/memory), FlashAttention compatibility, an efficient gating skip based on top-2 logits, and generation quality/task-fidelity evaluation via both an LLM judge and human annotators."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin: main tables (Tables 1, 2, 4) appear to report single-run greedy-decoding numbers with no seeds, confidence intervals, or significance tests; only the 'random layers/tokens' ablations show ± values. Reported ~4–6.5% gains on IFEval-style metrics are within the range where run-to-run variance in prompt rewriting (via gpt-4o-mini) and evaluation could matter.",
+      "suggested_fix": "Report multiple seeds where applicable (e.g., multiple prompt rewrites, multiple stochastic decodes for the LLM-judge evaluation), include standard deviations or bootstrapped CIs on the headline numbers, and run paired significance tests vs. the strongest baseline (tuned PASTA/SpotLight)."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention-sensitivity metric is empirically justified but lacks theoretical grounding and its computation cost/formulation is described only informally. The paper itself acknowledges no formal framework, yet the metric is central to the layer-halving schedule.",
+      "suggested_fix": "Provide a more principled derivation (or at least a clearer intuition) linking Dj(ℓ) to a well-defined quantity (e.g., a first-order sensitivity, a JS/KL surrogate, or a specific bound on output shift), and add ablations comparing to simpler baselines (e.g., gradient-based saliency, attention-entropy ranking, or ranking by change in output KL from single-layer steering)."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline fairness is uneven. PASTA/SpotLight are tuned on IFEval and then transferred to other benchmarks 'for consistency,' which biases the comparison; DIRECTER, in contrast, ships with a fixed α=100, β=0.5. Without per-benchmark tuning of both, it is hard to attribute the gap to the method vs. hyperparameter transfer.",
+      "suggested_fix": "Either tune all steering baselines per benchmark (matching DIRECTER's search budget) or fix all methods to their default settings and report both, so readers can separate 'better method' from 'better hyperparameter transfer.'"
+    },
+    {
+      "severity": "major",
+      "issue": "Some claims exceed the evidence. 'General mechanism for mitigating oversteering' rests on adding the plausibility filter to two methods (PASTA, SpotLight) on IFEval-like accuracy; 'matches text quality of non-intervention baselines' relies on a gpt-4o-mini judge with limited human-eval detail. Task-fidelity numbers from an LLM judge (~92%) are load-bearing but the judge's calibration is not validated.",
+      "suggested_fix": "Soften generality claims, add at least one more steering method to the compatibility study (e.g., a residual-stream vector method), and report inter-annotator agreement plus judge-vs-human agreement rates for the fidelity/quality evaluation."
+    },
+    {
+      "severity": "minor",
+      "issue": "IFEval prompts are 'rewritten using gpt-4o-mini' to separate task and instruction spans. This changes the benchmark from the standard IFEval and can non-trivially affect comparability with reported numbers in prior work and among baselines.",
+      "suggested_fix": "Add an evaluation on unmodified IFEval (with automatic span detection as in Appendix D.2), and quantify how much of the gain is attributable to the rewriting vs. the method."
+    },
+    {
+      "severity": "minor",
+      "issue": "Algorithm 1 is fragmented in the extraction (numbering breaks, missing conditional lines), and the computational cost of the sensitivity analysis (O(L) extra forward-ish passes over the prompt?) is not precisely specified in the main text.",
+      "suggested_fix": "Clean up Algorithm 1 in the camera-ready and state, in the main text, the exact prefill overhead of the sensitivity ranking as a function of L and prompt length."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'progressively halve the candidate set' schedule is a specific heuristic (geometric reduction, remove-lowest-sensitivity-half). No comparison to alternative schedules (linear reduction, binary search on plausibility) is presented.",
+      "suggested_fix": "Add a short ablation over reduction schedules to justify halving vs. simpler alternatives."
+    }
+  ],
+  "questions_for_authors": [
+    "How many seeds / decoding runs underlie each cell of Tables 1, 2, and 4, and what is the variance? Are the reported gains statistically significant vs. tuned PASTA/SpotLight under a paired test?",
+    "How sensitive are results to the gpt-4o-mini rewriting of IFEval? Do you observe similar gains on the original IFEval prompts with automatic span detection?",
+    "What is the exact computational cost of the sensitivity analysis (number of forward passes, wall-clock) as a function of L and prompt length, and how does it scale to longer prompts (e.g., LIFBench MD)?",
+    "Why is halving-by-sensitivity preferred over alternative schedules (e.g., linear removal, or binary search over |L_cand|)? Have you compared?",
+    "How was the gpt-4o-mini judge validated? What is the judge–human agreement on task fidelity and text quality, and does the ranking of methods change under a different judge (e.g., a Llama-3-70B-Instruct or a stronger frontier model)?",
+    "For the compatibility study (Figure 2b), why not also apply the plausibility gate to a residual-stream steering method (e.g., a contrastive-vector method) to more strongly support the 'general mechanism' claim?",
+    "At α=100 with key scaling, softmax should be effectively saturated on instruction tokens; can you clarify why performance is essentially flat across α ∈ [10^1, 10^5], and what happens for α < 10 where the intervention should still be non-trivial?"
+  ],
+  "calibration_check": "Claims are mostly reasonable but slightly over-scoped in two places: the 'general mechanism' framing for the plausibility gate and the 'matches non-intervention text quality' claim, both of which rest on limited evaluations and a single LLM judge.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Instruction-following via activation steering is an active area; a hyperparameter-light, dynamic controller is a practically useful contribution that others could plausibly build on, though not paradigm-shifting."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The plausibility-gated, progressive-layer-reduction loop coupled with attention-sensitivity ranking is a genuinely new mechanism that goes beyond prior fixed-configuration steering (PASTA, SpotLight, contrastive vectors)."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is clearly specified and ablations isolate several design choices, but the sensitivity metric lacks formal grounding and baseline tuning is asymmetric across benchmarks."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables appear single-run under greedy decoding with no seeds, error bars, or significance tests on the headline gains; only a couple of ablation rows report ± values."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are stated (no theoretical framework, clean task/instruction separation assumed), but 'general mechanism' and text-quality parity claims outrun the supporting evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The core method and RQ-driven experiment section are readable, though the extracted algorithm and some formulas are fragmented and the sensitivity metric definition is dense; a cleaner Algorithm 1 and worked example would help."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Intro, Related Work, Method, Experiments with explicit RQs, Conclusion + Limitations); length appears within norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, hyperparameters (α=100, β=0.5), benchmarks, and evaluation protocols are described in enough detail that reproduction is plausible; missing links are due to anonymization and not penalized, but seed counts and exact prompt-rewriting protocol details are underspecified."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positions the work clearly against PASTA, SpotLight, and contrastive-vector steering, and against prompting/instruction-tuning limitations; discussion of prior oversteering literature is reasonable."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative displays (loop overview, fixed-strength vs adaptive, compatibility, robustness, efficiency, qualitative example), though several captions read as decorative and Figure 4's three-panel efficiency comparison could carry more quantitative content."
+    },
+    "breadth_generality": {
+      "score": 7,
+      "justification": "Evaluated across three benchmarks and 1B–14B models from two families, with quality/fidelity evaluation and efficiency analysis; generality claims about the plausibility gate itself rest on only two host methods."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: a useful, novel mechanism with solid empirical support but weaker statistical reporting, some overreach in claims, and uneven baseline tuning; addressable in minor revision."
+    }
+  },
+  "publishability_probability": 0.5
+}

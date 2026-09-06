@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "CDAS proposes combining Distributed Interchange Interventions (DII) from mechanistic interpretability with a Jensen-Shannon divergence distribution-matching objective for bi-directional model steering. The method is principled and the safety case studies (refusal override, backdoor neutralization) are compelling demonstrations of utility preservation. However, AXBENCH results are mixed — CDAS only clearly leads in one of four model/layer configurations — and an inconsistency in factor tuning treatment between the benchmark and case studies muddies the core narrative. The paper needs stronger ablations, a consistent evaluation protocol, and better statistical rigor to substantiate its claims.",
+  "strengths": [
+    "Novel and principled combination: using DII from causal/mechanistic interpretability as the intervention protocol and replacing token-level supervision with a distribution-matching (JSD) objective is a genuinely original design choice.",
+    "Compelling safety case studies with utility preservation analysis: measuring KL divergence and benchmark accuracy alongside suppression effectiveness is thorough and practically relevant, and CDAS's consistent preservation of model utility across three LLMs is a real differentiator.",
+    "Honest, reasonably calibrated conclusion: the paper openly names settings where CDAS is inferior (small models, concept elicitation) and restricts its recommendations to larger models and utility-critical scenarios.",
+    "The bi-directional framing naturally follows from DII and is cleanly formalized, making CDAS easier to extend than unidirectional Lang. baselines.",
+    "Backdoor neutralization (Case Study 2) against unseen red-teaming instructions is a genuinely hard evaluation that few steering papers attempt."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Inconsistent factor treatment across evaluations undermines the core narrative. AXBENCH uses 'tuned factor' (β tuned via grid search) while the case studies use 'unit factor' to highlight a 'tuning-free advantage'. These are not equivalent operating points, and the comparison is therefore not apples-to-apples. The paper cannot simultaneously claim CDAS is 'tuning-free' and require grid-search β for its main benchmark.",
+      "suggested_fix": "Report results under both unit and tuned factor consistently across ALL evaluations, then discuss the trade-off explicitly. If unit factor is genuinely competitive in case studies but not AXBENCH, explain *why* structurally (e.g., concept difficulty, data regime) rather than switching protocols."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Missing ablation to isolate the contribution of JSD vs. DII. The 'DAS' baseline (DII + Lang. objective) consistently underperforms and often collapses (100% ASR on true trigger), but it is unclear whether this is due to Lang.'s objective or a training instability. No experiment holds DII fixed and varies the objective (JSD vs. KL vs. PO), nor holds the objective fixed and varies the intervention type (DII vs. addition). Without this, the reader cannot tell whether JSD or DII is doing the work.",
+      "suggested_fix": "Add a 2×2 ablation: {JSD, Lang.} × {DII, addition}, evaluated on at least one AXBENCH split and one case study. This is the minimum needed to attribute the gains."
+    },
+    {
+      "severity": "major",
+      "issue": "AXBENCH results are mixed and do not clearly support the 'CDAS advances the performance frontier' framing. CDAS leads in only 1 of 4 model/layer configurations (9B; L20), and even there by a margin that may not be statistically significant. At 9B; L31 it is the weakest rank-1 method. The 'layer consistency' argument for 2B (absolute change 0.023 vs. 0.095 for Lang.) is real but implies low absolute performance rather than a genuine advantage.",
+      "suggested_fix": "Report confidence intervals or significance tests across the 10 random AXBENCH splits. Reframe the contribution as 'complementary to strong-supervised methods with a specific advantage in concept suppression and utility preservation' and match the abstract/introduction claims accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2 (refusal/suppression scores for Llama-3.1-70B) appears severely truncated in the manuscript — only partial numeric entries are readable. This makes it impossible to evaluate the 70B claim of CDAS superiority, which is central to the 'scales with model size' thesis.",
+      "suggested_fix": "Verify and correct the table formatting; ensure all cells for the 70B model are present and readable."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'one-to-many' DII requires a token-position grid search within <model> tokens, and the intervention layer is also selected via grid search. Combined with the β grid search in AXBENCH, the method has multiple hidden tuning dimensions that are not fully accounted for in the computational cost analysis or reported as separate ablations.",
+      "suggested_fix": "Report how many grid-search evaluations are needed and whether a default heuristic (e.g., last <model> token, mid-network layer) degrades performance materially. If not, adopt the heuristic to simplify."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper's connection to mechanistic interpretability is aspirational rather than demonstrated. CDAS is explicitly stated not to be causal variable localization, yet the introduction motivates the method as 'faithfully identifying and manipulating internal concept features.' The interpretability framing adds rhetorical weight without a corresponding experiment (e.g., probing the learned subspace, verifying causal mediation).",
+      "suggested_fix": "Either add a minimal causal mediation check (e.g., ACDC/path patching) to show the learned subspace is causally relevant, or soften the mechanistic interpretability framing to 'inspired by' rather than 'a step toward.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "The refusal case study (5.1) uses only n=3 seeds reported indirectly via splits, not explicit multi-seed runs, and no significance test is reported despite Table 2 showing large differences between methods. RePS achieving 0% suppression on Llama-3.1-8B in one configuration is a striking result that warrants more investigation.",
+      "suggested_fix": "Run 3–5 explicit random seeds for the refusal case study and report mean ± std. Provide a short investigation of the RePS overfitting hypothesis (H.6) in the main paper rather than the appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "Why does DAS (DII + Lang.) achieve 100% ASR on the true backdoor trigger (Figure 1c) while CDAS (DII + JSD) achieves only 6.68%? Is this a training instability caused by Lang. on counterfactual pairs, or a capacity limitation? A short diagnostic would significantly clarify the respective roles of DII and JSD.",
+    "The 'unit factor' CDAS scores 0.121 on AXBENCH 2B/L10 — lower than DIM (0.297) and well below RePS (0.756). If unit factors are too weak to elicit concepts on AXBENCH but sufficient in the case studies, what structural property explains this? Is it concept difficulty, dataset size, or something about safety concepts being more linearly separable?",
+    "Table 2 for Llama-3.1-70B appears to be missing several cells (only partial numbers are present). Could the authors confirm and provide the complete table?",
+    "The token-position grid search within <model> adds another tuning step. How sensitive are results to this choice, and would a fixed heuristic (e.g., last token of <model>) perform comparably?",
+    "The augmented training set for AXBENCH uses gpt-4o-mini to generate neutral responses and concept-eliciting instructions. Have the authors verified that this augmentation does not introduce noise that systematically disadvantages some methods over others? Was the same augmented set used for all baselines?"
+  ],
+  "calibration_check": "The conclusion and limitations sections are reasonably honest, but the introduction and abstract overstate the case — 'delivers systematic control' and 'a step toward more principled and reliable control' are not supported by mixed AXBENCH results; the claims should be scoped to concept suppression tasks on models ≥8B.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Connecting mechanistic interpretability (DII) with steering and showing utility preservation in safety-relevant tasks is meaningful, but the scope is narrow (primarily concept suppression) and the AXBENCH results limit the broader impact claim."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The pairing of JSD distribution matching with DII as a steering objective is a genuinely new combination, even though neither DII (from DAS) nor JSD-based matching (from GAN/distillation literature) is individually novel."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method derivation is mathematically sound, but the inconsistent factor treatment between evaluations, missing ablations separating JSD vs. DII contributions, and the unexplained DAS collapse on the true trigger represent meaningful gaps in experimental control."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "AXBENCH averages over 10 random splits (adequate), but no significance tests are reported anywhere; the refusal case study lacks multi-seed runs; Table 2 appears truncated for the 70B model; and the backdoor study uses only n=3 seeds with standard error rather than confidence intervals."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The conclusion and limitations sections honestly acknowledge underperformance on small models and the factor tuning requirement, but the introduction and abstract overclaim 'systematic control' and the mechanistic interpretability framing is not empirically grounded."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method is mostly clearly described, but the factor tuning inconsistency (unit in case studies, tuned in AXBENCH) is never explicitly justified; there are grammatical errors; and Table 2 appears corrupted, significantly impeding readability of a key result."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure with appropriate section headers; the split into a benchmark evaluation section and two case study sections is logical, though the relationship between the two evaluation regimes is under-explained."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Core hyperparameters, data curation procedures, and model choices are described with enough detail to attempt reproduction, but the multiple grid searches (layer, token position, β) and augmentation pipeline details (in appendices) add ambiguity."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of steering vectors, DAS/mechanistic interpretability, distribution matching, and safety mechanisms is appropriately broad and mostly accurate; the paper correctly positions CDAS relative to BiPO, RePS, and Lang. objectives."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figure 1 (ASR across layers with standard error shading) is informative and supports the comparative claims; Table 3 (benchmark degradation + KL) is well-designed; but Table 2 appears truncated for the 70B model, which is a significant presentation failure for a central result."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH covers only two model sizes with four configurations; case studies use a single backdoor model and three refusal models; there are no ablations isolating JSD vs. DII vs. intervention type; and the 'benefits from model scale' thesis rests on a single AXBENCH data point (9B/L20)."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A principled and partially well-evaluated method that fills a genuine gap in the steering literature, but the mixed benchmark results, missing ablations, inconsistent evaluation protocol, and statistical gaps place it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

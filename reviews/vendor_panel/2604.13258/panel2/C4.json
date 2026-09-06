@@ -1,0 +1,95 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "This paper proposes Hessian-Enhanced Token Attribution (HETA), a feature attribution framework for decoder-only autoregressive language models that combines attention-value rollout, Hessian-based sensitivity estimation via HVPs, and KL-divergence masking. The authors also introduce a 2,000-instance curated dataset combining SciQ and NarrativeQA segments to evaluate attribution precision via a Dependent Sentence Attribution (DSA) metric. While the unified approach of combining structural, geometric, and information-theoretic signals is conceptually motivated, the manuscript suffers from severe mathematical errors in metric definitions, impossible table values, suspicious data anomalies across benchmarks, and unrealistic computational hardware claims.",
+  "strengths": [
+    "Motivates an important problem in Explainable AI: attributing target-conditioned outputs in decoder-only autoregressive language models beyond linear gradient approximations.",
+    "Presents a novel conceptual combination of attention-value rollouts, second-order Hessian sensitivity, and KL-divergence information gain.",
+    "Introduces a diagnostic mixed-paragraph dataset structure (SciQ support vs. NarrativeQA context) designed to evaluate attribution precision against distractor text."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Mathematical impossibility in the proposed Dependent Sentence Attribution (DSA) metric values. In Section 5, DSA is defined as the difference between normalized SciQ mass and NarrQA mass (DSA = sum_{i in SciQ} s_i - sum_{j in NarrQA} f_j) where total attribution mass over the entire paragraph sums to 1. By definition, DSA is strictly bounded in the range [-1.0, +1.0]. However, Table 1 reports DSA scores of 4.80, 5.10, 4.25, and 4.65 for HETA, and values up to 3.78 for baselines, which is mathematically impossible under the paper's own definition.",
+      "suggested_fix": "Re-evaluate the entire dataset using a mathematically rigorous and correctly bounded metric, or clarify the exact normalization formula used if DSA was computed differently from the text."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Severe empirical anomalies and copy-paste values in Table 3. On LLaMA-3.1 70B, Integrated Gradients obtains an identical Soft-NC score of exactly 0.13 across all three distinct datasets (LongRA, TellMeWhy, WikiBio). Similarly, PML obtains 0.15 across all three datasets, fAML obtains 0.46 across all three, and Attention Rollout obtains -1.48 on LongRA and WikiBio. Furthermore, HETA's Soft-NC scores (10.3 to 10.8) are an order of magnitude higher than all baselines (~1.0 to 1.5) without explanation, indicating unnormalized metric artifacts.",
+      "suggested_fix": "Audit the evaluation scripts, re-run all baseline evaluations across all datasets, ensure proper metric scaling, and provide full error bars and raw outputs."
+    },
+    {
+      "severity": "major",
+      "issue": "Physically impossible hardware and compute claims. The paper asserts that all experiments across all models—including LLaMA-3.1 70B—were run on a 'single NVIDIA A100 (80 GB)'. LLaMA-3.1 70B in FP16 requires ~140 GB VRAM just for weights, making it impossible to load onto a single 80GB GPU without heavy quantization. Furthermore, computing Hutchinson HVPs and full KL divergence masking over sequence lengths of 512/2048 for 2,000 instances across multiple seeds creates an autograd activation footprint and compute load that cannot run on a single 80GB GPU.",
+      "suggested_fix": "Provide accurate cluster specifications, memory footprints, and wall-clock benchmarks for HVP and KL computations, and explain how 70B model gradient graphs were accommodated."
+    },
+    {
+      "severity": "major",
+      "issue": "Flawed HVP trace estimator and score aggregation equations. Equation 3 presents a mathematically non-standard Hutchinson estimator formula (sum_k Pi_i H_T Pi_i r_k * 1) that does not compute the matrix trace or norm. In Equation 5, Hessian sensitivity S_i^(T) and KL divergence I(x_i -> x_T) are directly added with fixed weights beta=0.5 and gamma=0.5 without standard scaling or unit normalization, despite curvature and KL operating on drastically different scales across models.",
+      "suggested_fix": "Correct the Hutchinson trace formulation in Eq. 3, and introduce a principled normalization scheme (e.g., z-score or min-max scaling per sequence) before weighting S and I in Eq. 5."
+    },
+    {
+      "severity": "minor",
+      "issue": "Conceptual flaw in testing attribution sensitivity to decoding hyperparameters (Section 5.4). When attributing a fixed/teacher-forced target token x_T, the model forward pass, logits, hidden states, and gradients are determined prior to token sampling. Testing prompt attribution variations across top-p/top-k sampling grids when x_T is fixed is ill-posed unless temperature is explicitly applied to logit scaling.",
+      "suggested_fix": "Clarify how decoding hyperparameters affect teacher-forced logit attributions, or re-frame the experiment around multi-token autoregressive rollouts."
+    }
+  ],
+  "questions_for_authors": [
+    "How are DSA values exceeding 4.0 mathematically possible when DSA is defined as the difference between two normalized probabilities summing to 1.0?",
+    "Why are the Soft-NC scores for IG, PML, and fAML on LLaMA-3.1 70B identical across three completely different benchmark datasets in Table 3?",
+    "How was LLaMA-3.1 70B loaded and backpropagated for HVP calculation on a single 80 GB A100 GPU without running out of memory?",
+    "How are Hessian sensitivity scores and KL divergence values normalized in Equation 5 prior to applying the fixed weights beta=0.5 and gamma=0.5?"
+  ],
+  "calibration_check": "The claims of state-of-the-art attribution quality and computational scalability are not supported by the manuscript, as key empirical results contain mathematically impossible values and unconvincing hardware setup claims.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 4,
+      "justification": "While feature attribution for decoder-only LLMs is an important area, technical flaws and unreliable empirical reporting severely diminish the work's practical contribution."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combining attention rollout, second-order Hessian sensitivity, and KL masking is a reasonable hybrid approach, though each component relies directly on existing prior techniques."
+    },
+    "rigor": {
+      "score": 2,
+      "justification": "The manuscript contains fundamental mathematical flaws in the HVP trace estimator and unscaled score aggregation, alongside physically impossible hardware claims regarding 70B model execution."
+    },
+    "statistical_soundness": {
+      "score": 2,
+      "justification": "Table 3 exhibits clear data anomalies with identical baseline metrics across three distinct datasets, and Table 1 reports DSA metric values that violate their theoretical mathematical bounds."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Claims of SOTA performance and efficiency are overblown given the metric definition contradictions and unconvincing experimental hardware setup."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The manuscript structure is logical, but frequent word concatenation errors and imprecise mathematical notation hinder readability."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper adheres to standard ICLR conference structure and formatting guidelines with section headings and figure captions."
+    },
+    "reproducibility": {
+      "score": 2,
+      "justification": "Key mathematical equations are invalid or incomplete, hyperparameters for Hutchinson sampling are missing, and reported hardware constraints conflict with required computational resources."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The paper discusses a wide selection of relevant interpretability baselines across both encoder and decoder-only language model literature."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Figure captions provide adequate descriptions of the pipeline and results, although the numerical tables contain severe formatting and calculation errors."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Evaluation covers multiple model families, but the reported results on LLaMA-3.1 70B and benchmark datasets lack credibility due to data anomalies."
+    },
+    "overall_recommendation": {
+      "score": 3,
+      "justification": "I recommend Reject and Resubmit due to critical mathematical contradictions in metric definitions, impossible table values, and uncredible hardware execution claims."
+    }
+  },
+  "publishability_probability": 0.05
+}

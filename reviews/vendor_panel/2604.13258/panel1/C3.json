@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a three-component attribution framework for decoder-only LLMs (target-conditioned attention-value rollout, HVP-based Hessian sensitivity, and KL-under-masking) plus a new curated evaluation dataset and DSA metric. The problem is important, the baseline suite is broad, and the ablation/robustness protocol is unusually thorough for this subfield. However, the evaluation is partially circular — HETA's KL component is itself a perturbation/masking signal, so perturbation-based faithfulness metrics (Soft-NC/Soft-NS) structurally favor it, and the reported 5-7x margins over the strongest baseline are implausibly large and never scrutinized. Additional concerns: 'human annotations' are actually LLM-generated (GPT-4o/GPT-5 intersection), key hyperparameters (Hutchinson sample count m, masking scheme, beta/gamma selection) are under-specified, and Table 3 contains suspicious repeated/identical values across datasets for the LLaMA-3.1 block.",
+  "strengths": [
+    "Well-motivated problem: faithful token-level attribution for autoregressive decoder-only LMs is timely, and the critique of first-order/attention-based methods (vanishing-gradient argument with second-order Taylor justification) is clearly articulated.",
+    "Broad empirical scope: 10 baselines including recent generative-attribution methods (ContextCite, TDD, PML, ReAgent, SEA-CoT), 4 models spanning 3B-70B, 3 established benchmarks plus a curated dataset, and component-level ablations (6 configurations).",
+    "Robustness analyses beyond the main metric: decoding-hyperparameter sensitivity grid, Gaussian-noise sensitivity, and active/passive syntactic-invariance tests are valuable and rarely done in this literature.",
+    "Scalability is taken seriously: HVP/Pearlmutter estimation with Hutchinson sampling, low-rank and windowed variants (HETA-LR+WIN), and layer subsampling for the 70B model, with costs claimed to be reported.",
+    "Limitations (runtime, memory, long-text inefficiency) are explicitly stated rather than buried."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Evaluation circularity: HETA's KL term (Eq. 4) is a leave-one-out masking/perturbation signal, and the primary faithfulness metrics (Soft-NC/Soft-NS) measure exactly output-distribution shift under attribution-ranked input perturbation. Methods that directly compute per-token perturbation effects are structurally advantaged, which likely explains the implausible 5-7x Soft-NC margins (e.g., 10.3 vs ~1.5 for the next best on GPT-J/LongRA) that the authors never interrogate.",
+      "suggested_fix": "Add faithfulness evaluations that are methodologically independent of masking/perturbation (e.g., downstream utility of attributions, simulatability, or held-out causal-tracing-style ground truth), and include a pure leave-one-out masking baseline to quantify how much of HETA's gain comes from the KL term alone under these metrics."
+    },
+    {
+      "severity": "major",
+      "issue": "Mischaracterized ground truth: the abstract and contributions claim 'alignment with human annotations,' but the curated labels are the subword intersection of two LLM annotators (GPT-4o, GPT-5). This is model-generated silver data, and DSA/F1 against it measures alignment with LLM judgments, not humans.",
+      "suggested_fix": "Reword all 'human annotation' claims; add a human-annotated subset (even a few hundred instances) and report agreement of the LLM labels and of HETA against it."
+    },
+    {
+      "severity": "major",
+      "issue": "Suspicious tabulated values: in the LLaMA-3.1 block of Table 3, several baselines show identical or sign-flipped repeated numbers across the three datasets (e.g., IG Soft-NC 0.13/0.13/0.13; Attention Rollout -1.48/1.48/-1.48), and the GPT-J/Phi-3 blocks appear to be missing the ReAgent row while the text calls ReAgent the second-best method. This undermines confidence in the experimental pipeline.",
+      "suggested_fix": "Audit and correct Table 3, explain any dataset-independent evaluation artifact, and provide per-dataset raw logs in the appendix."
+    },
+    {
+      "severity": "major",
+      "issue": "Under-specified method details: the Hutchinson sample count m is never given in the main text, the token-masking scheme for the KL term is described only as 'a chosen scheme,' and beta=gamma=0.5 is set without any sensitivity sweep over these mixing weights (ablations only zero components out).",
+      "suggested_fix": "Report m, the exact masking/replacement strategy, runtime/memory per method in the main results, and a beta/gamma sweep showing the method is not finely tuned to the benchmark."
+    },
+    {
+      "severity": "minor",
+      "issue": "Statistical reporting is thin: only 3 seeds, no significance tests, and std bounds (<0.06, <0.2) asserted globally rather than per-cell; DSA averages over instances but instance-level variance is not shown.",
+      "suggested_fix": "Report per-cell std or CIs and pairwise significance (e.g., bootstrap over instances) for HETA vs the top-2 baselines."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is integrative: attention-rollout-with-value-norms (Kobayashi et al.), second-order/Hessian sensitivity, and masking-based KL impact each exist in prior work; the contribution is the combination plus benchmark, which is useful but incremental.",
+      "suggested_fix": "Sharpen the delineation: state precisely which failure mode each component fixes that prior generative-attribution methods (esp. ReAgent) cannot, ideally with a targeted diagnostic experiment."
+    }
+  ],
+  "questions_for_authors": [
+    "How much of HETA's Soft-NC/Soft-NS advantage survives if the KL term is removed but the transition gate and Hessian terms are kept — and conversely, how does a pure leave-one-out KL baseline score? Please disentangle metric affinity from genuine attribution quality.",
+    "What is m (number of Hutchinson/HVP samples) for each model size, and what is the wall-clock and memory cost of HETA vs ReAgent and ContextCite per instance at T=512 and T=2048?",
+    "Why do several LLaMA-3.1 rows in Table 3 contain identical values across LongRA/TellMeWhy/WikiBio? Is this a copy error or an evaluation artifact?",
+    "Can you provide human verification of a subset of the GPT-4o/GPT-5 intersection labels, and does HETA's DSA/F1 advantage persist against human gold labels?",
+    "How sensitive are the results to beta and gamma, and to the choice of masking scheme (zero embedding vs [MASK] vs resampling) in Eq. 4?"
+  ],
+  "calibration_check": "Claims are over-scoped: 'alignment with human annotations' describes LLM-generated labels, 'establishing a new standard' rests on partially circular metrics with implausibly large margins, and stated limitations cover compute but not the evaluation-validity issues.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Faithful token attribution for decoder-only LLMs is a high-interest problem and a curated benchmark plus robustness protocol could be used by the community, but impact is capped until the evaluation-validity concerns are resolved."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The target-conditioned integration of rollout gating, HVP curvature, and KL impact is a sensible but incremental combination of existing components; the dataset/DSA metric is the more original element."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The perturbation-based KL component is evaluated on perturbation-based faithfulness metrics (circularity), margins of 5-7x go unexamined, and Table 3 contains repeated/identical cross-dataset values suggesting pipeline errors."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Three seeds and reported std bounds are a start, but there are no significance tests, no per-cell variance, and instance-level variability on the 2,000-example curated set is unreported."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "LLM-annotated labels are repeatedly called 'human annotations,' SOTA-style claims rest on metric-favorable evaluation, and the huge performance gaps are asserted rather than stress-tested; compute limitations are at least acknowledged."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Standard organization and a mostly readable method section with explicit equations, but key operational details (m, masking scheme, normalization Z) are vague and some passages are garbled."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows the expected Abstract/Intro/Motivation/Background/Method/Experiments/Ablations/Related Work/Conclusion-with-Limitations arc at a plausible ICLR length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Models, datasets, decoding grid, and beta/gamma are specified, but the Hutchinson sample count, exact masking procedure, label-annotation prompts, and full hyperparameters are deferred to appendices or omitted."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Covers classical attribution, attention-interpretability critiques, and the most relevant recent generative-attribution methods (ContextCite, TDD, PML, ReAgent) with reasonably fair characterizations."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe a pipeline overview, component ablations, three robustness analyses, and qualitative attribution maps — informative and claim-supporting, though two captions are near-duplicate qualitative examples."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models (3B-70B), three benchmarks plus a curated set, ten baselines, and six ablation configs is good breadth, but generality claims are weakened because all headline metrics share the same perturbation-based evaluation bias."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising, well-scoped framework with strong empirical coverage, but the circular evaluation, mislabeled 'human' ground truth, and suspicious table values require substantial new experiments and corrections before acceptance."
+    }
+  },
+  "publishability_probability": 0.25
+}

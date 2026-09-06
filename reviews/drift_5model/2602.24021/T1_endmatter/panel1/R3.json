@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes to adapt a frozen MLLM for video anomaly detection by (i) selecting discriminative attention heads via an inter-to-intra scatter ratio (RSA) and (ii) training a lightweight hierarchical meta-controller plus logistic-regression scorer on 1% of labeled data to apply context-conditioned element-wise feature modulation ('anisotropic manifold scaling'). The framing is interesting and the paper is data-efficient with a solid seed-stability analysis, but the empirical gains over the nearest competitors are marginal (~0.4–0.9%), the 'tuning-free/geometric manifold' language substantially overstates what is effectively a trained feature-gating probe, and key methodological details (how frame/normal-anomalous labels drive RSA) and fair statistical comparison to baselines are missing. This is a promising but incremental contribution that needs tightened claims and stronger evidence before acceptance.",
+  "strengths": [
+    "The core angle — applying activation-steering/feature-modulation to VAD on a completely frozen MLLM with only 1% calibration data — is a reasonable and practically attractive direction for the tuning-free VAD subfield.",
+    "The paper includes a fairly complete ablation suite: HMC component ablation (linear probe, static scaling, additive, w/o global gate), expert-selection strategy comparison (RSA vs random/positional heuristics), a 10-seed stability study, and K/F hyperparameter sweeps.",
+    "The seed-stability result (identical LAEs across 10 seeds, σ≈0.04% AUC) and the 1%→100% data-scaling saturation analysis are genuinely useful evidence that the head selection is data-robust and not an artifact of the small split.",
+    "Method components are described with enough hyperparameter detail (backbone, segment/frame sampling, K, optimizer, lr, epochs, λreg, σg) to support reproduction of the trainable parts."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The 'tuning-free' and 'without any fine-tuning' framing is misleading. The method trains a meta-controller (GSG + K low-rank adapters) and a logistic-regression scorer on labeled data. Freezing the backbone does not make the approach tuning-free — it is a supervised parameter-efficient probe/calibration. The abstract's headline claims are not scoped to this reality.",
+      "suggested_fix": "Re-frame consistently as 'few-parameter' / 'frozen-backbone calibration' (as the comparison table's own subheading already does), and remove or heavily qualify 'tuning-free' and 'without any fine-tuning' in the abstract, intro, and conclusion."
+    },
+    {
+      "severity": "major",
+      "issue": "The empirical SOTA claim rests on marginal gains within a narrow category: +0.43% AUC over HiProbeVAD on UCF-Crime and +0.87% AP on XD-Violence, while several weakly-supervised methods in the same table (VadCLIP 88.02%, Yang 87.79%, CLIP-TSA 87.58%) exceed SteerVAD's 87.15%. There are no error bars on any competing method and no significance testing of the head-to-head gaps, so it is unclear the improvement is real relative to baseline variance.",
+      "suggested_fix": "Report mean±std over seeds for SteerVAD in the main comparison table, and where possible re-run or cite variance for the closest tuning-free baselines; add a significance/CI statement for the head-to-head deltas rather than asserting SOTA from point estimates."
+    },
+    {
+      "severity": "major",
+      "issue": "RSA requires normal vs anomalous centroids and variances, and the HMC/scorer are trained with frame-level BCE, but UCF-Crime/XD-Violence training data are typically only video-level labeled. How frame-level (or normal/anomalous) labels are obtained for the 1% calibration subset is never specified, which is central to both the method's validity and its comparability to weakly-supervised methods.",
+      "suggested_fix": "State precisely what label granularity the 1% subset uses (frame-level vs video-level), how anomalous/normal samples are assigned for centroid/variance computation, and whether this gives SteerVAD stronger supervision than the weakly-supervised comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'manifold rectification / anisotropic geometric transformation' theory is largely rhetorical. The actual operation (Eq. 4) is element-wise scaling h'=h(1+s·g) — a standard gating/modulation — and the t-SNE evidence (Fig. 4) is close to circular: features produced by a controller+scorer trained to separate the two classes will naturally appear separated in t-SNE, so this is not independent confirmation of a geometric claim.",
+      "suggested_fix": "Either substantiate the manifold/topology claims (the referenced Appendix A analysis) with quantitative geometric metrics computed on held-out data, or downgrade the geometric language to accurately describe a learned feature-modulation mechanism; supplement the t-SNE with a quantitative separability metric on the test set."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 5 shows F=24 (87.23%) slightly outperforms the adopted F=16 (87.15%), yet the reported headline number uses F=16. The efficiency-tradeoff justification is reasonable but the reader should not have to infer that the reported result is not the best configuration.",
+      "suggested_fix": "Explicitly note the efficiency-accuracy tradeoff at the point of the main result and confirm F=16 is used everywhere for fair comparison."
+    },
+    {
+      "severity": "minor",
+      "issue": "Generality is asserted ('powerful new direction') but evidence is limited to two datasets and a single backbone (InternVL3). No cross-backbone or additional-dataset evidence supports the broad claim.",
+      "suggested_fix": "Add at least one additional MLLM backbone and/or dataset (e.g., ShanghaiTech) to support the generality claim, or scope the claims to the tested setting."
+    }
+  ],
+  "questions_for_authors": [
+    "What label granularity does the 1% calibration subset use, and how are normal/anomalous samples defined for RSA centroid/variance computation given the datasets' typical video-level labels?",
+    "Can you provide mean±std (or CIs) for SteerVAD in Table 1 and a significance test for the deltas over HiProbeVAD/VERA, so the SOTA claim is distinguishable from baseline noise?",
+    "Beyond t-SNE, what quantitative geometric evidence supports 'manifold rectification' on held-out test data (e.g., separability metrics before/after on unseen samples)?",
+    "Does the method generalize across MLLM backbones, or are the identified LAEs and gains specific to InternVL3?",
+    "How does SteerVAD's supervision (frame-level probe training on 1% data) compare in labeling cost/strength to the weakly-supervised baselines it is tabled against?"
+  ],
+  "calibration_check": "Claims are only partially scoped to the evidence: the 'tuning-free/without fine-tuning' and 'geometric manifold rectification' language overstates what is a trained feature-gating probe, and 'state-of-the-art' rests on marginal, variance-untested gains, though the paper does honestly acknowledge fine-tuned methods score higher.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A practically appealing data-efficient direction for a niche subfield, but the marginal gains and narrow scope limit how much practice or follow-up it would change."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combines Fisher-style (inter/intra scatter) head selection with activation-steering-like feature modulation applied to VAD; a reasonable but incremental transfer of established interpretability ideas to a new task."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is coherent and ablated, but the geometric theory is hand-wavy, the t-SNE evidence is near-circular, and the labeling procedure underpinning RSA is unspecified."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Strong own-method seed stability (σ≈0.04%) is a plus, but there are no error bars on competing methods, no significance tests for the sub-1% head-to-head gaps, and only two datasets/one backbone."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The 'tuning-free/no fine-tuning' and 'manifold rectification' framing overstates a supervised feature-gating probe, though the paper does concede fine-tuned baselines outperform it."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method is followable and equations are given, but dense grandiose terminology obscures a fundamentally simple element-wise modulation mechanism."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, ablations, conclusion) is present and appropriately organized within a reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Trainable-component hyperparameters are well specified, but the critical RSA labeling/label-granularity procedure and centroid construction are not described sufficiently to reproduce."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prose positioning across traditional VAD, MLLM-based VAD, and mechanistic interpretability is reasonable and the contribution is delineated, if somewhat self-serving on the 'first' claims."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Ablation/stability tables are informative and support claims, but the UMAP/t-SNE visualizations are largely qualitative and, given supervised training, do not provide strong independent evidence."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Only two datasets and a single backbone support broad 'new direction' claims; cross-backbone and additional-dataset evidence is absent."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: an interesting, well-ablated, data-efficient approach undercut by overstated framing, marginal untested gains, and unclear label usage — promising but needs substantive strengthening."
+    }
+  },
+  "publishability_probability": 0.3
+}

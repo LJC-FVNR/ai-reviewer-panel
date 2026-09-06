@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper adapts crosscoders—a sparse autoencoder variant originally designed for cross-layer analysis—to track feature evolution across pre-training checkpoints of Pythia language models. The core contributions are: (1) using decoder norm trajectories as proxies for feature presence across snapshots, (2) empirically characterizing emergence hierarchy (previous-token → induction → context-sensitive) and a near-universal directional turning point around step 1,000, (3) attribution-based circuit tracing that links feature emergence to downstream task performance, and (4) evidence for a statistical-learning-to-feature-learning phase transition. The methodology is principled, the presentation is generally clear, and the findings are of genuine interest to the mechanistic interpretability community. The main weaknesses are the restriction to a single middle layer per model, reliance solely on the Pythia model family, modest statistical evidence for some headline claims, and underspecified training hyperparameters.",
+  "strengths": [
+    "Adapting crosscoders to cross-snapshot analysis is a natural but non-trivial extension that provides a unified feature space enabling direct norm-based tracking; the design rationale (shared encoder, independent decoders per snapshot) is well-motivated and technically sound.",
+    "The empirical finding of a near-universal directional turning point around step 1,000 and the emergence hierarchy (previous-token features first, then induction, then context-sensitive) are concrete, reproducible claims that align with and extend prior mechanistic interpretability results (Olsson et al., 2022).",
+    "The paper's two-model-size evaluation (Pythia-160M and Pythia-6.9B) and the three-task ablation study (SVA, induction, IOI) show the same qualitative patterns at different scales, lending modest cross-scale credibility.",
+    "The limitations section is honest and detailed: single architecture family, single layer, simple downstream tasks, and discrete snapshot granularity are all explicitly acknowledged.",
+    "The statistical-to-feature-learning transition hypothesis is supported by two independent measurement streams (KL divergence against bigram/unigram distributions and total feature dimensionality dynamics), making it more persuasive than a single indirect signal."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "All main analyses are restricted to a single middle layer per model (Layer 6 / Pythia-160M, Layer 16 / Pythia-6.9B). Earlier layers are widely known to carry different representations than later layers, and the claimed phenomena (emergence hierarchy, directional turning point, phase transition) may be layer-specific. The paper cannot claim these are general properties of pre-training without at least a spot-check on early and late layers.",
+      "suggested_fix": "Add even a minimal two-layer comparison (e.g., Layer 1 and Layer 11 for Pythia-160M) and discuss whether the key statistics—turning point step, emergence hierarchy, dimensionality compression–expansion profile—are qualitatively preserved or differ across layers."
+    },
+    {
+      "severity": "major",
+      "issue": "The complexity-vs-emergence-time correlation (Pearson r = 0.309, p = 0.002) is statistically significant but only explains ~10% of variance, and is computed on just 100 randomly sampled features. The text describes this as a 'non-trivial correlation with moderate strength,' which is honest, but the surrounding narrative ('more complex features tend to emerge later') reads as a stronger causal claim. The automated complexity scorer (an LLM, named in Figure 6's caption) introduces an additional layer of uncertainty that is not characterized.",
+      "suggested_fix": "Report confidence intervals on the correlation, test robustness by varying the sample size (e.g., 300 features), and provide inter-rater reliability between the LLM scorer and human annotations on a small subset to bound the noise introduced by automated scoring."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper states that ablation experiments 'within tens of features' consistently disrupt or recover model performance, but the actual ablation curves in Figure 7 are described qualitatively. There are no reported numerical baselines, aggregate statistics, or variance across the 1,000 samples for the recovery/disruption experiments across the three tasks, making it hard to assess how consistent the 'consistently' claim actually is.",
+      "suggested_fix": "Report mean ± std of the metric recovery/disruption across the 1,000 samples for all three tasks (SVA, induction, IOI) in a table; this would replace the qualitative claim with a verifiable one."
+    },
+    {
+      "severity": "minor",
+      "issue": "The threshold 0.3 used to define feature 'lifetime' (|{j | ‖W^θ_dec,i‖ > 0.3}|) is introduced without justification and without a sensitivity analysis. Results about the majority of features persisting 'above 60% of snapshots' are directly dependent on this choice.",
+      "suggested_fix": "Include a brief sensitivity analysis showing the persistence distribution at thresholds 0.2 and 0.4, or provide a principled justification for 0.3 (e.g., tied to the observed noise floor of decoder norms)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Key crosscoder training hyperparameters—learning rate, batch size, number of training steps, optimizer—are not reported in the main text or, as far as can be inferred from this extraction, in a clearly organized appendix table. The paper points to Appendix A.1 for activation/regularization function selection but does not consolidate the full training recipe.",
+      "suggested_fix": "Add a concise hyperparameter table (or refer explicitly to such a table in an appendix) covering at minimum: optimizer, learning rate schedule, batch size, number of training tokens, λ_sparsity values used, and dictionary sizes evaluated."
+    },
+    {
+      "severity": "minor",
+      "issue": "The abstract appears to be missing from the manuscript as extracted—the header 'ABSTRACT' is followed immediately by 'INTRODUCTION' with no abstract body. If this is an extraction artifact rather than a genuine omission, it should be confirmed; if genuine, the abstract must be reinstated.",
+      "suggested_fix": "Verify and restore the abstract section before submission."
+    }
+  ],
+  "questions_for_authors": [
+    "Do the headline findings—near-universal directional turning point at step ~1,000, statistical-to-feature-learning transition, and emergence hierarchy—hold qualitatively for early layers (e.g., Layer 1) and late layers (e.g., the penultimate layer) of Pythia-160M?",
+    "The paper uses decoder norm ‖W^θ_dec,i‖ as a proxy for feature strength and validates this in Appendix C via linear probes. What is the quantitative agreement between norm-based feature strength and the linear probe confidence, and does the proxy break down in any systematic way (e.g., for high-frequency vs. rare features)?",
+    "How sensitive is the observed compression–expansion profile of total feature dimensionality (Figure 8c) to crosscoder dictionary size? With a 32,768-feature crosscoder on Pythia-6.9B covering only ~70% of the same trend as the 98,304-feature crosscoder on Pythia-160M, does increasing the dictionary size for 6.9B change the quantitative profile?",
+    "The 'feature splitting' phenomenon noted in Appendix F is described as occurring 'in rare cases' for highly active features. Can you quantify the prevalence and characterize under what conditions it occurs? This is important for assessing the reliability of the aligned feature space assumption.",
+    "For the SVA attribution analysis, you report that Features 68813, 50159, and 69636 'alternately dominate the metric,' implying circuit-level evolution. Is there a clean transition or an overlapping period? A temporal profile of individual feature attribution dominance would clarify the nature of the circuit evolution claim."
+  ],
+  "calibration_check": "The paper's major empirical claims are generally appropriately scoped—the phase transition is described as 'evidence' and 'observations' rather than proven, the moderate correlation is honestly reported, and limitations are clearly enumerated—though the narrative around the complexity–emergence correlation and the ablation 'consistency' claim slightly overreaches the underlying statistical support.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Addresses a fundamental open question in LLM training dynamics through a principled mechanistic lens; the emergence hierarchy and phase-transition hypothesis are findings the interpretability and training-dynamics communities will build on."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Adapting crosscoders to cross-snapshot analysis is a genuine methodological contribution, and the empirical discoveries—universal directional turning point, emergence hierarchy, statistical-to-superposition transition with two supporting signals—are new to the literature."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Methodology is principled and the crosscoder design rationale is sound, but the entire analysis is confined to one middle layer per model and one model family, leaving open whether the claimed phenomena are general or layer/architecture-specific."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "The headline correlation (r=0.309) is computed on only 100 features; ablation results lack aggregate statistics or variance; the feature-lifetime analysis depends on an unjustified threshold; most key figures lack error bars, making it hard to assess whether improvements are statistically reliable."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper explicitly acknowledges single-architecture scope, middle-layer restriction, and simple downstream tasks, and consistently frames phase-transition claims as suggestive rather than conclusive, though the ablation 'consistency' language slightly overstates the precision of reported evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The mathematical formulation of the crosscoder and attribution framework is clear and precise; the narrative flow from method to empirical findings to phase-transition hypothesis is logical; the apparent absence of an abstract is a formatting concern."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference structure is followed with appropriate section ordering, but the abstract appears missing from the extraction; the conclusion is brief and largely recaps the abstract-level findings without forward-looking synthesis."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Public models (Pythia) and public data (SlimPajama) are used, crosscoder architecture and objectives are fully specified, and snapshot selection strategy is described; however, optimizer, learning rate, batch size, and number of training steps for the crosscoder are not consolidated in the main text."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Covers SAE and crosscoder literature, training dynamics theory (NTK, IB, SLT), and prior work on statistical learning phases comprehensively and accurately; positioning relative to concurrent work on feature emergence (Heap et al., 2025) is present but could be expanded."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, figures appear well-targeted to specific claims: the decoder norm overview (Figure 4), emergence statistics (Figure 5), and attribution recovery curves (Figure 7) all directly support quantified claims rather than serving decorative roles."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Only a single middle layer is analyzed per model, only the Pythia family is used, and downstream tasks are limited to SVA, induction, and IOI—all well within Pythia's capabilities; the paper's generality claims are appropriately hedged, but the experimental scope is narrow for a venue-level contribution."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A sound and interesting paper that advances mechanistic interpretability of pre-training dynamics with principled methods and novel empirical findings; borderline accept contingent on addressing the single-layer limitation and tightening statistical reporting."
+    }
+  },
+  "publishability_probability": 0.42
+}

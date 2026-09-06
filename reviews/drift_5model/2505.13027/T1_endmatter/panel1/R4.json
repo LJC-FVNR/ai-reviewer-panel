@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-based unifying framework to compare additive and multiplicative positional encodings, and empirically identifies a 'single-head deposit pattern' in RoPE on a synthetic relative-distance task. The framework is a useful conceptual lens and the deposit-pattern observation is interesting and supported by targeted ablations (Absolute+RoPE injection, per-head RoPE, MLA). However, the empirical evidence is confined to two toy tasks on a 6-layer decoder, the theoretical propositions rely on strong idealized assumptions, and several central claims (that the deposit pattern explains RoPE's real-world performance paradoxes and length-generalization struggles) are not empirically demonstrated on realistic LM/vision workloads.",
+  "strengths": [
+    "Clean conceptual framing: casting additive vs multiplicative PE contributions in a common Toeplitz-matrix language is intuitive and pedagogically valuable.",
+    "The 'single-head deposit pattern' observation is concrete, testable, and supported by a matching set of causal ablations (head zeroing, per-head RoPE subset, Absolute+RoPE injection, MLA hybrid).",
+    "The synthetic task pair (position-sensitive vs position-agnostic) is well-designed to dissociate content-position coupling from position-agnostic aggregation, and the qualitative story is coherent across tasks and ablations.",
+    "The theoretical section (Prop. 6.1/6.2, Thm. 6.1) attempts to give a mechanistic gradient-level account of why RoPE, not ALiBi, produces a non-cancellable seed leading to specialization — a genuine effort at explanation rather than pure phenomenology."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "All empirical claims are on two toy tasks with a 6-layer decoder and a 1,000-token vocabulary. The paper repeatedly gestures at real-world implications for RoPE (length extrapolation, LM performance paradoxes) without any language-modeling, retrieval, or long-context experiment at realistic scale.",
+      "suggested_fix": "Add at least one language-modeling or long-context benchmark (e.g., WikiText/PG-19 perplexity, SCROLLS/LongBench, or a needle-in-haystack test) comparing RoPE, ALiBi, T5-bias, NoPE, and MLA, and verify whether the deposit pattern appears in trained-from-scratch small LMs. Without this, the framing that the pattern is 'a primary cause of the gap between RoPE's theoretical promise and its practical performance' is not supported."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical results rely on strong idealized assumptions (Jacobian stability, monotone anchor path, projection separability) that are not empirically verified, and the propositions as stated give a lower bound only under a condition (a(h)(d)η(h)(d) > C(h)χL) that is not shown to hold in practice. Proposition 6.2 also claims ALiBi's aggregated gradient can vanish for *any* empirical distribution N — this is a very strong statement whose sketch does not obviously survive when the batch is not adversarially constructed.",
+      "suggested_fix": "Either (i) validate the key quantities (anchor path η, gain factors γk, margins) empirically during actual training runs and show they match the predicted regime, or (ii) soften the theorem statements to expected/generic-case claims and clearly separate 'existence of a bad batch' from 'typical training dynamics'."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'unique to RoPE' claim rests on a single deposit-pattern shape in violin plots on Task 1 for a 6-layer, few-head model. Confounds are not ruled out: number of heads, layers, learning rate/optimizer, task difficulty relative to model capacity, and initialization. It's plausible that other PEs would also concentrate positional logic if the task were slightly rescaled.",
+      "suggested_fix": "Sweep model depth, width, and #heads (e.g., 2/4/8/12 heads; 2/4/6/12 layers); vary vocab size and sequence length; report deposit-pattern statistics (e.g., Gini over per-head ablation drops) as a function of these axes for all six PEs. A single-number summary of head-concentration would let readers judge whether the effect is truly RoPE-specific."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines and prior work are undercompared. The paper cites but does not empirically compare against modern relative-PE variants (ALiBi is included, but FIRE, Kerple, XPos, NoPE with causal masking analyses, and FoPE mentioned in Related Work) that are directly relevant to the multiplicative-vs-additive question and to length generalization.",
+      "suggested_fix": "Add XPos and at least one recent RoPE variant (e.g., FoPE, YaRN, or a base-frequency-scaled RoPE) to the six-way comparison, or explicitly justify their omission. Given that Kazemnejad et al. 2023 is a central reference, replicate one of their tasks to anchor the results."
+    },
+    {
+      "severity": "minor",
+      "issue": "Statistical reporting is thin. The paper states 'averaged over five seeds' and 'variance is less than 5%' but figures/tables do not show error bars, confidence intervals, or significance tests. Table 1's differences (e.g., MLA 88.34 vs RoPE 92.64 on Task 1) are reported without uncertainty.",
+      "suggested_fix": "Add error bars/CIs to Figures 2, 3, 5, 6, 8; report seed-level std for Table 1; use a paired test (across seeds) for the head-vs-others gap in the deposit-pattern claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: several sentences are broken by hard line-wrap artifacts (missing spaces, e.g., 'Vaswaniet al.', 'Toeplitzcomponent'), Section headers (5.1, 5.2, etc.) are inconsistent, and Figure 1's four inner-product terms and Figure 4's inset shapes are important to the argument but must be inferred from captions.",
+      "suggested_fix": "Copyedit throughout, harmonize section numbering, and expand the Figure 1/4 captions (or add a short in-text description) so the core visual message is fully reconstructable from the prose."
+    },
+    {
+      "severity": "minor",
+      "issue": "Assumption 3.1 (content+position decomposition) is called 'not a modeling constraint' but is then used to define the four-term logit decomposition and Ablation 4's pi-removal — this makes it load-bearing. The 'manifold-based coordinate subtraction' in Remark 3.1 is not defined precisely.",
+      "suggested_fix": "Give an operational definition of pi and the removal operator used in Ablation 4 (linear subtraction? projection? which basis?) and state what breaks in the framework if the decomposition is only approximate."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the single-head deposit pattern appear in a small LM (e.g., 12-layer decoder trained on WikiText) with RoPE? If yes, does its severity correlate with downstream perplexity or length-extrapolation error?",
+    "Have you measured the head-concentration metric (e.g., Gini or entropy over per-head ablation drops) for all six PEs? Is RoPE quantitatively separated from the others, or only qualitatively via the violin shape?",
+    "In Prop. 6.2, does 'there exists a batch realizing N such that gradient vanishes' translate to any statement about expected gradient under natural (non-adversarial) batches? Empirically, is ALiBi's anchor-gradient signal actually near zero at initialization on Task 1?",
+    "How sensitive is the deposit pattern to the RoPE base frequency (θ) and to head dimension? A sweep over base and dhead would clarify whether the phenomenon is architectural or hyperparameter-driven.",
+    "For MLA: is the improvement on Task 2 due to the NoPE pathway alone (i.e., would a plain concat of NoPE+RoPE with fixed α match it), and is the deposit-pattern mitigation stable across seeds and depths?",
+    "Assumption 3.2 assumes the Gram matrix of the position component is Toeplitz. For learned Absolute PE, is this empirically the case in your trained models, or is it only approximate?"
+  ],
+  "calibration_check": "The framework and toy-task findings are stated fairly, but claims that the deposit pattern is 'a primary cause of the gap between RoPE's theoretical promise and its practical performance' and mechanistically explains real-world RoPE behavior overreach the toy-scale evidence provided.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The deposit-pattern observation and the Toeplitz framing are of interest to the mechanistic-interpretability and PE-design communities, but current evidence is confined to synthetic tasks so downstream impact is uncertain."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Toeplitz unification is a modest reframing of known translation-invariance properties, but the identification and causal analysis of a RoPE-specific single-head deposit pattern is a novel empirical contribution."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Ablations are well-conceived and directionally informative, but the theoretical propositions lean on unverified idealized assumptions and the causal claims are drawn from a narrow experimental regime."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Five seeds and a blanket '<5% variance' statement are inadequate: figures lack error bars, Table 1 has no uncertainty, and no significance tests are reported to substantiate the deposit-pattern claim."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Limitations are acknowledged (length extrapolation, complex tasks), but framing repeatedly implies that toy-task findings mechanistically explain real-world RoPE behavior — a leap not warranted by the experiments."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level story is easy to follow and the framework is intuitive, but the manuscript has line-break artifacts, inconsistent section numbering, and load-bearing constructs (e.g., pi removal in Ablation 4) that are underdefined."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (Intro/Related/Method/Experiments/Ablations/Theory/Conclusion) is followed with appropriate length; no major structural issues beyond formatting."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Synthetic-task construction, six PE configurations, and model size are described at a reasonable level, but hyperparameters, MLA implementation details, and the exact pi-removal procedure are relegated to appendices summarized only briefly here."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of PE families is adequate and prior mechanistic analyses are cited, but empirical comparison omits several directly relevant RoPE variants (XPos, YaRN, FoPE, FIRE, Kerple) that would sharpen the multiplicative-vs-additive comparison."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe well-motivated visualizations (violin plots for head importance, learning curves, layer-wise ablations) that plausibly support the claims, though the key Figure 1 and Figure 4 rely heavily on inset shapes that are only partly reconstructable from text."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "The paper generalizes to claims about RoPE broadly, yet all experiments use two synthetic tasks with a single 6-layer, small-vocab decoder — no LM, vision, or long-context tasks and no depth/width sweeps."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A conceptually appealing framework and an interesting mechanistic observation, but limited empirical breadth, weak statistical reporting, and idealized theory place this at borderline reject / major-revision territory."
+    }
+  },
+  "publishability_probability": 0.28
+}

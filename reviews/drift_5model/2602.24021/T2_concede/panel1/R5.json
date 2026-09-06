@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that steers frozen MLLM representations via two components: a gradient-free Representational Separability Analysis (RSA) to identify discriminative attention heads (LAEs), and a Hierarchical Meta-Controller (HMC) that applies context-conditioned anisotropic scaling to their feature manifolds. The geometric framing is conceptually appealing and the data-efficiency story (1% calibration) is compelling. However, evaluation breadth is insufficient — only two datasets and one backbone — margins over the closest tuning-free competitors are small (~0.4–0.9%) without statistical significance testing for inter-method comparisons, and several technical claims lack adequate prior-art positioning.",
+  "strengths": [
+    "The paradigm shift from passive feature reading to active manifold intervention is well-motivated and clearly articulated; the geometric framing of pre-training bias and contextual ambiguity is novel and coherent.",
+    "Calibration stability analysis (10 independent seeds, 100% LAE-set agreement, σ_AUC ≈ 0.04%) is rigorous and materially strengthens the reproducibility claim.",
+    "Data-efficiency analysis (Table 4) systematically traces the 1%-to-100% performance trajectory and quantifies asymptotic saturation, providing strong empirical grounding for the 1% efficiency claim.",
+    "Ablation studies (Table 2) cleanly isolate contributions of each HMC component (GSG, LGM, steering type) and expert-selection strategy, following sound ablation hygiene.",
+    "t-SNE visualizations (Figure 4) and UMAP manifold visualizations (Figure 2) provide intuitive, hypothesis-consistent qualitative evidence that complements the quantitative results."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Evaluation is restricted to two datasets (UCF-Crime, XD-Violence) and one backbone (InternVL3). Standard VAD benchmarks ShanghaiTech-Campus, CUHK Avenue, and ECVA are absent. The paper's generality claims ('powerful new direction', 'competitive performance') are therefore not supported beyond the two tested distributions.",
+      "suggested_fix": "Add results on at least one additional benchmark (e.g., ShanghaiTech or ECVA) and repeat the core comparison with one additional frozen MLLM backbone (e.g., LLaVA-Next or Qwen-VL) to substantiate backbone-agnostic claims."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The performance margins over the two closest tuning-free competitors are very small (+0.43% AUC over VERA, +0.87% AP over HiProbeVAD on their respective best datasets) yet no confidence intervals, bootstrap tests, or significance tests are reported for these inter-method comparisons. Given the smoothed AUC/AP metrics and the dataset-level evaluation, margins this small could be within noise.",
+      "suggested_fix": "Report frame-level standard deviation or 95% CI across multiple evaluation runs for all methods, or perform a paired significance test; at minimum, report own-method variance across seeds on both benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "All component ablations (Table 2) and hyperparameter sweeps (Tables 4–5) are conducted exclusively on UCF-Crime. There is no evidence that the design choices — K=4 experts, F=16 frames, λ_reg=0.1, anisotropic vs. additive steering — transfer to XD-Violence, which has a different domain distribution (movies, sports) and uses AP rather than AUC.",
+      "suggested_fix": "Replicate the ablation study in Table 2 on XD-Violence; at minimum, confirm that the full-model configuration is stable on XD-Violence under the same hyperparameter settings."
+    },
+    {
+      "severity": "major",
+      "issue": "The RSA separability metric (Eq. 1) — ratio of squared centroid distance to sum of intra-cluster variances — is essentially Fisher's linear discriminant criterion / the between-class to within-class scatter ratio from classical LDA. The paper presents it as a new 'gradient-free geometric method' without citing Fisher (1936), LDA, or the large body of discriminant-based neuron/head analysis in mechanistic interpretability (e.g., representation engineering, probing classifiers). This undermines the novelty framing.",
+      "suggested_fix": "Acknowledge the connection to Fisher's discriminant and LDA explicitly in the method section; frame RSA's novelty as the application of this criterion inside frozen MLLM attention heads for LAE identification, rather than claiming the metric itself is new."
+    },
+    {
+      "severity": "major",
+      "issue": "Anisotropic Manifold Scaling (Eq. 4), h'_i = h_i ⊙ (1 + s_global·g_i), is structurally identical to Squeeze-and-Excitation (SE) channel recalibration / FiLM conditioning, with the conditioning signal derived from global context. The paper claims this is 'targeted, anisotropic scaling' as a novel geometric operation but does not compare with or cite SE-Net, FiLM, or CBN. This is a significant related-work gap that conflates positional framing with technical novelty.",
+      "suggested_fix": "Add a 'connections to prior feature-modulation work' paragraph, compare the HMC formulation against SE-Net/FiLM baselines in Table 2 or an appendix ablation, and scope novelty claims to the VAD application and MLLM-internal manifold interpretation."
+    },
+    {
+      "severity": "minor",
+      "issue": "The reference 'HiProbeVAD ([Author] et al., 2025)' in Table 1 is an improperly anonymized citation — the placeholder '[Author]' is visible, potentially identifying the submitting group. This is a double-blind violation that could compromise reviewer independence.",
+      "suggested_fix": "Replace with a fully anonymized citation (e.g., 'Anonymous, 2025') or a blind URL consistent with the venue's anonymization guidelines."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Limitations section (final page) is entirely generic ('we have not established that conclusions transfer...', 'some comparisons are made against a limited set') and maps to no specific claim, design choice, or experiment in the paper. It reads as a boilerplate disclaimer.",
+      "suggested_fix": "Replace with precise, paper-specific limitations: (a) single-backbone dependency, (b) calibration requirement making it not truly zero-shot, (c) the unsupported claim that RSA identifies causally active 'circuits' vs. merely correlated heads, and (d) sensitivity of the Gaussian smoothing hyperparameter σ_g to event-length variability."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper uses 'SOTA' in Section 4.2 ('supports a new competitive (SOTA)') despite being outperformed by Holmes-VAD and Holmes-VAU on both benchmarks and being only marginally ahead of VERA and HiProbeVAD. The calibration of this language is inconsistent with the evidence.",
+      "suggested_fix": "Replace with 'state-of-the-art among tuning-free methods using only 1% calibration data' and note that fine-tuned methods retain a non-trivial lead."
+    }
+  ],
+  "questions_for_authors": [
+    "RSA (Eq. 1) is Fisher's between/within scatter ratio applied to head-level features. How does it differ from probing a linear classifier on each head, and why is Fisher's criterion preferable to a held-out validation AUC for head ranking? Have you compared LAE sets selected by these two criteria?",
+    "The four selected LAEs (L18H4, L23H24, L21H21, L22H7) are stable across seeds on UCF-Crime. Do the same four heads emerge as LAEs when calibrating on XD-Violence? If not, what does divergence in selected experts across datasets imply about their claim as 'intrinsic task-aligned circuits'?",
+    "The AMS formula h'_i = h_i ⊙ (1 + s·g) is structurally a FiLM/SE-style modulation. Can you report a baseline that substitutes the HMC with a standard SE block or FiLM layer conditioned on the same global context vector c, to isolate whether the hierarchical two-level design (GSG + LGM) is the source of gains versus simply conditioning on c at all?",
+    "For the post-hoc explainability module (Section 3.5): is any evaluation of explanation quality (e.g., faithfulness, BLEU vs. human judgements) provided in the appendix? If not, how should a practitioner assess whether the generated text is reliable?",
+    "The 1% calibration subset is described as 'randomly sampled'. For a dataset like UCF-Crime with 13 anomaly categories, a random 1% sample may undersample rare categories. How was class coverage verified, and are results stable when the rare-category composition of the 1% subset varies?"
+  ],
+  "calibration_check": "The abstract and conclusion are appropriately hedged ('competitive performance among tuning-free approaches'), but Section 4.2 overclaims 'new competitive (SOTA)' despite fine-tuned methods retaining a 2–8% absolute lead and the tuning-free margin over the closest competitor being under 1%; the novelty claims for RSA and AMS need repositioning against Fisher LDA and SE/FiLM literature.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Active geometric intervention in frozen MLLMs for VAD is a timely and practically motivated direction, but the improvements over the closest prior work are marginal and the framework is not evaluated broadly enough to confidently establish a new subfield direction."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The high-level paradigm (manifold steering in frozen MLLM for VAD) is fresh, but the core technical building blocks — Fisher-discriminant head ranking and FiLM/SE-style context-conditioned feature scaling — are well-established; the paper's novelty rests primarily on their combination and application context."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Component ablations are carefully designed and the stability analysis is strong, but claims about 'intrinsic functional circuits' are not supported by causal or mechanistic evidence, and the absence of cross-dataset ablations weakens the validity of design choices."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Own-method variance is rigorously reported (10 seeds, σ≈0.04%), but inter-method comparisons report only point estimates for sub-1% margins without confidence intervals or significance tests, making it unclear whether the reported improvements are statistically reliable."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Abstract and conclusion are appropriately hedged, but Section 4.2 misuses 'SOTA' when fine-tuned methods hold a clear lead; the generic limitations section fails to acknowledge the method's true scope restrictions (single backbone, calibration dependency, no causal circuit evidence)."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized, the method is described precisely with equations, and the geometric motivation is consistently threaded throughout; minor issues include the awkward 'supports a new competitive (SOTA)' phrasing and some redundant notation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure with appropriate section coverage; the appendices appear to contain useful supplementary material (geometric proofs, implementation details, additional visualizations), though they cannot be directly assessed from the extraction."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Hyperparameters (K=4, F=16, lr=1e-3, λ_reg=0.1, σ_g=6, epochs=1000), architecture details (rank r bottleneck), and the calibration procedure are adequately specified; the key missing element is the rank r value itself, which is described only as 'a small value'."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Traditional VAD and MLLM-based VAD coverage is solid, but the mechanistic interpretability section omits representation engineering and probing classifiers, and the method section fails to connect RSA to Fisher LDA or AMS to SE-Net/FiLM, creating misleading novelty impressions."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions indicate that Figure 4 (t-SNE before/after rectification) and Figure 2 (3D UMAP manifold) directly support the paper's central geometric claims, and the ablation tables are well-structured with clear configuration labeling."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Two benchmarks and one backbone are insufficient to support claims of a 'powerful new direction'; standard VAD benchmarks ShanghaiTech and Avenue are absent, ablations cover only UCF-Crime, and no alternative MLLM backbone is tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The intervention paradigm is interesting and the data-efficiency story is compelling, but the combination of limited evaluation breadth, unverified inter-method statistical significance, and missing prior-art connections places this at borderline reject; a substantial revision addressing the two blocking concerns could bring it to acceptance."
+    }
+  },
+  "publishability_probability": 0.27
+}

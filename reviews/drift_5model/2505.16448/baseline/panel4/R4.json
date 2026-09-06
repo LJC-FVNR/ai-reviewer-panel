@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper identifies 'internal bias' — the model's implicit preliminary answer guess — as a driver of overthinking in reasoning models, and provides correlational, causal (via question-removal and bias-injection interventions), and interpretability (attention) evidence for this claim. The core hypothesis is intuitive but framed in a novel and useful way, and the counterfactual interventions are a genuine methodological strength beyond typical correlational work. Weaknesses include limited model diversity (three closely related R1-style models), missing significance testing / error bars, restriction to closed-form answer tasks, and some conflation between 'the model attends to the question' and 'the model recalls the internal bias'.",
+  "strengths": [
+    "Clear, testable hypothesis (internal bias → overthinking) operationalized through a well-defined 'direct answer' probe with multi-sample distributional treatment.",
+    "Two genuine counterfactual interventions (question removal during reasoning, bias injection via fine-tuning on rephrased declaratives) that go beyond correlation, with sensible Random baselines in the injection experiment to rule out training-artifact effects.",
+    "Consistent trends across three model scales/families (DeepSeek-R1 671B, QwQ-32B, R1-Distill-Qwen-14B) and across character, logical (KnowLogic), and math (AIME 2024/2025) tasks, in two languages.",
+    "The 'parroting' analysis links a known failure mode (repetition until context blows out) to the same underlying mechanism, which is a nontrivial unifying observation.",
+    "Attention analysis with a normalized ScG metric that controls for positional attention baseline (dividing by 1/p) is a reasonable design choice, and the reflection-vs-non-reflection comparison is a fair contrast."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No statistical significance testing or error bars. Length differences (e.g., Llow vs Lhigh in Table 1, or 355.5 → 454.9 in Table 3) are reported as single numbers without confidence intervals, per-seed variance, or tests, so it is impossible to know whether the reported R values (21% to 42%) or the injection effect are statistically distinguishable from noise, especially with the small AIME datasets (30 questions).",
+      "suggested_fix": "Report seeds/runs, per-question bootstrapped CIs on the length differentials, and a paired significance test (e.g., paired permutation or Wilcoxon on per-question reasoning length differences between Dbias groups). For AIME the small n is especially concerning — combine 2024+2025 or add MATH-500 to increase power."
+    },
+    {
+      "severity": "major",
+      "issue": "Confounding between 'question complexity' and 'deviation degree'. The paper argues 'first reasoning length is similar across groups' therefore complexity is controlled, but first-reasoning length is a weak proxy: hard problems may still be solvable in short first passes but require more reflection. High-Dbias items may simply be intrinsically harder in ways that also happen to produce misaligned direct answers.",
+      "suggested_fix": "Add an independent difficulty measure (e.g., accuracy of a non-reasoning model, human-annotated difficulty, or problem-length/step-count for math) and either regress reasoning length on both bias deviation and difficulty, or match on difficulty and then compare length by Dbias."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias-injection experiment is a strong idea but under-controlled. Fine-tuning on 50 rephrased declaratives per sample confounds 'injecting a specific bias' with 'increasing memorization/confidence on that item'. The Random2Wrong / Random2Correct baselines control for generic training but not for the interaction between item-specific training and the target item, and the reported Acc drops (89.5→83.4, 67.0→76.6) suggest the fine-tune materially altered behavior beyond bias alone.",
+      "suggested_fix": "Add a control where a bias is injected that is neither the correct nor a specifically wrong answer but a different plausible distractor, and measure whether the direct-answer distribution (abias) actually shifted as intended (report Dbias before/after injection per condition). Ideally also try a non-fine-tuning intervention (e.g., in-context injection) to triangulate."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-based interpretability claim ('excessive attention to question reactivates the bias') is suggestive but not causally established. Higher attention to the question at reflection points could equally reflect verifying the problem statement (a sensible reasoning behavior) rather than reactivating an implicit guess.",
+      "suggested_fix": "Add a causal attention intervention: mask/attenuate attention to question tokens specifically at reflection points and measure whether overthinking decreases without harming accuracy. The Appendix J.1 probing is a start but a direct causal manipulation on attention would sharpen the mechanistic claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "Model diversity is limited. All three models (DeepSeek-R1, QwQ-32B, R1-Distill-Qwen-14B) share R1-style long-CoT RL training lineage, so 'universality' claims are overstated. The abstract and intro imply broad applicability but the evidence is confined to one training paradigm.",
+      "suggested_fix": "Add at least one non-R1-lineage reasoning model (e.g., an o1-style open model, Kimi-1.5, or a base-model + prompting condition) and scope 'universality' language accordingly if results differ."
+    },
+    {
+      "severity": "minor",
+      "issue": "'Reflection' is measured by keyword counting (e.g., 'wait'), which is a coarse proxy that can misfire (mentioning 'wait' rhetorically) or miss reflection expressed differently. This is used in several key claims about reflection intensity.",
+      "suggested_fix": "Validate the keyword proxy against human or LLM-judge annotations on a sample, and report the correlation. If low, add a chunk-based measure of reflection."
+    },
+    {
+      "severity": "minor",
+      "issue": "Scope of tasks is narrow (closed-form numeric / MC). The Limitations section acknowledges this, but the framing ('one important reason for overthinking') generalizes broadly; open-ended reasoning is the more consequential regime.",
+      "suggested_fix": "Add at least a preliminary experiment on a semi-open task (e.g., short-form QA where the direct answer can still be extracted) to show the mechanism is not an artifact of forced-choice tasks."
+    }
+  ],
+  "questions_for_authors": [
+    "For Table 1, what is the per-question variance in reasoning length? Are the Llow vs Lhigh differences significant under a paired test controlling for question identity?",
+    "In the bias injection experiment, how much did the direct-answer distribution abias actually shift for the target items in Low2Wrong / High2Correct conditions? Did injection successfully move the bias, or did it change reasoning behavior through a different pathway (e.g., confidence)?",
+    "Have you tried an in-context bias injection (e.g., prepending a hint like 'The answer is likely X') as a cheaper, cleaner alternative to fine-tuning, and does it reproduce the length effects?",
+    "The question-removal intervention improves accuracy on AIME 2024/2025. Do the newly-correct examples correspond to previous parroting failures, and if so, what fraction? A per-example breakdown would sharpen the causal story.",
+    "How does the mechanism behave on models trained with different reasoning recipes (e.g., process-reward vs outcome-reward RL, or SFT-only long-CoT)?",
+    "For the attention analysis, have you tried directly attenuating attention to question tokens at reflection points (a causal intervention) to test whether overthinking is actually driven by that attention?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped ('one important reason', not 'the reason'), but 'universality' language overstates the model diversity (three R1-lineage models) and the task scope (closed-form outputs only, as acknowledged in Limitations).",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in reasoning models is a hot topic and identifying an internal-bias driver — plus the mechanistic story — is likely to be cited and built on, especially the question-removal intervention as a diagnostic."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The 'direct answer as internal bias' framing and the causal interventions (question removal, sample-wise bias injection) are new; the connection to parroting is a nice novel unifying observation, though bias/unfaithfulness themes are well-explored."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Two counterfactual interventions add real rigor beyond correlation, but the complexity-vs-bias confound rests on a weak proxy (first-reasoning-length equivalence), and the bias-injection controls don't cleanly separate injection from generic fine-tune effects."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No error bars, no significance tests, no seeds reported for reasoning lengths; AIME uses only 30 questions, so single-number reductions (e.g., r=53.5%) lack quantified uncertainty."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are stated (closed-form outputs, no elimination via existing methods, tentative attention-causality wording), though 'universality' across three R1-lineage models is a mild overreach."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Core hypothesis and methodology are clearly stated, but the extraction shows several typographical/spacing artifacts and the ScG formula presentation is muddled; Table 1's inline numbers are hard to parse."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Intro, Related Work, Method/Measurement, Impact, Causal Interventions, Interpretability, Mitigation, Conclusion) within reasonable length; appendices carry supplementary analyses appropriately."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, datasets, prompt templates, keyword lists, and training regimes are described in reasonable detail with appendices, but hyperparameters for fine-tuning and exact injection sample construction remain thin, and no seeds/variance make replication of exact numbers hard."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positions clearly against overthinking-mitigation literature and bias/unfaithfulness literature; the contribution ('what causes overthinking, not how to reduce it') is well delineated, though the anonymized [Author] self-citations suggest heavy reliance on the same lineage."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figures (as captioned) support the claims — Fig 1 for the phenomenon, Fig 2 for the deviation-length correlation with first-reasoning position as a control, Fig 3 for the strawberry attention visualization, Fig 4 for the normalized ScG statistic; captions are informative though Fig 4 layer aggregation choices need justification."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three models all in the R1 lineage, closed-form tasks only; the paper claims universality across families/sizes/tasks/languages, but the family axis is narrow and open-ended tasks are excluded, so breadth undersupports the generality framing."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: an intuitive but under-explored hypothesis backed by counterfactual evidence and a mechanistic story, held back by statistical soundness, limited model diversity, and a confounded difficulty control."
+    }
+  },
+  "publishability_probability": 0.5
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "CDAS proposes a Jensen-Shannon divergence distribution-matching training objective combined with Distributed Interchange Interventions (DII) for bi-directional model steering, motivated by the brittleness of language-modeling and preference-optimization steering objectives. The safety case studies (refusal override and backdoor neutralization) are well-motivated and show competitive results, but the AXBENCH benchmark results are mixed and often below baseline, the unit-factor (tuning-free) mode is largely ineffective, key ablations are absent, and the main result tables lack variance estimates — making the contribution's scope and reliability difficult to calibrate. The paper is honest about its limitations, but the experimental evidence is not yet strong enough to support acceptance.",
+  "strengths": [
+    "The JSD distribution-matching objective is a genuinely novel framing for steering: using the model's own counterfactual output distribution as a teacher signal rather than maximizing likelihood of fixed target tokens is principled and clearly motivated.",
+    "The two safety-critical case studies are well-designed and practically relevant — particularly the CoT backdoor case study, which stress-tests suppression against unseen adversarial prompts and reports results across multiple layers with three seeds.",
+    "The paper is unusually honest about failure modes: it explicitly acknowledges that CDAS requires factor tuning on general-purpose tasks, underperforms RePS on several AXBENCH settings, and benefits primarily from model scale — preventing overclaiming.",
+    "Faithfulness metrics (KL divergence, benchmark accuracy preservation) are well-chosen and complement the primary steering-effectiveness metrics, providing a more complete picture of intervention behavior.",
+    "Framing intervention-based steering as a mechanistic interpretability problem (causal variable localization) rather than parameter-efficient fine-tuning is a useful conceptual contribution."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Table 2 (refusal case study) appears to have truncated data for Llama-3.1-70B — the suppression scores, harmonic means, and several baseline columns are cut off or missing. This is the largest model tested and a central result; the paper cannot be properly evaluated with incomplete data.",
+      "suggested_fix": "Provide complete rows for all models in Table 2 and verify table formatting in all camera-ready versions. If the 70B suppression results are genuinely missing, they must be added."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No error bars, confidence intervals, or significance tests are reported in Table 1 (AXBENCH) or Table 2 (refusal). AXBENCH 'fair scores' are stated to be averaged over ten random splits but without variance, making it impossible to determine whether CDAS's claimed improvements (e.g., +0.215 at 9B L20 over LoReFT) are statistically real. Only Figure 1 (backdoor, 3 seeds) includes standard errors.",
+      "suggested_fix": "Report standard deviations or 95% CIs across random splits for all AXBENCH results. For the refusal case study, report variance across at least 3 random seeds. Formally test whether CDAS improvements over RePS/Lang. are significant."
+    },
+    {
+      "severity": "major",
+      "issue": "The unit-factor (tuning-free) mode of CDAS is ineffective on AXBENCH (e.g., 0.121 vs 0.631 tuned on 2B-L10), yet inference-time factor tuning is presented as a disadvantage of competing methods. The practical 'CDAS' that achieves competitive numbers requires grid-searched β, which is the same tuning burden as RePS. The tuning-free advantage claimed for the case studies is then obtained by switching to a different strategy (unit factor on a different task), making the comparison inconsistent.",
+      "suggested_fix": "Either (a) clearly separate the 'tuning-free CDAS' and 'tuned CDAS' as distinct configurations and compare each consistently against tuning-matched baselines, or (b) propose and evaluate an automatic factor selection procedure that genuinely eliminates tuning."
+    },
+    {
+      "severity": "major",
+      "issue": "Critical ablations are absent: (1) JSD vs. KL divergence in the training objective — since JSD is the core novelty, this ablation is mandatory; (2) the 'one-to-many' DII protocol vs. standard DII or other intervention protocols; (3) the token position selection within <model> for the source representation; (4) training data size sensitivity (n=100 or n=128 seems very small — is this sufficient?).",
+      "suggested_fix": "Add at minimum a JSD vs. KL vs. forward-KL ablation and an intervention protocol ablation (one-to-many vs. standard), ideally on both a benchmark task and one case study."
+    },
+    {
+      "severity": "major",
+      "issue": "BiPO is excluded from all case studies with only a weak justification ('consistent suboptimal performance on AXBENCH'). Given that BiPO is a primary PO competitor and the refusal case study is exactly the setting BiPO targets, excluding it makes the comparison incomplete. Similarly, SAE-based steering approaches are discussed in related work but never compared experimentally despite being closely related to the 'identify and manipulate concept-specific features' framing.",
+      "suggested_fix": "Include BiPO in at least Case Study 1 (refusal). If SAE-based steering is computationally prohibitive, discuss explicitly why it is excluded as a baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "The KL divergence metric is used to demonstrate CDAS 'faithfulness,' but the CDAS training objective directly minimizes JSD (which bounds KL), making low KL an expected outcome of optimization rather than independent evidence of faithfulness. The metric is partially self-referential.",
+      "suggested_fix": "Supplement KL with an independent faithfulness measure — e.g., generation diversity, perplexity on a held-out corpus, or a human evaluation of output naturalness — to provide evidence not entangled with the training objective."
+    },
+    {
+      "severity": "minor",
+      "issue": "The evaluation on AXBENCH uses gpt-4o-mini-augmented training data (generating neutral responses and concept-eliciting instructions), but the quality and potential biases of this augmentation are not evaluated. If gpt-4o-mini generates poor neutral responses for some concept types, CDAS performance could be systematically affected.",
+      "suggested_fix": "Report an analysis of augmentation quality (e.g., human spot-check or automated quality filter pass-rate) and evaluate sensitivity to augmentation quality via a small ablation."
+    }
+  ],
+  "questions_for_authors": [
+    "In Table 1, the unit-factor CDAS scores are substantially below tuned-factor CDAS across all settings. Is there a principled criterion for selecting β that avoids grid search, or is full grid search always required in practice? How does the tuning cost compare to RePS's factor tuning?",
+    "Table 2 appears to have incomplete data for Llama-3.1-70B (suppression scores and harmonic means are missing or cut off). Can you confirm the full results and clarify whether 70B suppression results exist?",
+    "Why does DAS (Lang. objective + DII) completely fail on the true backdoor trigger (100% ASR) while CDAS (JSD + DII) succeeds? This is a striking result — can you provide analysis of what the two methods learn differently (e.g., via probing the learned steering vectors)?",
+    "The 'one-to-many' DII protocol intervenes all positions of (x_b, y_b) with a single source token. How sensitive is performance to the choice of source token within <model>? The paper mentions empirical grid search — can you report the variance across token positions?",
+    "For the backdoor case study, red-teaming instructions are curated by augmenting 7 hand-crafted prompts with gpt-4.1-mini. How representative is this distribution of real-world adversarial prompts? Have you tested on independently sourced jailbreak datasets?",
+    "The JSD objective is described as 'weaker' supervision than Lang./PO because it matches distributions rather than specifying ground-truth tokens. Is there theoretical grounding for why weaker supervision produces more faithful steering, or is this purely empirical?"
+  ],
+  "calibration_check": "The paper is well-calibrated overall — it explicitly scopes CDAS as complementary rather than uniformly superior, acknowledges that factor tuning is needed for general-purpose tasks, and restricts generality claims to settings where evidence supports them; however, the faithfulness claim (supported partly by a self-referential KL metric) and the consistency-across-layers claim (based on only two data points per model) are slightly overstated relative to the evidence provided.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a genuine and practically relevant problem (brittle, overfitting-prone steering vectors) with safety applications demonstrated at 70B scale, but the impact is limited by mixed benchmark results and the need for factor tuning in the general-purpose setting."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Applying JSD distribution matching — with the model's own counterfactual distribution as teacher — to steering vector training is a creative and clearly differentiated contribution from prior Lang. and PO objectives; the combination with DII for bi-directional steering is also new."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Claims are partially supported but critical ablations (JSD vs. KL, one-to-many DII vs. alternatives) are absent, the unit-factor mode is ineffective yet presented as an advantage, and the incomplete Table 2 (70B) prevents full evaluation of a key result."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No variance estimates on AXBENCH or refusal tables (only 3 seeds for backdoor Figure 1); training sets of n=100–128 are very small for claims about systematic behavior; fair scores are averages without CIs; no significance tests are applied to any result."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper is notably transparent — it reports settings where CDAS underperforms, acknowledges the factor-tuning dependency as a limitation, and qualifies generality claims appropriately; the self-referential KL metric is the main calibration concern."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method is described with reasonable precision and the JSD objective is clearly formulated; the 'one-to-many' DII protocol is underspecified, the relationship between CDAS and DAS requires careful rereading to parse, and the inconsistent factor-tuning strategy across sections is confusing."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure (Introduction, Related Work, Method, Experiments, Conclusion) at appropriate length; the split of experiments into §4 and §5 is logical, though the motivation for case study ordering could be clearer."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core hyperparameters, model choices, and training data sizes are specified; the gpt-4o-mini augmentation procedure is described (with reference to appendix details); but the grid-search procedures for β and layer selection lack sufficient specificity, and the backdoor model training details are partial in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers steering vectors, DAS/causal abstraction, distribution matching, and safety representations adequately; however, SAE-based steering (a closely related and actively developed approach to identifying and manipulating concept features) receives only passing mention and no experimental comparison."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Figure 1 (ASR across layers with standard errors) is informative and supports the key backdoor findings; Table 1 and 2 are reasonably structured but Table 2 has apparent missing data for the 70B model, which is a significant presentation problem."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH covers only Gemma-2-2B and 9B across two layers each with mixed results; case studies use Phi-3.5-mini and Llama-3.1 (8B, 70B) but only rank-1 interventions; no ablations isolate the contribution of JSD vs. the DII protocol; BiPO and SAE-based methods are excluded from key experiments."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The distribution-matching framing is a genuine conceptual contribution and the safety case studies are promising, but incomplete statistical reporting, absent key ablations, and mixed or inconclusive benchmark results place this squarely at the borderline-reject threshold pending substantial revision."
+    }
+  },
+  "publishability_probability": 0.18
+}

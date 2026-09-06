@@ -1,0 +1,110 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-based unified framework for positional encoding (PE) mechanisms in Transformers, categorizing them into additive (Absolute, T5, ALiBi) and multiplicative (RoPE) modes, and empirically identifies a 'single-head deposit pattern' in RoPE under position-sensitive synthetic tasks. The theoretical framework is elegant and the deposit pattern observation is genuinely novel. However, the entire empirical contribution rests exclusively on two narrow synthetic tasks with a small 6-layer decoder, and the claimed connection to RoPE's real-world practical performance gaps is not empirically validated. The theoretical analysis is interesting but relies on idealized assumptions whose empirical validity is not established. These gaps substantially limit the paper's impact and the strength of its central narrative.",
+  "strengths": [
+    "The Toeplitz-matrix decomposition that unifies additive and multiplicative PE mechanisms into a common analytical lens is clean, formally grounded, and provides genuine expository clarity over the fragmented prior literature.",
+    "The 'single-head deposit pattern' is a novel and striking empirical finding; the four targeted ablations (hybrid APE injection, head-count reduction, MLA substitution, activation-level positional direction ablation) are well-designed and mutually corroborating within the synthetic setting.",
+    "The gradient amplification theorem (Theorem 6.1) with Propositions 6.1–6.2 offers a principled, not merely post-hoc, mechanistic explanation for why one head accrues disproportionate positional gradient signal under RoPE.",
+    "The paper is well-structured and clearly written; the two-task experimental design is thoughtfully motivated by the theoretical predictions, and the MLA analysis as a corrective architecture is a satisfying empirical payoff.",
+    "Comparing six PE configurations (Absolute, T5, ALiBi, RoPE, NoPE, Random) rather than just RoPE versus one baseline is commendable and covers the design space reasonably."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All experimental evidence is confined to two narrow synthetic tasks on a 6-layer Transformer decoder. The abstract and introduction frame the deposit pattern as explaining RoPE's 'practical performance paradox' in real models, but no experiment is run on any natural-language task, any realistic dataset, or any model at scale. The gap between controlled synthetic behaviour and large-scale LLM behaviour (e.g., LLaMA, Mistral, which deploy RoPE across many layers and heads) is never bridged.",
+      "suggested_fix": "Add at least one probing experiment on a real pre-trained RoPE LLM (e.g., run the same head-wise causal ablation on a publicly available 7B model on a position-sensitive task) or on a realistic language-modeling setup, even if small-scale. Without this, the core narrative that the deposit pattern explains practical RoPE trade-offs remains speculation."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Theorem 6.1 (Exponential Amplification) rests on three sub-assumptions in Assumption 6.1, of which (A1) Jacobian Stability and (A2) Monotone Anchor Path are nontrivial. The paper describes them as 'empirically plausible in early training' but provides no empirical check (e.g., singular-value tracking of inter-layer Jacobians or gradient correlation measurements) that they actually hold in the trained models. The gain condition γk > 1 for all k is asserted but not verified.",
+      "suggested_fix": "Either provide empirical validation of the key assumptions on the trained models (e.g., plot singular-value spectra of inter-layer Jacobians, measure η(h)_s), or explicitly scope Theorem 6.1 as a sufficient-condition sketch rather than a complete characterization, and discuss which assumption failures would alter the conclusion."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is insufficient throughout. The main text states only 'variance is less than 5%' without specifying whether this is relative variance, standard deviation, or coefficient of variation, and figures (based on captions) show no error bars or confidence intervals. With only five seeds and no significance tests, it is not possible to assess whether differences between PE methods are statistically reliable, especially for the smaller accuracy gaps in Task 2.",
+      "suggested_fix": "Report mean ± standard deviation (or 95% CI) explicitly on all accuracy figures and in Table 1. For the key claim (the ≈60% accuracy drop from ablating the deposit head in RoPE), provide a per-seed breakdown or a paired test to confirm it is not driven by a single outlier seed."
+    },
+    {
+      "severity": "major",
+      "issue": "Equation (4), the MLA logit matrix LMLA_complex, is presented without derivation. The formula (Gq,k + Gq,p + Gp,k + Gp)(αGe + I) does not transparently follow from Equation (3), and the subscript conventions (Gp,k vs Gqp,kp earlier) are inconsistent with the rest of the notation. This makes the theoretical treatment of MLA hard to verify.",
+      "suggested_fix": "Provide a complete derivation of Equation (4) (either in main text or appendix) that parallels the derivation of Equations (1)–(2), and unify notation across the paper."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper's scope on breadth is narrow: one model size (6-layer decoder), two tasks, sequences presumably of fixed or narrow length range. Whether the deposit pattern is a consistent phenomenon across layer depths, head counts, or model widths is unknown. Results with, e.g., a 2-layer and 12-layer model would substantially strengthen generalizability claims.",
+      "suggested_fix": "Run at minimum a layer-count ablation (e.g., 2, 6, 12 layers) and a head-count ablation to show the deposit pattern is robust to architecture hyperparameters, not a 6-layer-specific artifact."
+    },
+    {
+      "severity": "minor",
+      "issue": "Two references appear as '[Author] et al., 2024a;b' in the Related Work, which are evidently anonymization artifacts. While this is an expected blind-review artifact, these citations are cited without description, making the related work positioning incomplete for a reviewer.",
+      "suggested_fix": "Where anonymized self-citations are used, include enough description in the prose to convey what those works contribute so the context is evaluable."
+    },
+    {
+      "severity": "minor",
+      "issue": "The connection to Zuo et al. (2025), which also analyzes latent positional representations in Transformers, is mentioned briefly but not substantively compared. The claim in the introduction that RoPE 'tends not to form the latent positional representations observed in models with additive or no PE (Zuo et al., 2025)' is presented as established fact but is the paper's own novel finding here.",
+      "suggested_fix": "Clarify in the related-work section whether Zuo et al. directly observe the deposit pattern or not, and precisely delineate what is new in this paper relative to that work."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide any evidence (even qualitative) that a deposit-like head specialization occurs in a large pre-trained RoPE model? For instance, have you run the head-wise causal ablation on a publicly available model on a position-sensitive probing task?",
+    "Theorem 6.1 requires γk > 1 for all k to give exponential amplification. What happens when γk ≤ 1 for some layers (e.g., due to residual connections or layer normalization)? Does the theorem still qualitatively hold, or does it reduce to a weaker statement?",
+    "The deposit pattern is discovered on a 6-layer model. Does it appear at the same relative depth (shallow layers) in deeper models (e.g., 12 or 24 layers)? Does the number of deposit heads scale with total head count?",
+    "Task 1 uses binned distance classification over what range of distances? And are the sequence lengths varied, or is there a fixed length? This matters for whether the Toeplitz structure is meaningfully exercised.",
+    "In Ablation 4 (Figure 8), what is the norm of the ablated pi vectors relative to typical activation norms? The 'norm-matched random' control is sensible, but the absolute scale matters for interpreting whether the accuracy drop is large or small in absolute terms.",
+    "MLA in DeepSeek-V3 uses a specific architectural compression (latent KV cache) that the paper abstracts away. Does the mitigation of the deposit pattern survive when the full MLA implementation (including the low-rank compression) is used, or only in the simplified version of Equation (3)?",
+    "Assumption 3.2 states that the Gram matrix of position components naturally takes Toeplitz form. For learned absolute PE or NoPE (where pi emerge from training rather than being explicitly defined), what is the empirical evidence that this assumption holds?"
+  ],
+  "calibration_check": "The paper's claims are appropriately scoped within the synthetic-task regime, and the conclusion correctly flags the lack of length-extrapolation validation as a limitation; however, the introduction and abstract repeatedly invoke 'practical performance paradox' and 'real-world trade-offs' in language that overstates what synthetic experiments can establish, creating a recurrent mismatch between framing and evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The Toeplitz unification and deposit pattern are useful mechanistic findings that could inform future PE design, but the restriction to synthetic tasks limits immediate practical impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Toeplitz decomposition is a clean new lens and the deposit pattern is a genuinely new empirical observation, but the underlying conceptual moves (content/position decomposition, spectral theory of attention) build straightforwardly on established results."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theoretical framework is formally stated but rests on Assumptions 3.1–3.2 whose empirical validity for trained models is not verified, and the proof of Theorem 6.1 depends on unverified gain conditions (γk > 1)."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Five seeds are used but reporting is limited to 'variance < 5%' without error bars in figures or significance tests; for the paper's central quantitative claim (≈60% accuracy drop from ablating one head), per-seed evidence is absent."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The conclusion honestly acknowledges the missing length-extrapolation validation, but the abstract and introduction repeatedly over-invoke 'practical performance paradox' language that the synthetic evidence alone cannot support."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Writing is clear and the two-task experimental design is well-motivated; minor issues include inconsistent notation between Equations (1)–(2) and (4), and the RoPE Toeplitz conversion (Appendix B) is not summarized in the main text."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed and the paper fits within conference length norms; the Ablation Studies section reads somewhat disconnected from the main Experiments section but this is a minor organizational issue."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Dataset sizes, number of seeds, and task design are specified; key hyperparameters and architecture details are deferred to Appendix D (not evaluated here), and the synthetic task vocabulary and sequence-length distribution are underspecified in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of PE literature is broad and reasonably current, but two references are anonymized without description, and the differentiation from Zuo et al. (2025) on latent positional representations is insufficiently precise."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Violin-plot head ablations (Figure 4) are an informative visualization choice, and the schematic (Figure 1) cleanly conveys the two-mode taxonomy; the absence of error bars on training curves (Figures 2–3) is a presentation gap."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "A single 6-layer model on two synthetic tasks with no real-language or multi-scale validation severely limits the generalizability of the deposit pattern claim; the ablations are thorough within the synthetic regime but do not compensate for the absence of broader evaluation."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The Toeplitz framework and deposit pattern are interesting contributions that warrant publication after substantial strengthening of empirical scope and statistical rigor, but the paper as submitted lacks the experimental breadth to support its central narrative at current ICLR standards."
+    }
+  },
+  "publishability_probability": 0.22
+}

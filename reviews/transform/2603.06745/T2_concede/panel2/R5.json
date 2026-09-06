@@ -1,0 +1,105 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER proposes a plausibility-guided decoding loop that dynamically modulates KV-cache steering strength layer-by-layer to mitigate oversteering in instruction-following LLMs. The core idea is technically sound and well-motivated, and the paper provides a reasonable set of ablations, robustness analyses, and multi-scale experiments. The primary concerns are the absence of error bars or statistical significance tests on the main Table 1 results (a non-trivial gap given the narrow margin over tuned baselines), a somewhat narrow evaluation scope limited to instruction-following benchmarks, and modest novelty given that both plausibility-guided decoding and KV-cache scaling are established tools. Addressing statistical rigor and adding at least one general-capability holdout would substantially strengthen the submission.",
+  "strengths": [
+    "Clear and well-motivated problem framing: oversteering is a real failure mode of activation steering, and dynamically adapting per decoding step is the right level of granularity.",
+    "Multi-scale generalization study (1B–14B, two model families) goes beyond the typical single-model evaluation seen in competing steering papers.",
+    "Plausibility filter shown to be modular and beneficial when dropped into PASTA and SpotLight, supporting the 'general mechanism' claim in Figure 2b.",
+    "Thorough hyperparameter robustness analysis (β across full [0,1], α across four orders of magnitude) gives practical reassurance that the method is not tightly tuned.",
+    "Efficiency characterization (throughput, per-token latency, memory) is concrete and honest about the gating mechanism's worst-case overhead.",
+    "Both LLM-judged and human evaluation of text quality and task fidelity are reported, and DIRECTER matches or exceeds non-intervention quality—a meaningful result given the common quality-adherence trade-off.",
+    "Algorithm 1 and the attention-sensitivity formulation (Eq. 2–3) are presented clearly enough to reimplement the method."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No error bars, confidence intervals, or significance tests on the main Table 1 results. For the headline 6.5% absolute gain over zero-shot and ~4–5 pp gain over tuned baselines, statistical significance is not established. IFEval has ~540 prompts; at 76.5% accuracy the 95% CI is roughly ±3.6 pp, meaning some pairwise comparisons (e.g., DIRECTER 76.5 vs SpotLight* 72.1) are significant while others may not be.",
+      "suggested_fix": "Report 95% confidence intervals (bootstrap or Wilson) for all accuracy figures in Tables 1–3 and Table 4. Flag which pairwise improvements are statistically significant."
+    },
+    {
+      "severity": "major",
+      "issue": "Evaluation is limited entirely to instruction-following benchmarks. There is no measurement of whether DIRECTER degrades general capabilities (e.g., MMLU, TruthfulQA, or standard NLG benchmarks). Steering methods that exclusively improve instruction adherence while silently harming factuality or general knowledge are not net-positive.",
+      "suggested_fix": "Add at least one general-capability holdout (e.g., MMLU zero-shot on Llama-3.1-8B) to establish that DIRECTER does not regress standard performance. This does not need to be the focus but should be reported."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is an author-constructed benchmark, not a community standard. Its construction procedure (rewriting prompts with gpt-4o-mini) and evaluation (formatting accuracy) are described only briefly, with details deferred to the appendix. This introduces a potential design-to-paper alignment concern: the benchmark's formatting constraints may be especially amenable to KV-cache steering.",
+      "suggested_fix": "Release the benchmark with the paper (even anonymized). Report inter-annotator agreement or automated rubric reliability, and consider substituting or supplementing with an established formatting-constraint benchmark if one exists."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-sensitivity metric (Eq. 2–3) is presented as empirically justified but is explicitly acknowledged to lack theoretical grounding. The ablation gain over random layer ordering is only ~1.6 pp (80.2 → 81.8 on IFEval), which is marginal given the absent error bars.",
+      "suggested_fix": "Either (a) provide theoretical motivation for why cosine-distance deviation is the right proxy for instruction-steering impact, or (b) include error bars on the Table 3 ablation rows so readers can judge whether the ranking advantage is reliably non-zero."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 2 (multi-scale generalization) evaluates only on IFEval, whereas Table 1 covers three benchmark families. It is unclear whether DIRECTER's cross-model robustness holds on LIFBench (long-context) and GSM8K-Format (reasoning), or only on strict-constraint IFEval.",
+      "suggested_fix": "Report at least LIFBench scores alongside IFEval in Table 2, or clarify in the text why the single-benchmark generalization study is sufficient."
+    },
+    {
+      "severity": "minor",
+      "issue": "The duplicate 'LIMITATIONS' section appended after the Conclusion is boilerplate-generic and mostly restates concerns already in the Conclusion paragraph; it adds no new information and slightly dilutes presentation quality.",
+      "suggested_fix": "Merge into the Conclusion limitations paragraph or remove; redirect the word budget to the statistical-significance discussion."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 1 compares DIRECTER at a fixed β=0.5, α=100 with PASTA*/SpotLight* tuned on IFEval. Were PASTA and SpotLight hyperparameters also fixed to their IFEval-tuned values when reporting LIFBench and GSM8K-Format, or re-tuned per benchmark? This distinction matters for interpreting the 'no task-specific tuning' advantage claimed for DIRECTER.",
+    "The plausibility condition in Eq. 1 compares the probability of the steered top-1 token to the raw top-1 token, not to a threshold on the raw distribution. Why was this ratio formulation preferred over, e.g., a KL-divergence or total-variation threshold, and how sensitive is performance to this design choice?",
+    "For the efficiency analysis (Figure 4), what is the distribution of 'accepted' vs 'rejected' steering attempts across benchmarks? Specifically, what fraction of tokens trigger the progressive halving loop, and what is the average final |Lcand| when the loop terminates?",
+    "Does the method degrade gracefully when the instruction span boundary is ambiguous or automatically detected (Appendix D.2)? A brief quantitative comparison in the main paper would strengthen the 'general-purpose enhancement module' claim.",
+    "Human evaluation results are relegated to Appendix E.3. How many annotators were used, what was the annotation protocol, and what was inter-annotator agreement? These details are important for assessing whether the quality-parity claim holds beyond LLM-judged evaluation."
+  ],
+  "calibration_check": "The headline claims ('6.5% improvement,' 'no trade-offs in quality') are mostly consistent with Table 1 and Table 4, but the absence of significance tests leaves the precise magnitude of the advantage over tuned baselines unverified; the 'extensive evaluations' framing is slightly overstated for what is a three-benchmark, one-primary-model study.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Instruction following is an active and practically important problem; adaptive steering is a useful addition to the toolkit, but the gains are incremental (4–6 pp over tuned baselines) and limited to a single inference-time mechanism without broader downstream impact demonstrated."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Plausibility-guided decoding and KV-cache scaling are each established in prior work; DIRECTER's contribution is their principled combination with a layer-ranking gating mechanism, which is useful but combinatorial rather than conceptually new."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is internally consistent and the ablations isolate the main design choices, but the attention-sensitivity metric lacks theoretical grounding, the GSM8K-Format benchmark is self-constructed, and no general-capability regression test is provided."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main Table 1 results have no error bars or significance tests; only some ablation rows in Table 3 include variance estimates (±0.7, ±1.1), making it impossible to assess whether the ~4 pp advantage over tuned baselines is reliably non-zero."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are explicitly named in the Conclusion and a separate section; the 'general mechanism' claim is qualified by Figure 2b evidence; minor overclaiming in 'extensive evaluations' given the relatively narrow benchmark scope."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and the method is described precisely enough to re-implement; notation is occasionally dense (overloaded subscripts in Eq. 2) but Algorithm 1 compensates effectively."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure correctly; the appended boilerplate Limitations section after the Conclusion is redundant but not disqualifying; overall length appears appropriate for ICLR."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Hyperparameters (α=100, β=0.5) are stated and fixed across all tasks; model names and decoding strategy (greedy) are specified; the GSM8K-Format construction protocol and some analysis details are in the appendix, which is acceptable for a conference submission."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Direct predecessors PASTA and SpotLight are covered accurately and compared with both default and tuned settings; the connection to speculative decoding and rejection-sampling literature is noted but not formally developed; broader activation steering surveys are adequate."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, the figures are purposeful: Figure 1 illustrates the decoding loop, Figure 2 covers the ablation and compatibility experiments, Figure 3 provides robustness sweeps, and Figure 4 characterizes efficiency—each directly supports a specific research question without decoration."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Multi-scale (1B–14B) and multi-family (Llama, Qwen) testing is a genuine strength, but evaluation is confined to instruction-following benchmarks; no general-capability holdout is provided, and the cross-model Table 2 covers only one benchmark family."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A technically solid and practically motivated contribution that sits at the ICLR borderline; addressing the missing statistical significance analysis and adding a general-capability check would make this a clear accept, but as submitted the evidentiary gaps keep it at weak accept."
+    }
+  },
+  "publishability_probability": 0.38
+}

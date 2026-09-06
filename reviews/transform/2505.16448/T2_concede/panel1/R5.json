@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper introduces 'internal bias' — a model's preliminary answer formed before deliberate reasoning — as a causal driver of overthinking in chain-of-thought reasoning models. The central hypothesis is well-motivated and the research question is timely. The authors support it with correlation statistics, two counterfactual interventions (question removal and bias injection), and attention analysis. However, the work suffers from a pervasive absence of variance estimates and significance tests, reliance on very small benchmark samples for some key claims, and an operationalization of internal bias that conflates implicit prior with the direct answer elicited via a prompt trick. These gaps leave the quantitative claims weaker than the qualitative narrative suggests.",
+  "strengths": [
+    "The 'internal bias' framing is a genuinely novel lens on overthinking; distinguishing a pre-reasoning prior from the reasoning output is conceptually crisp and fills a real gap relative to prior work that treats overthinking as a purely behavioral phenomenon.",
+    "The question-removal counterfactual is methodologically sound and practically elegant: it achieves a 31–53% reduction in post-first-answer reasoning length with near-neutral or positive accuracy effects, providing the strongest causal evidence in the paper.",
+    "The bias injection experiment (Low2Wrong / High2Correct vs. matched Random baselines) correctly controls for the training effect itself and produces direction-consistent results that bolster the causal story.",
+    "Multi-model coverage (DeepSeek-R1 671B, QwQ-32B, R1-Distill-Qwen-14B) and multi-lingual task variants (CharCount en/zh) lend breadth to the correlation analysis.",
+    "The attention analysis in §6 directly links the proposed mechanism (bias reactivation via question attention) to measurable model internals, providing a mechanistic handle beyond behavioral statistics.",
+    "The paper honestly acknowledges that existing mitigation methods (FCS, SEAL, PROBE) do not eliminate the internal bias effect, resisting the temptation to overstate their proposed intervention as a solution."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No variance estimates, confidence intervals, or significance tests are reported anywhere. The primary quantitative claim — that high-deviation cases produce 21–42% more tokens — is presented as a single point estimate across all models and datasets. AIME 2024/2025 results rest on N=30 problems (e.g., 63.3% accuracy = 19/30), making the reported accuracy differences meaningless without uncertainty quantification. The bias injection table (Table 3) reports single numbers with no indication of variance across the 500 samples.",
+      "suggested_fix": "Report bootstrapped 95% CIs or standard errors for all aggregate statistics. For the AIME benchmarks, report pass@k or aggregate over multiple runs, or explicitly caveat the low-N regime. A simple permutation test or t-test on the length difference distributions would substantially strengthen the causal claims."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The operationalization of 'internal bias' as the output from a forced </think> prompt conflates two distinct things: the model's implicit prior and the artifact of a specific elicitation template. The template ('Let me answer him without thinking more') may itself bias the elicited answer through instruction following, not genuine prior exposure. The sensitivity to template wording is reportedly handled in Appendix B, but the main text does not show that the resulting direct-answer distribution is stable across semantically distinct templates or that it aligns with what is happening internally during normal reasoning.",
+      "suggested_fix": "Provide a systematic ablation in the main text comparing at least 3–4 qualitatively different no-think prompt templates, and show that the resulting internal bias distribution is stable (e.g., via Spearman rank correlation of deviation degrees). If possible, connect the elicited distribution to hidden-state probing (already done in Appendix J.1) to validate convergence."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (§5.2) fine-tunes on 50 rephrased declarative statements per sample, drawn from a 500-sample subset of CharCount (zh), and then tests on the same sample. This risks severe overfitting and cannot easily generalize: the model may have memorized surface patterns rather than genuinely internalizing a different prior. The Random2Wrong/Random2Correct controls mitigate part of this concern but do not rule out within-distribution leakage.",
+      "suggested_fix": "Evaluate the injected models on held-out CharCount samples and, ideally, on a different task (e.g., KnowLogic) to test whether the effect is localized to the injected facts or generalizes. Report per-sample variance in the length change."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention analysis uses layers 21–30 on a specific model but the selection rationale is not justified in the main text. The formula in §6.2 contains apparent typesetting errors (e.g., 'aip1/p', the double-line 'scp = 1 X ...') that make the normalization procedure hard to follow. The exclusion of the first three tokens to avoid attention sinks is ad hoc and not ablated.",
+      "suggested_fix": "Provide the attention formula cleanly and report sensitivity to layer range selection. Show that the Reflection vs. Other group difference in question attention holds when the three-token exclusion threshold is varied (e.g., 0, 5, 10 tokens)."
+    },
+    {
+      "severity": "major",
+      "issue": "Generalizability of the question-removal intervention is understated as a limitation but overused as evidence. The intervention requires knowing when the 'first answer' is produced, which in practice requires either parsing the output or training a detector — neither of which is trivially reliable. Appendix E describes this detection, but the main text implies the result is a clean causal demonstration without acknowledging that the detection method could introduce selection bias (e.g., only firing on confident first answers).",
+      "suggested_fix": "Provide a false-positive/false-negative analysis of the first-answer detection in the main text, and report how robust the length reduction result is to detection errors (e.g., if the trigger fires one or two sentences early/late)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'parroting' analysis in §4.3 rests on very small numerics (4.4% vs. 17.3% direct accuracy among parroting cases) without stating the absolute count of parroting instances, making it impossible to assess reliability.",
+      "suggested_fix": "Report absolute counts and a chi-square test or Fisher's exact test for the parroting rate comparison."
+    },
+    {
+      "severity": "minor",
+      "issue": "The mitigation trial in Table 4 compares methods using training data drawn from CharCount itself, as the authors acknowledge. This asymmetry means the observed accuracy gains for FCS methods partly reflect in-distribution training rather than a general improvement, weakening the comparison.",
+      "suggested_fix": "Either use a held-out CharCount split or explicitly add a fine-tuning-only SFT baseline (trained on the same data without the bias-reduction objective) as a ceiling control."
+    }
+  ],
+  "questions_for_authors": [
+    "The direct answer is elicited by appending a no-reasoning template. Did you verify, via hidden-state probing or logit lens, that this elicited distribution aligns with what the model 'knows' during the internal processing of the question before generating <think> tokens? If the elicitation template changes the answer distribution significantly across templates, what does that imply for the bias operationalization?",
+    "In the question-removal experiment, accuracy on AIME 2025 improves from 36.7% to 46.7% — a 10-point jump on 30 examples (~3 problems). What is the confidence interval on this improvement, and is the same trend consistent across multiple decoding runs?",
+    "The bias injection fine-tuning uses 50 rephrased declarative statements per sample. How do results change if you use only 5 or 10 statements? This would help disentangle prior-injection from mere in-context priming through fine-tuning volume.",
+    "Layers 21–30 are selected for the attention analysis. Do the Reflection vs. Other question-attention differences hold uniformly across all layers, or is the effect concentrated in a specific band? What happens if you use layers 10–20 instead?",
+    "The paper is currently restricted to tasks with discrete (numerical or categorical) outputs because bias deviation requires a well-defined distance. Have you explored any proxy for internal bias in open-ended generation (e.g., measuring attention to the question at the first reflection token regardless of answer type)? This would substantially broaden the scope of the findings."
+  ],
+  "calibration_check": "The causal language ('causal relationship', 'causally confirming') is somewhat overreached: the counterfactuals establish that question access is necessary for the full extent of overthinking, but they do not isolate internal bias per se from other question-dependent effects (e.g., re-reading for disambiguation); the authors should hedge to 'consistent with a causal role of internal bias' rather than claiming direct causal proof.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in o1/R1-style models is an active, high-impact problem; identifying an internal-bias mechanism and demonstrating a simple question-removal trick that recovers 31–53% of post-answer tokens with neutral accuracy is practically valuable and would be cited by researchers working on efficient reasoning."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Framing overthinking as a consequence of a pre-reasoning prior that conflicts with deliberate reasoning is genuinely new; while bias in LLMs is well-studied, connecting it mechanistically to reflection behavior via attention and counterfactual interventions has not been done before in this form."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The counterfactual design is conceptually sound, but the question-removal intervention requires a non-trivial first-answer detector whose reliability is not characterized, the bias injection risks within-distribution memorization, and the attention analysis relies on a formula with typesetting errors that makes the normalization procedure ambiguous."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No confidence intervals, standard errors, or significance tests appear anywhere in the paper; AIME results rest on N=30 problems; the bias injection table reports single-point estimates; the relative-length comparisons (R) are not accompanied by any variance, making it impossible to assess whether the 21–42% differences are statistically reliable."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper honestly discloses that existing mitigation methods fail to eliminate internal bias and that the scope is limited to tasks with discrete answers; however, using terms like 'causally confirming' for what are essentially correlational interventions (that do not fully isolate the proposed mechanism) is slightly overclaiming."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally well-written and the motivation is clear, but the attention normalization formula in §6.2 contains apparent typesetting errors that make it unreadable, and several key methodological details (first-answer detection, template list, training procedure) are deferred entirely to appendices without sufficient inline summary."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows the standard Abstract/Introduction/Related Work/Method/Experiments/Conclusion structure and appears within ICLR page limits; the 'Limitations' section appears twice (within Conclusion and as a standalone section), which is a minor structural redundancy."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core methodological choices (64 direct-answer samples, specific templates, reflection keyword lists, GPU setup) are noted, but the first-answer detection algorithm (Appendix E), the full template set (Appendic B), and the fine-tuning hyperparameters (Appendix H) are all in appendices and the main text provides insufficient standalone specification for reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The related work section covers the main lines (overthinking mitigation, bias in LLMs, unfaithfulness) accurately and fairly, though some anonymized self-citations ([Author] et al.) make it difficult to fully assess whether all highly relevant prior work is properly attributed."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figure 2 (correlation of deviation degree with length and reflection keywords, plus first-reasoning-length control) and Figure 4 (layer-wise attention ratio) appear well-designed to support the main claims; Figure 3 (attention heatmap on the strawberry example) is illustrative but a single qualitative example should not carry causal weight on its own."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "The bias injection experiment is confined to a single synthetic dataset (CharCount zh, 500 samples); the attention analysis is restricted to one model on one dataset; AIME accuracy statistics rest on N=30; the paper is explicitly limited to tasks with discrete outputs; and all tested models share the DeepSeek/Qwen lineage with explicit </think> tokens, leaving the generality to other architectures unestablished."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The core insight is valuable and the counterfactual design is better than most diagnostic papers in this space, but the complete absence of variance estimates across all experiments and the narrow scope of the most controlled analyses (bias injection, attention) make the current submission fall below the evidentiary bar expected at ICLR; a revision addressing statistical rigor and broader evaluation could plausibly reach acceptance."
+    }
+  },
+  "publishability_probability": 0.22
+}

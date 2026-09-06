@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a VQ-VAE-based pipeline that compresses transformer hidden states into discrete codes and computes mutual information between them to characterize LM 'planning' along two axes (forward-looking horizon, branch awareness), plus a layer/block localization diagnostic, across CFG, path-finding, and OpenWebText with NTP vs. MTP training. The core question is interesting and the framing against probing's confounds is well-motivated, but the central methodological claim (a confound-free alternative to probing) is undermined by the VQ-VAE itself being a learned model whose codebook/losses shape the resulting MI, several interpretive claims carry uncontrolled confounds, and the evidence rests on very small models with limited statistical reporting. Promising direction that needs substantial strengthening before it clears the bar.",
+  "strengths": [
+    "Addresses a genuinely interesting and timely question — whether decoder-only LMs plan internally — with a novel information-theoretic angle rather than yet another behavioral benchmark.",
+    "Thoughtful, fairly complete related-work positioning that engages seriously with known probing pathologies (probe capacity, superficial cues, information-theoretic critiques) and motivates the design.",
+    "Multiple complementary task settings (synthetic CFG, path-finding with controlled path lengths, natural text) and an NTP-vs-MTP comparison; the paper is candid that MTP shows no consistent effect.",
+    "Careful scoping of the metric: authors restrict claims to relative/within-setting nMI comparisons and explicitly disclaim absolute-value interpretations, and provide finite-sample error analysis of the count-based MI estimator (App. E) and a validation study (App. A.4)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The headline advantage over probing — a measurement 'free from confounding caused by learned probes' — is not established. The VQ-VAE is itself a learned external model whose encoder capacity, codebook size K, and added cosine/entropy regularizers determine the codes, and the paper concedes that estimated MI 'depends not only on the underlying relationship between the hidden states... but also on how they are encoded.' The confound is relocated, not removed, so the central methodological claim is overstated.",
+      "suggested_fix": "Demonstrate robustness of the qualitative conclusions to VQ-VAE design (codebook size, encoder depth, with/without the cosine/entropy terms) and directly compare the resulting MI-vs-τ / heatmap patterns against a matched probing baseline on the same synthetic settings where ground truth is known, showing the VQ-VAE-MI recovers ground truth where probing fails."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'branch awareness' interpretation has an uncontrolled confound. That I(Z_prefix; Z_alt) > I(Z_prefix; Z_decoy) may simply reflect that both correct paths are deterministically derivable from the graph the prefix encodes, whereas the decoy is an invalid path with lower structural predictability. Node disjointness rules out token overlap but not this derivability asymmetry, so the result need not indicate the model 'considering alternatives' during planning.",
+      "suggested_fix": "Add a control where the decoy is itself a valid path in a different graph (or a valid-but-not-solution path of equal structural predictability), so that the comparison isolates 'alternative solution to this query' from 'valid vs. structurally random continuation.'"
+    },
+    {
+      "severity": "major",
+      "issue": "Evidence scale and generality mismatch. Conclusions about 'planning in language models' are drawn from GPT-3-Small-sized models (and one 0.3B run) trained largely on synthetic tasks. The generality claimed in the abstract/title far exceeds what ~125M-parameter models on CFG/PF can support.",
+      "suggested_fix": "Either scope claims explicitly to small models on controlled tasks, or add larger pretrained models and show the horizon/branch/recency findings persist with scale."
+    },
+    {
+      "severity": "major",
+      "issue": "Inconsistent/cherry-picked narrative around MTP and weak statistical reporting. The text claims 'MMTP achieves both higher accuracy and a larger ratio,' but Table 1 shows this holds only for PF-Long (1.82 vs 1.45) and is reversed on PF-Short (MNTP 7.60 vs MMTP 6.29), while the conclusion states no consistent NTP/MTP difference. Seed counts are unstated, figures apparently lack error bars, and no significance tests support the horizon/recency trends.",
+      "suggested_fix": "Report exact seed counts, add error bars/CIs to all figures, run significance tests on the key comparisons, and reconcile the MTP branch-awareness claims with the PF-Short result rather than highlighting only the favorable setting."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several findings (recency effect: last layers and recent tokens most informative; longer attention span in higher layers) are largely expected and already documented in cited work, limiting the incremental significance of §3.3.",
+      "suggested_fix": "Sharpen what the diagnostic reveals beyond prior results (e.g., quantify how much earlier-block information is uniquely non-redundant via the conditional nMI across all blocks, not just the first)."
+    }
+  ],
+  "questions_for_authors": [
+    "How many seeds underlie Figures 3 and 4, and can you add variance/error bars? Are the horizon-decay and recency trends statistically significant?",
+    "How sensitive are the qualitative conclusions to codebook size K and to removing the cosine/entropy regularizers? Do different VQ-VAE capacities change the ordering of nMI across τ?",
+    "For branch awareness, would results survive a control in which the decoy is a valid path of matched structural predictability rather than a disjoint invalid path?",
+    "Is a single VQ-VAE used to encode decision states across all τ, and how do you ensure the code alphabet is comparable across τ so that nMI(τ) comparisons are not confounded by per-τ encoder differences?",
+    "Given the concession that MI depends on the encoding, in what precise sense is the method 'free from confounding' relative to probing? Can you formalize or empirically bound this?"
+  ],
+  "calibration_check": "Claims are partly well-scoped (relative-only nMI, aggregate-not-individual, no consistent MTP effect), but the 'confound-free vs. probing' framing and the MTP branch-awareness narrative overreach the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A general internal-dynamics tool and an interesting planning question, but the concrete findings are modest and partly expected, and small-scale evidence limits likely uptake."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Using VQ-VAE compression plus code-level MI to study planning is a fresh combination for this question, though each component is individually standard."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The central claim of confound-free measurement is not established (the VQ-VAE is a learned model shaping MI), and key interpretations like branch awareness carry uncontrolled structural-derivability confounds."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only Table 1 shows ± std; seed counts are unstated, figures appear to lack error bars, and no significance tests back the horizon/recency trends."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Commendably restricts to relative nMI and reports a null MTP effect, yet overstates the probing advantage and highlights a favorable PF-Long MTP result while a PF-Short reversal is glossed over."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Reasonably organized with a clear method narrative, but notation is dense and some inferential steps (e.g., cross-τ code comparability) are underspecified."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, conclusion) applied well and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Model architecture, losses, datasets, and estimator are described with appendix pointers, but many hyperparameters and seed details are deferred and generality of settings is limited."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Thorough, fair engagement with probing, mechanistic interpretability, and information-theoretic literatures, with a clearly delineated contribution."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative display items (nMI-vs-τ curves, layer/block heatmaps, conditional nMI) that directly support the stated claims, though error bars are not evident."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Generality to 'language models' is claimed but evidence is confined to ~125M-0.3B models on largely synthetic tasks, with few settings per conclusion."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, well-motivated framework whose core methodological claim, key interpretations, and statistical support need substantial strengthening — borderline reject as submitted."
+    }
+  },
+  "publishability_probability": 0.3
+}

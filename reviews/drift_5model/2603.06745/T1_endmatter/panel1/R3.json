@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation-steering method that couples KV-cache (key) scaling with a contrastive-decoding-style plausibility filter and an attention-sensitivity layer ranking to dynamically modulate steering strength and avoid oversteering. The problem is real, the mechanism is sensible, and the empirical coverage (multiple models 1B-14B, three benchmarks, ablations, efficiency, and quality/fidelity judging) is fairly thorough for a steering paper. However, novelty is largely a combination of existing ideas, gains are modest (~6.5% avg over zero-shot, ~4% over prior steering), and the evaluation reports single-run numbers with essentially no confidence intervals or significance testing, leaving it a borderline submission.",
+  "strengths": [
+    "Addresses a well-motivated and recognized failure mode (oversteering) with a dynamic, per-step control loop rather than static hyperparameters, and requires no auxiliary dataset unlike PASTA.",
+    "The efficient gating criterion (skip steering when p_{t,i2} < beta*p_{t,i1}) is mathematically correct and gives a principled way to bound overhead; reported throughput cost (~16%) is modest and the KV-cache approach remains FlashAttention-compatible.",
+    "Reasonable experimental breadth: IFEval/LIFBench/GSM8K-Format, Llama and Qwen at 1B-14B, ablations isolating layer ranking (reversed/random) and token selection (random tokens), plus robustness sweeps over beta and alpha and an LLM-judge + human quality/fidelity evaluation.",
+    "The compatibility experiment (plausibility filter as a safety gate on PASTA/SpotLight) supports the claim that the gating idea generalizes beyond the authors' own method."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is weak: main tables (Tables 1, 2, 4) report single deterministic (greedy) numbers with no confidence intervals, bootstrap estimates, or significance tests. Many head-to-head margins are 1-3 points and could plausibly be within benchmark sampling noise; only the random-layer/random-token ablation shows any variance.",
+      "suggested_fix": "Report bootstrap/binomial confidence intervals over the test sets for all main results and provide significance tests (or at minimum per-benchmark CIs) for the key DIRECTER-vs-best-baseline comparisons; if seeds are inapplicable under greedy decoding, state this and use dataset resampling."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental. The plausibility constraint (Eq. 1) is essentially the contrastive/DoLa plausibility criterion (both cited) transplanted onto KV-cache steering, and the layer ranking inverts KV-quantization sensitivity analysis. The distinct contribution reduces to 'progressively drop least-sensitive steered layers when the steered top token is implausible,' which is a sensible but modest recombination.",
+      "suggested_fix": "Sharpen the delineation from contrastive decoding/DoLa and from prior dynamic-steering works (Lee et al. 2024, Wang et al. 2025) that are cited as motivation but never compared against, and add at least one such dynamic baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "The alpha robustness finding (performance stable and token-change-rate saturated for 10^1-10^5, with the paper using alpha=100) suggests the key-scaling intervention is effectively a saturating 'attend-maximally-to-instruction' operation, so nearly all fine-grained control comes from layer count. This undercuts the framing of alpha as a steering-strength knob and raises the question of whether the layer-count mechanism is doing something coarser than claimed.",
+      "suggested_fix": "Analyze what the attention distribution looks like at alpha=100 (is it collapsing to uniform-over-instruction?), and clarify the mechanistic story for why layer selection, not magnitude, is the operative control."
+    },
+    {
+      "severity": "minor",
+      "issue": "GSM8K-Format is a self-designed benchmark, which risks favorable construction; and the IFEval prompts were rewritten via gpt-4o-mini to separate task/instruction spans, a preprocessing step that could interact with the method's assumptions.",
+      "suggested_fix": "Report results on the original (non-rewritten) IFEval as well, and justify GSM8K-Format design choices / release it so gains are attributable to the method rather than benchmark construction."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some claims are slightly ahead of the evidence (e.g., 'general mechanism', 'model-agnostic', 'establishes DIRECTER as a practical and mechanistic method'), while the mechanistic understanding remains empirical and the sensitivity metric is admittedly non-theoretical.",
+      "suggested_fix": "Scope generality claims to the tested settings and soften 'mechanistic' language absent a formal account."
+    }
+  ],
+  "questions_for_authors": [
+    "Are the main-table margins statistically significant? Please provide CIs and a significance test for DIRECTER vs. the strongest tuned baseline on each benchmark.",
+    "Given alpha performance saturates by ~10^2, is the effective intervention at alpha=100 collapsing attention onto instruction tokens? What does the per-head attention distribution look like, and does layer selection remain the sole effective control?",
+    "How does DIRECTER compare to the dynamic/adaptive steering methods you cite as motivation (Lee et al. 2024; Wang et al. 2025)? Why are they excluded from the baseline table?",
+    "How sensitive are results to the gpt-4o-mini task/instruction separation preprocessing, and how does DIRECTER perform on unmodified IFEval?",
+    "For the LLM-judge quality/fidelity evaluation (Table 4), what is the inter-judge/human agreement, and were positions/order randomized to avoid judge bias?"
+  ],
+  "calibration_check": "Claims are mostly scoped and a limitations section is included, but 'general mechanism', 'model-agnostic', and 'mechanistic' framings modestly exceed what single-run, self-benchmark-inclusive evidence supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Oversteering mitigation in activation steering is a relevant and active niche; the adaptive gating idea could be reused, but the overall impact is moderate given modest gains."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The core mechanism recombines contrastive-decoding-style plausibility filtering, KV-cache key scaling, and inverted quantization-sensitivity ranking rather than introducing a fundamentally new idea."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is sound and the skip-gating guarantee is correct, with ablations isolating layer ranking and token selection, but claim-evidence links (especially around alpha and generality) have gaps."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Main results are single-run numbers with no confidence intervals or significance testing, so several small margins may be within noise."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "A limitations section and honest 'up to 6.5%' phrasing are present, but 'general/model-agnostic/mechanistic' claims are somewhat over-scoped relative to the evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The algorithm, plausibility constraint, and sensitivity metric are explained clearly enough to follow despite extraction noise, though the mechanistic rationale for alpha vs. layer control is underdeveloped."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, analyses, conclusion, limitations) is present and appropriately organized within reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, key hyperparameters (alpha=100, beta=0.5), decoding setup, and algorithm are specified with details deferred to appendices; a self-designed benchmark and rewritten prompts add some reproduction burden."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior steering work (PASTA, SpotLight) and contrastive-decoding lineage are fairly discussed, but cited dynamic-steering methods used as motivation are not empirically compared."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting display items (ablations, robustness sweeps, efficiency, quality/fidelity tables) rather than decoration."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Coverage across two model families, four scales, three benchmarks, and several ablations is solid, but generality claims outrun the evidence given no significance testing and a self-constructed benchmark."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competently executed, reasonably thorough steering paper on a real problem, but incremental novelty, modest gains, and weak statistical reporting place it at borderline reject pending added rigor."
+    }
+  },
+  "publishability_probability": 0.35
+}

@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper provides a theoretically motivated analysis of the 'PCC plateau' phenomenon in joint MSE+PCC training of attention-based regression models, deriving two formal limitations—gradient attenuation and a convex-hull capacity bound—and proposing Extrapolative Correlation Attention (ECA) as a drop-in remedy. The theoretical contributions are genuine and the identified problem is practically relevant across pathology and sentiment domains. However, the work is significantly undermined by insufficient statistical rigor on most benchmarks (no error bars or multi-seed results outside the spatial transcriptomics experiment), overly restrictive theoretical assumptions that are not adequately discussed, and a thin related-work and baseline comparison section.",
+  "strengths": [
+    "The MSE–PCC gradient conflict and the convex-hull capacity bound (Theorem 2.2) are formally derived and represent a genuine theoretical contribution that is new to the attention-regression literature.",
+    "ECA is cleanly decomposed into three independently ablated components (SRA, DATS, DNPL), each directly addressing one identified bottleneck, and the ablations in Table 1 confirm each component contributes.",
+    "Experiments span four qualitatively different settings (synthetic, tabular UCI, high-homogeneity pathology, and video sentiment), and the spatial transcriptomics experiment with 3-fold cross-validation and reported ± values shows large, consistent gains (+14.6% PCC@F).",
+    "The DNPL design using StopGrad to rescale the PCC gradient without changing stationary points is elegant and practically simple to adopt."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "UCI Table 1 and MOSI Table 2 report single-run point estimates with no variance, confidence intervals, or multi-seed statistics. On MOSI, the PCC improvement is 0.783→0.806 (+2.3%), which could easily be within run-to-run noise. Without error bars or significance tests these tables provide no statistical evidence of improvement.",
+      "suggested_fix": "Report mean ± std across at least 5 seeds for all UCI and MOSI experiments; add a paired t-test or Wilcoxon test for the primary PCC metric on each dataset."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Theorem 2.2's bound requires R < σ₀/‖w‖₂; as R → σ₀/‖w‖₂ the bound blows up and is vacuous. No empirical check of whether this condition holds on the real datasets is provided, and the paper does not discuss how tightly the bound is informative in practice.",
+      "suggested_fix": "Compute R and σ₀/‖w‖₂ on each benchmark and report the ratio; discuss the regime where the bound is tight. If the bound is loose on practical data, qualify the theoretical claim accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Corollary 2.1 assumes ρ ∈ [0,1], but PCC is defined on [−1,1]. Negative correlations are common in regression tasks; assuming ρ ≥ 0 without justification undermines the generality of the gradient-attenuation claim.",
+      "suggested_fix": "Either prove the corollary for the full range ρ ∈ [−1,1] or explicitly state and justify the restriction, with a discussion of when it is and is not satisfied on the tested benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "The related-work section is conspicuously thin: it omits loss-scheduling and adaptive-weighting methods (e.g., GradNorm, uncertainty weighting, PCGrad) that also address gradient imbalance in multi-objective regression and are natural baselines against which the design choices of DNPL should be compared.",
+      "suggested_fix": "Add a paragraph covering adaptive/dynamic loss-weighting methods; compare DNPL empirically against at least one such baseline (e.g., simply scheduling λ_PCC proportional to σ̂_y) to isolate the effect of the proposed rescaling."
+    },
+    {
+      "severity": "major",
+      "issue": "The entire theoretical framework is derived for a single-layer attention aggregator with a linear head. Deep multi-layer Transformers are the practical use-case, and Section E (discussing applicability to deep architectures) is in the appendix and not summarised in the main text. It is unclear whether the gradient-attenuation rate O(1/σ_y^{3/2}) holds through multiple attention layers.",
+      "suggested_fix": "Provide at least a brief theoretical discussion in the main text of how the analysis extends (or does not) to multi-layer settings; empirically validate the gradient-ratio bound (Figure 3) also for a 2–4 layer Transformer."
+    },
+    {
+      "severity": "minor",
+      "issue": "Only three UCI datasets are used; UCI has hundreds of regression tasks. The claim that UCI results provide 'strong evidence' of general PCC-plateau mitigation is overclaimed given the small, non-replicated sample.",
+      "suggested_fix": "Add 3–5 more UCI datasets or at least explicitly scope the claim to 'three UCI tasks studied.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "The MOSI evaluation applies ECA only to the video attention encoder of ALMT, while audio and text modalities are unchanged. The improvement could be confounded by modality interaction effects rather than the PCC-plateau mechanism.",
+      "suggested_fix": "Apply ECA to each modality independently and report, or at least discuss this confound."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you report the ratio R / (σ₀/‖w‖₂) on each real-world dataset to demonstrate that Theorem 2.2's precondition holds and the bound is informative at practical operating points?",
+    "Figure 3 validates the gradient-ratio bound on synthetic data. Does the bound hold similarly on the UCI or pathology datasets during actual training? If so, please show it; if not, how does this affect the theoretical narrative?",
+    "How sensitive is ECA performance to the choice of γ_max and the DATS hyperparameter β? Were these tuned per dataset, and if so, how was tuning done without contaminating the test set?",
+    "For MOSI, the baseline 'ALMT + L_PCC' degrades F1 and MAE while ECA does not — is this primarily due to DNPL, SRA, or DATS? A targeted ablation (ALMT + DNPL only) would clarify whether the improvement is mostly from gradient rescaling or from architecture changes.",
+    "The limitation section states 'some comparisons are made against a limited set of alternatives' — which specific missing alternatives did the authors identify as most important, and why were they excluded?"
+  ],
+  "calibration_check": "The paper's theoretical claims are correctly qualified by stated assumptions, but the experimental claims ('consistently breaks the plateau', 'strong evidence') are overstated for benchmarks that report only single-run point estimates without variance.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a genuine and practically important failure mode in biological/clinical ML, but the work's impact is narrowly scoped to attention-based regression with joint MSE+PCC loss, limiting broader ICLR audience interest."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The formal gradient-attenuation analysis and the convex-hull PCC-gain bound (Theorem 2.2) are new contributions; DATS and SRA are intuitive but well-motivated extensions not previously proposed in this form."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Proofs appear correct under stated assumptions, but Corollary 2.1's restriction to ρ ≥ 0 and Theorem 2.2's precondition R < σ₀/‖w‖₂ are significant caveats not validated empirically on real data."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only the spatial transcriptomics experiment reports ± statistics; all UCI and MOSI results are single-run point estimates, making it impossible to assess whether reported differences are statistically meaningful."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The limitations section exists but is generic; 'first rigorous theoretical analysis' may be accurate but is a strong claim; experimental claims are overstated relative to the single-seed UCI/MOSI evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall structure and narrative are clear, but there are notation inconsistencies (ŷ vs ȳ), section numbering gaps (2.4 appears as the capacity section without a header), and some grammatical errors."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed, ablations are included, and proofs are deferred to a clearly referenced appendix; the paper reads as a complete submission at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Public datasets are used and the ECA components are precisely described, but several key hyperparameters (γ_max, β, λ_γ, Tmin) are mentioned without reported tuned values, and appendix sections A–G are referenced but not included in this submission."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related-work section is only two short paragraphs and omits the directly relevant literature on adaptive multi-task loss weighting (GradNorm, PCGrad, uncertainty weighting) that are natural algorithmic comparators."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Training-curve plots (Figures 2, 4, 5, 6) and the gradient-ratio validation (Figure 3) are directly informative for the claims; Figure 1's convex-hull illustration usefully motivates the method; the per-fold breakdowns in Figure 6 are commendably thorough."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "ECA is tested in only four settings (one synthetic, three UCI with no error bars, one pathology, one sentiment benchmark), with a single base architecture per setting, providing insufficient evidence to claim general applicability across attention-based regression."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the theoretical contribution is genuine and the problem is real, but the absence of statistical rigor on the majority of experiments and the restrictive unvalidated assumptions prevent confidence that the reported improvements are reliable."
+    }
+  },
+  "publishability_probability": 0.25
+}

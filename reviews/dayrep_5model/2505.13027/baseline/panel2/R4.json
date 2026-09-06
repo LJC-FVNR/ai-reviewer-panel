@@ -1,0 +1,110 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-matrix framework that unifies additive vs. multiplicative positional encodings and, through synthetic-task experiments, identifies a 'single-head deposit pattern' unique to RoPE on position-sensitive tasks, corroborated by four targeted ablations and a gradient-flow theorem. The mechanistic finding is genuinely interesting and the ablation design (Absolute+RoPE injection, subset-RoPE heads, MLA, pi-vs-random ablation) is thoughtful and internally coherent. However, all evidence comes from two custom synthetic tasks on a single 6-layer decoder; there is no language-modeling, vision, or scale study to show the pattern occurs in the wild, and the hypothesized link to RoPE's real-world length-generalization issues is only speculated. Statistical reporting ('variance less than 5%') is loose, and the theoretical assumptions (A1–A3) are idealized without empirical verification.",
+  "strengths": [
+    "Clean conceptual reframing of PE via Toeplitz structure that cleanly separates additive from multiplicative mechanisms and yields a testable prediction (Eqs. 1–2).",
+    "The 'single-head deposit pattern' is a crisp, novel mechanistic observation with a well-designed head-wise causal ablation and complementary control conditions (NoPE-Task1, RoPE-Task2) that isolate the effect to RoPE + content-position coupling.",
+    "The ablation suite is unusually coherent: Absolute+RoPE injection (Sec. 5.1), subset-RoPE (Sec. 5.2), MLA hybrid (Sec. 5.3), and pi-vs-random norm-matched ablation (Sec. 5.4) each target a distinct hypothesis and interlock.",
+    "The MLA analysis is a nice bridge from mechanistic diagnosis to an architectural remedy, giving the paper explanatory value beyond phenomenology.",
+    "Theorem 6.1's exponential-margin argument, while idealized, provides a plausible mechanism for the emergent specialization consistent with the empirical pattern."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Evidence base is limited to two synthetic tasks on a 6-layer decoder with a 1,000-token vocabulary. The claim that this mechanism explains RoPE's real-world 'performance paradox' (e.g., vs. NoPE on Kazemnejad-style benchmarks, or length extrapolation) is not directly demonstrated on any realistic LM or vision workload. Without at least small-scale language-modeling or a standard length-generalization benchmark, the generality claim is unsupported.",
+      "suggested_fix": "Add experiments on (a) at least one standard LM setting (e.g., small character/word-level LM or a SCROLLS/needle-in-haystack style task) verifying the deposit pattern emerges with RoPE, and (b) a direct correlation study between deposit-pattern strength and length-extrapolation performance across seeds/configs."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is loose. The paper states 'averaged over five seeds, and the variance is less than 5%' but provides no per-figure error bars, no significance tests on the deposit-pattern effect sizes, and no distributional statistics beyond a violin plot inset. For a paper whose central claim rests on an empirical head-wise pattern, this is thin.",
+      "suggested_fix": "Report mean ± std (or bootstrap CIs) on all headline numbers (Fig. 2/3, Table 1), report ablation-drop distributions per head across seeds with a formal test (e.g., a permutation test for outlier concentration), and quantify the deposit pattern with a numeric statistic (e.g., top-1 ablation drop / mean drop) rather than only violin shapes."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical results (Prop. 6.1–6.2, Thm. 6.1) rely on strong idealized assumptions (Jacobian stability in [1-α, 1+α], monotone anchor path, kernel-separability for ALiBi) that are never empirically checked, and the proofs are relegated to appendices. The 'exponential amplification' conclusion is stated but the gain factors γk are not measured or bounded from data.",
+      "suggested_fix": "Verify (A1)-(A3) empirically on the trained models (e.g., measure singular-value spectra of J^(l), fraction of samples satisfying the anchor condition, and γk gain from measured gradients), and clearly delineate what the theorem proves vs. what the experiments show."
+    },
+    {
+      "severity": "major",
+      "issue": "Assumption 3.1 (x_i = c_i + p_i) is doing significant work but is a modeling lens rather than a demonstrated property. The 'Functionality' argument in Remark 3.1 points to Sec. 5.4, but Sec. 5.4 only tests the Absolute-PE case; RoPE's own decomposition is asserted rather than measured. Because much of the framework hinges on this decomposition, the paper needs a more careful empirical or theoretical grounding.",
+      "suggested_fix": "Either (i) provide a formal identification result for c_i, p_i given the model, or (ii) empirically extract p_i (e.g., via linear probes or activation regression on position) and show the decomposition is meaningful under each PE — including RoPE — beyond norm-matched controls."
+    },
+    {
+      "severity": "minor",
+      "issue": "Baselines omit several PEs that are directly relevant to the framework's claims — no NoPE-with-causal-mask analysis at depth, no Kerple/xPos, no learned relative-bias with multiplicative gate; also no comparison across model depths/widths to check whether the deposit pattern is depth-dependent.",
+      "suggested_fix": "Add a small sweep over depth (e.g., 2/6/12 layers) and width, and include at least one more modern PE (e.g., xPos or a learned RoPE variant) to test the 'multiplicative → deposit' prediction outside RoPE-specifically."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation has issues: several typo/OCR-like artifacts (e.g., '[Author] et al., 2024a;b', 'B ttcher', 'Szeg o'), inconsistent equation numbering, and a poorly labeled Fig. 1 caption block that repeats 'Toeplitz' terms without a legend. Some claims (e.g., 'RoPE decisively outperforms other methods') are stronger than the figures — as described — support.",
+      "suggested_fix": "Tighten prose, fix references, add clear axis labels and legends to captions, and scope superlatives to the two synthetic tasks."
+    },
+    {
+      "severity": "minor",
+      "issue": "Limitations section is honest but very short and does not acknowledge the synthetic-only nature of evidence, seed variance, or the gap between Prop. 6.1's 'sufficient learning signal' condition and what is measured.",
+      "suggested_fix": "Expand limitations to explicitly state the synthetic-only scope, the unverified theoretical assumptions, and the unquantified link to length extrapolation."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the deposit pattern reproduce in a small language-modeling run (e.g., WikiText/C4-subset)? If so, how does its strength scale with depth, width, and training-set size?",
+    "Can you provide a quantitative deposit-pattern metric (e.g., ratio of largest single-head ablation drop to mean drop) with confidence intervals across seeds, rather than only violin shapes?",
+    "Have you verified Assumption A1's singular-value bounds and A2's anchor-path condition on your trained networks? What are the measured γk gain factors in Theorem 6.1?",
+    "In Ablation 1, the deposit pattern 're-emerges in deeper layers' with Absolute+RoPE — is this shift quantitative (which layer, how sharp), and does it correlate with a change in test accuracy compared to plain RoPE?",
+    "For MLA (Table 1), how is the α parameter set, and does MLA also mitigate the deposit pattern in a language-modeling setting, not just on Task 1?",
+    "Why is Task 1 formulated as binned distance classification rather than exact prediction, and does the number/width of bins affect the deposit pattern's emergence?",
+    "The Random-embedding baseline overfits on both tasks. Since it lacks Toeplitz structure, is it truly a fair 'no-PE' control, or is NoPE the right null? What does 'Random' add beyond NoPE?"
+  ],
+  "calibration_check": "The framework and deposit-pattern claims are moderately overclaimed: the mechanism is empirically demonstrated only on two synthetic tasks with one model size, yet the paper repeatedly generalizes to 'RoPE's performance paradox' and length extrapolation without direct evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The deposit-pattern observation is a genuinely interesting mechanistic finding that would attract citations if generalized, but its impact hinges on whether it holds beyond a synthetic classroom setting, which the paper does not establish."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The Toeplitz framing is not new in isolation, but the additive/multiplicative dichotomy tied to a concrete emergent 'single-head deposit' phenomenon is a fresh and specific contribution not clearly anticipated by prior mechanistic PE work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Ablations are well-designed and internally consistent, but the theoretical assumptions are strong and unchecked, and the empirical claims outstrip the two-task synthetic evidence base."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only a vague 'variance less than 5%' is provided; no per-plot error bars, no significance tests, and the deposit pattern is quantified only via violin shapes rather than a formal statistic — weak for a claim that rests on head-level effects."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Limitations are acknowledged but brief; the paper repeatedly links the finding to RoPE's real-world 'paradox' and length-extrapolation issues that it does not itself test, and uses superlatives ('decisively outperforms') beyond what the two synthetic tasks warrant."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The main argument is followable and the framework is intuitive, but the manuscript has notational rough edges, OCR-like artifacts in references, and figure captions that carry more of the argument than the surrounding text."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure with a clean Method/Experiments/Ablations/Theory/Conclusion flow, and appropriate length; contributions are enumerated up front."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Task construction, model size, PE list, and ablation designs are described at a level where a competent group could reproduce the qualitative findings, though hyperparameters and MLA specifics live only in the appendix and some details (bin widths, α, optimizer) are underspecified in the body."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Positioning against NoPE, T5, ALiBi, RoPE, FoPE, and MLA is reasonable, but the mechanistic-interpretability literature on attention-head specialization is thin, and the paper does not cite/contrast recent length-extrapolation analyses of RoPE despite invoking them."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Judging from captions: Fig. 1's schematic and Fig. 4's violin-plot design are effective and support the deposit claim; several figures (2, 3, 5, 8) are inferred to be standard train/test curves and layer-wise ablations that adequately, though not strikingly, support their claims."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "Only two synthetic tasks, one architecture size, six PEs, and no natural-language or vision experiment; the paper's generality claims (about RoPE broadly, and its length-extrapolation behavior) are far broader than the evidence."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Interesting mechanistic contribution let down by synthetic-only evidence, thin statistics, and unchecked theoretical assumptions — a borderline-reject that could become a strong paper with real-world validation and tighter statistical reporting."
+    }
+  },
+  "publishability_probability": 0.28
+}

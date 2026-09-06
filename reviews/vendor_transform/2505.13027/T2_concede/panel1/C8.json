@@ -1,0 +1,133 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "The paper proposes a Toeplitz-based framework that separates positional encodings into additive (bias/Gram-term) and multiplicative (RoPE Hadamard-kernel) mechanisms, and reports a 'single-head deposit pattern' in which RoPE concentrates shallow-layer positional processing into one attention head on a synthetic relative-distance task. The question is well motivated and the deposit-pattern observation is an appealing nugget, but the entire empirical case rests on two toy tasks with a single 6-layer model, and the central uniqueness claim is confounded: the control models (NoPE at 3.51%, T5 relative bias 'fails entirely') do not solve Task 1 at all, so the absence of an indispensable head in those models is largely uninformative. The theory in Section 6 is built on assumptions that largely encode the conclusion (A2's positive anchor correlation, unspecified gain factors γk > 1), statistical reporting is limited to a single sentence ('variance is less than 5%'), and the Conclusion claims spectral theory and 'validation' that the body never delivers. Substantial new experiments and a corrected claim structure are needed before this meets the ICLR bar.",
+  "strengths": [
+    "The framing question — why RoPE's theoretical properties do not translate into uniform empirical advantage — is a real and widely felt gap, and mechanistic study of PE is a topic ICLR readers care about.",
+    "The additive-versus-multiplicative distinction is stated crisply: additive schemes inject a Toeplitz term either through Gqp,kp or an explicit bias B, whereas RoPE modulates all content interactions through a shared Toeplitz kernel; this is a usable conceptual lens even where the formalization is loose.",
+    "The paired task design (position-sensitive relative-distance classification versus position-agnostic trigger counting) is a sensible control structure that in principle isolates the content-position coupling capability being studied.",
+    "The ablation program is well conceived as a set of hypothesis tests: injecting absolute PE into a RoPE model, restricting RoPE to a subset of heads, evaluating MLA's split NoPE/RoPE pathways, and layer-wise removal of positional directions against norm-matched random vectors. The norm-matched random control in Ablation 4 is a genuinely good methodological choice.",
+    "Limitations are stated rather than hidden, including the acknowledgement that the link between the deposit pattern and length extrapolation is hypothesized rather than demonstrated."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The headline claim that the deposit pattern is 'unique to RoPE' is confounded by baseline task failure. Section 4.2 reports that NoPE and standard relative PE 'fail entirely' on Task 1 (Table 1 gives NoPE 3.51%), yet Section 4.3 uses the NoPE-Task 1 model as the control showing a flat ablation profile. A model that never learned the task cannot exhibit an indispensable task head, so the contrast establishes nothing about mechanism. The comparison needed is against additive-PE models that reach comparable Task 1 accuracy (Absolute PE is described as second best and is the natural control), matched on final accuracy.",
+      "suggested_fix": "Rerun the head-wise ablation on all PE variants that achieve non-trivial Task 1 accuracy, matched or explicitly conditioned on final test accuracy, and report a concentration statistic (e.g., Gini coefficient or top-1 share of total ablation-induced accuracy drop, normalized by unablated accuracy) per PE scheme with seed-level variability, rather than relying on qualitative violin shapes."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The formal framework contains apparent technical errors that are load-bearing for the paper's thesis. (a) Equation 1 asserts a Toeplitz structure for absolute PE via Gqp,kp, but the projected inner product p_i^T W_Q^T W_K p_j is not Toeplitz in general even for sinusoidal p, and is certainly not for learned absolute embeddings; Remark 3.2 concedes Assumption 3.2 is a 'working hypothesis'. (b) Equation 2 writes RoPE's logit as a Hadamard product with a single Toeplitz kernel Ge, but RoPE applies distinct rotation frequencies to different 2D coordinate blocks, so the logit is a sum over frequency bands rather than one shared kernel; a single Ge holds only in a degenerate single-frequency case. (c) For a pure RoPE model there is no additive p_i, so the terms Gqc,kp, Gqp,kc and Gqp,kp in Equation 2 have no defined referent. The derivation is deferred to Appendix B and cannot carry this weight.",
+      "suggested_fix": "State precisely the conditions under which Gqp,kp is Toeplitz (and show empirically how far real trained models deviate), rewrite Equation 2 as an explicit sum over RoPE frequency blocks with the per-block Toeplitz kernels made visible, and define the position component for pure-RoPE models or restrict Equation 2 to the hybrid setting where p_i actually exists."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is inadequate for the conclusions drawn. The only variability statement in the paper is 'averaged over five seeds, and the variance is less than 5%', with no definition of what quantity that 5% refers to, no error bars in any figure caption, no confidence intervals, and no significance tests. Table 1 reports MLA 88.34 / RoPE 92.64 / NoPE 3.51 on Task 1 and MLA 97.41 / RoPE 69.43 / NoPE 77.69 on Task 2 as point estimates to two decimals, and the paper builds the claim that MLA 'nearly matches' RoPE and 'dramatically' improves on Task 2 from these single numbers. The ≈60% ablation drop is likewise a single unqualified figure.",
+      "suggested_fix": "Report mean ± standard deviation (or bootstrap CIs) over seeds for every number in Table 1 and every curve, define the variance statistic precisely, and apply a significance test to the specific comparisons the claims rest on (MLA versus RoPE per task; deposit concentration RoPE versus additive PE)."
+    },
+    {
+      "severity": "major",
+      "issue": "The evidence base is two synthetic tasks at a single model configuration, but the claims are pitched at real practice — explaining 'the gap between RoPE's theoretical promise and its practical performance' and why RoPE models fail to form the latent positional representations reported in prior work. Nothing in the paper connects the deposit pattern to language modeling, to length extrapolation (the motivating phenomenon from the Introduction), or to models above 6 layers. Model width, head count, and sequence length are not stated in the body at all, so it is not even clear how much capacity the pattern is concentrating away from.",
+      "suggested_fix": "Add at least one non-synthetic setting (small-scale LM pretraining with a head-ablation analysis, or an existing open-weight RoPE checkpoint probed for the same concentration statistic) and a scale sweep over layers/heads/width showing whether the pattern persists, weakens, or is an artifact of the toy regime."
+    },
+    {
+      "severity": "major",
+      "issue": "Section 6's theory is largely decorative and in places assumes what it purports to prove. Assumption (A2) posits a positive anchor gradient correlation, which is close to the seed positivity that Proposition 6.1 concludes. Theorem 6.1's bound Margin_l ≥ Margin_L ∏ γk depends on unspecified gain factors asserted to exceed 1, which is not implied by (A1)'s two-sided singular value bounds in [1−α, 1+α] — under (A1) the product can equally contract. Proposition 6.2 is an existence statement ('there exists a batch realizing N such that the gradient vanishes'), yet the surrounding prose treats ALiBi cancellation as generic behavior. None of this is validated against measured gradients.",
+      "suggested_fix": "Either derive γk > 1 from stated assumptions (or from measurable quantities) rather than asserting it, restate Proposition 6.2 with the correct quantifier and discuss the measure of such batches under the actual sampling distribution, and add a direct empirical check — measured per-head gradient margins during early training for RoPE versus ALiBi versus Absolute — that the amplification claim actually predicts which head becomes the deposit head."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline fairness is undocumented and the reported failures are suspicious. T5 relative bias has a learned per-distance table plus the content-position cross terms and should be able to make non-trivial progress on a relative-distance classification task, yet it is reported to 'fail entirely'; NoPE in a causal decoder is known from the cited literature to encode positional information implicitly, yet it lands at 3.51%. No per-method hyperparameter search, learning-rate tuning, or training-budget equalization is described in the body.",
+      "suggested_fix": "Document a per-method tuning protocol (identical search space, best-of-sweep selection) and report the search results, and diagnose the T5/NoPE failures (learning curves, capacity of the bias table, whether longer training or larger learning rates recover performance) so that the RoPE advantage is attributable to mechanism rather than to unequal tuning."
+    },
+    {
+      "severity": "major",
+      "issue": "An alternative and simpler explanation for the deposit pattern is never tested: the task requires exactly one comparison between two anchor tokens, so a single head may suffice for reasons of task structure rather than RoPE's inductive bias. Ablation 2 in fact shows one or two RoPE heads are sufficient, which is equally consistent with the task-simplicity explanation. The paper does not vary task complexity (e.g., three or more anchors, multiple simultaneous distance predictions) to separate these accounts.",
+      "suggested_fix": "Add task variants requiring k independent positional comparisons and test whether the number of indispensable RoPE heads scales with k (task-driven) or stays at one (architecture-driven); this is the decisive experiment for the paper's central mechanistic claim."
+    },
+    {
+      "severity": "major",
+      "issue": "Positioning against prior work is incomplete in ways that bear on novelty. The four-term decomposition of attention logits into content-content, content-position, position-content and position-position terms is established prior art in the positional-encoding literature (untied positional attention / rethinking positional encoding lines of work), and the paper presents Equation 1 as if it were part of its own contribution without discussing that lineage. Likewise, the extensive literature on attention-head specialization and redundancy (head pruning, superfluous heads) is directly relevant to a 'single-head deposit' claim and is not engaged. The Toeplitz/spectral references (Szegő, Grenander, Böttcher) are cited but never used in any derivation.",
+      "suggested_fix": "Add explicit discussion delineating what the Toeplitz framing adds beyond the existing logit decomposition, engage the head-specialization/pruning literature and its baselines for measuring head importance, and either use the spectral results substantively or remove the spectral framing."
+    },
+    {
+      "severity": "minor",
+      "issue": "Claims in the Conclusion exceed what the body shows. The Conclusion says the framework 'leverages spectral theory' though no spectral argument appears anywhere in Sections 3–6; it says the hybrid architecture 'validates our theory' on the basis of three numbers in Table 1 for an off-the-shelf architecture (MLA) that the paper did not design; and it invokes 'spectral stability', a quantity never defined or measured. Figure captions similarly editorialize ('significantly outperform', 'striking confirmation') beyond what point estimates without error bars can support.",
+      "suggested_fix": "Rewrite the Conclusion and figure captions to match the evidence: drop the spectral-theory and spectral-stability language, describe MLA as a consistency check rather than validation, and reserve 'significant' for comparisons backed by a test."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation problems accumulate. Several sentences are ungrammatical or garbled ('Further investigation is consistent with this phenomenon is unique to RoPE'; 'This is consistent with that a small number of specialized heads are indeed sufficient'). Section numbering is inconsistent — the ablations are labeled 'Ablation 1–4' while cross-references point to 'Section 5.4' and 'Section 5.1' — and a Limitations section appears twice with different content. Equation 4's α is introduced without definition, and Equation 3 writes W_UR for both the query and key rotary projections despite the text stating the projections are distinct.",
+      "suggested_fix": "Copy-edit throughout, unify the ablation section numbering with the cross-references, merge the duplicated Limitations sections, define α in Equation 4, and fix the projection-matrix notation in Equation 3."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility of the body text is thin even allowing for an appendix: model width, number of heads per layer, sequence length, distance-bin definition for Task 1, vocabulary/trigger sampling procedure for Task 2, optimizer, learning rate, batch size, and train/test split sizes are absent from the main text. Since head-indexed figures are central, the head count in particular should be stated where the results are discussed.",
+      "suggested_fix": "Move the essential configuration (layers, heads, d_model, sequence length, bin count, optimizer and learning rate, train/test split) into the Experiments section, and specify the ablation protocol precisely (zeroing head output before or after W_O, whether the residual stream is otherwise untouched)."
+    }
+  ],
+  "questions_for_authors": [
+    "Since NoPE reaches only 3.51% on Task 1, how can the flat NoPE ablation profile in Figure 4 be evidence about mechanism rather than a consequence of the model never having learned the task? What does the ablation profile look like for Absolute PE, which you report as the second-best method on Task 1?",
+    "What exactly does 'the variance is less than 5%' quantify — variance or standard deviation, of what quantity, across which seeds — and what are the per-cell error bars for Table 1?",
+    "Equation 2 uses a single Toeplitz kernel Ge, but RoPE applies different rotation frequencies to different coordinate blocks. Under what conditions does the multi-frequency logit collapse to one Hadamard product, and how much error does that collapse introduce for the standard RoPE base used in your experiments?",
+    "For a pure RoPE model with no additive positional vector, what are the position components p_i that define Gqc,kp, Gqp,kc and Gqp,kp in Equation 2?",
+    "In Theorem 6.1, where do the gain factors γk come from and why must each exceed 1? Assumption (A1) allows Jacobian singular values below 1, which would give contraction rather than exponential amplification.",
+    "Proposition 6.2 states that there exists a batch for which the ALiBi anchor gradient vanishes. What fraction of batches drawn from your actual data distribution exhibits this cancellation, and does measured ALiBi gradient magnitude behave as the theory predicts?",
+    "If Task 1 is modified to require k > 1 independent distance comparisons, does the number of heads whose ablation is catastrophic grow with k? This would distinguish an architectural inductive bias from a task-complexity explanation.",
+    "How were hyperparameters selected per PE method? Given that T5 relative bias is reported to fail entirely on a relative-distance task, what evidence rules out under-tuning or insufficient training budget for the baselines?",
+    "How many heads per layer does the model have, and how does the deposit pattern change with head count, model width, and depth?",
+    "Does the deposit pattern appear in any non-synthetic setting — for example, in a small RoPE language model or an open-weight checkpoint probed with the same head-ablation protocol?"
+  ],
+  "calibration_check": "Claims are partially over-scoped: the Limitations sections are candid and some results are hedged, but the Conclusion asserts spectral theory that is never used, treats an off-the-shelf MLA comparison as validation of the theory, and the paper generalizes a two-task, single-configuration synthetic finding into a mechanistic explanation of RoPE's real-world performance paradox.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 4,
+      "justification": "The question of why RoPE's theoretical properties do not translate into uniform empirical gains matters to the community, but a deposit pattern demonstrated only on two toy tasks at one model size gives practitioners little they can act on and no demonstrated connection to the length-extrapolation behavior the paper invokes as motivation."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The single-head deposit observation and the additive-versus-multiplicative Toeplitz packaging are a modestly fresh framing, but the underlying four-term content/position logit decomposition is established prior art that the paper presents without acknowledging that lineage, and the Toeplitz translation-invariance observation is close to folklore."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The central 'unique to RoPE' claim is confounded because the control models fail the task outright, the Toeplitz structure asserted for absolute PE does not survive the query/key projections, Equation 2's single-kernel Hadamard form appears to misrepresent RoPE's multi-frequency structure, and the alternative explanation that one head suffices because the task needs one comparison is never tested."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "The only variability reported anywhere is an undefined 'variance is less than 5%' over five seeds; no figure caption mentions error bars, Table 1 gives bare two-decimal point estimates, and no significance test supports the comparisons the conclusions rest on."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper hedges several empirical statements and states limitations explicitly, which is creditable, but the Conclusion claims spectral theory absent from the body, calls an off-the-shelf MLA result a validation of the theory, invokes undefined 'spectral stability', and captions use 'significantly' and 'striking confirmation' for untested differences."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The core additive-versus-multiplicative argument comes through and the ablations are organized as explicit hypothesis tests, but several sentences are ungrammatical, the ablation numbering conflicts with its own cross-references, Limitations appears twice, and notation is inconsistent (undefined α in Eq. 4, identical W_UR for query and key in Eq. 3 despite the text saying the projections differ)."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The standard Introduction / Related Work / Method / Experiments / Ablations / Theory / Conclusion arc is present and at reasonable ICLR length, but the duplicated Limitations sections and inconsistent internal section numbering indicate incomplete assembly."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The task construction is described at a useful level (vocabulary size, dataset sizes, binned-distance objective, 20 trigger words) and details are promised in an appendix, but the body omits head count, model width, sequence length, bin count, optimizer and learning rate, and does not specify the head-ablation protocol precisely enough to reimplement the central measurement."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The PE and NoPE literatures are surveyed reasonably, but the prior work on decomposing attention logits into content/position terms is not distinguished from the paper's own Equation 1, the directly relevant head-specialization and head-pruning literature is absent, and the Toeplitz/spectral citations are listed without ever being used in a derivation."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The display items are purposeful and mapped to specific claims — the Figure 4 violin-with-insets design is a sensible way to show ablation-drop distributions and Figure 8's norm-matched random control is well conceived — but captions assert significance without variability information and Table 1 carries a major conclusion on three unqualified point estimates."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "Two synthetic tasks, one 6-layer decoder, and no language modeling, no scale sweep, and no length-extrapolation experiment cannot support conclusions framed as explaining RoPE's practical behavior, and the baseline set is further weakened by two methods failing the position-sensitive task entirely with no tuning documentation."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising framing and an interesting observation are undercut by a confounded central comparison, apparent errors in the formal framework, theory whose assumptions largely encode its conclusions, and near-absent statistical reporting; fixing these requires substantial new experiments rather than revision of the text."
+    }
+  },
+  "publishability_probability": 0.12
+}

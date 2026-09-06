@@ -1,0 +1,105 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper studies Mamba's in-context learning through the random-Markov-chain framework previously used for transformers, and reports that a single-layer Mamba matches the Bayes/minimax-optimal add-beta (Laplacian smoothing) estimator, with the short causal convolution identified by ablation as the critical component. It supports this with a constructive representation theorem for a simplified 'MambaZero' model on first-order chains, a depth-independent lower bound showing any finite-precision recurrent model needs hidden dimension times precision scaling as 2^k, and transfer experiments on a switching-Markov process and WikiText-103. The contribution is clean, well-scoped, and the constructive proof is unusually well tied to empirically measured parameter structure (a_t approx 1, b(ij)·c_t approx 0), which is the paper's most convincing feature. Its main weaknesses are the gap between the theorem (first-order, simplified architecture, L1 normalization) and the trained model, and thin statistical reporting outside Figure 1b, especially the single-number WikiText table on which the paper's generality claim rests.",
+  "strengths": [
+    "Genuinely new application of the Markov-ICL testbed to selective SSMs, with a constructive proof (Theorem 1) that exactly realizes the add-beta estimator rather than only approximating it, and whose mechanism is validated against the structures the trained model actually converges to.",
+    "Theorem 2 is a nontrivial and broadly useful result: a depth-independent d*p >= 2^k(1-3eps)log(1/eps) lower bound applies to recurrent architectures generally, not just Mamba, and gives a principled separation story against transformers.",
+    "The convolution ablation is well designed: it contrasts full Mamba, Mamba minus convolution, and convolution-only MambaZero, and the window-size-versus-Markov-order result (w >= k+1) is a crisp, falsifiable prediction backed by both a confusable-sequence argument and experiments.",
+    "The paper is honest about scope in several places: representation power rather than learning dynamics, higher-order results explicitly labeled empirical, and the negative-ish finding that convolution's importance decreases with depth on language data is reported rather than buried.",
+    "Extension beyond Markov data (switching process where a_t is shown to gate on the switch token) gives a mechanistic prediction that is tested, which is stronger evidence than a generic transfer experiment."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Theorem 1 is proved for MambaZero (no ReLU nonlinearity, no gating, L1 normalization replacing softmax) and only for first-order chains, while the headline claim concerns full Mamba across all Markov orders. The bridge between the two is Figure 3a plus assertions that empirical facts 'hold for any k >= 1', which is suggestive but not a theorem.",
+      "suggested_fix": "Either extend the construction to order k (even with a looser dimension bound matching Theorem 2's 2^k scaling), or restate the headline claims to say the representation result covers a simplified variant and the order-k and full-architecture results are empirical. Quantifying how close full Mamba's learned parameters are to the constructed solution (e.g., parameter-space distance or a projection experiment) would materially strengthen the bridge."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is uneven. Figure 1b reports standard deviation over 5 runs, but Table 1 (WikiText-103) reports single perplexity values with no seeds, no error bars, and no significance test, yet the 11% vs 2% contrast is used as the central evidence that the convolution finding generalizes to language. A 2% transformer gap in particular is within plausible seed noise for a 14M model.",
+      "suggested_fix": "Report WikiText-103 perplexity as mean +/- std over at least 3 seeds per configuration, and state whether the Mamba and transformer gaps are separable. Also report variance for the Figure 3a loss-gap ablation and for the switching-Markov results."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline fairness is not established in the main text. The transformer comparison (1-layer fails, 2-layer matches less sharply) drives the 'unlike transformers' claim in the conclusion, but there is no description of whether transformer depth, width, learning rate, and positional encoding were tuned as carefully as Mamba's, and parameter counts are not matched in Figure 1. Similarly, the WikiText transformer is described only by parameter count.",
+      "suggested_fix": "Add a tuning protocol (search space and selection criterion) for every baseline, match parameter counts or report the mismatch explicitly in the Markov experiments, and include at least one modern recurrent baseline (e.g., GLA, RWKV, or a gated linear RNN) so the convolution claim is shown to be about the convolution rather than about Mamba specifically."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Mamba-versus-transformer resource comparison in Section 4.3 is not apples-to-apples: Theorem 2 bounds a fixed-size recurrent state, while the cited three-layer transformer result relies on a KV cache that grows linearly in sequence length. Presenting 'exponential in k' against 'linear in k' without noting this asymmetry overstates the separation.",
+      "suggested_fix": "Add one or two sentences normalizing the comparison by total inference-time memory (state size versus cache size at length T), and note the regimes in which each is favorable."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2 assumes a point-wise sup-norm guarantee holding almost surely over P and x, which is considerably stronger than the average-case (cross-entropy) criterion the models are actually trained on. A model could achieve near-optimal expected loss while violating the almost-sure uniform bound, so the lower bound may not constrain the trained regime as tightly as the surrounding prose implies.",
+      "suggested_fix": "State explicitly that the bound is under a worst-case-style criterion, and either prove or discuss an average-case analogue (e.g., under expected KL) so the reader can gauge how binding the 2^k barrier is in practice."
+    },
+    {
+      "severity": "minor",
+      "issue": "Practical implications are asserted rather than demonstrated. The paper argues convolution is fundamental, yet its own deeper-model results suggest the effect attenuates with depth, which weakens any actionable design recommendation for realistic Mamba stacks.",
+      "suggested_fix": "Report the depth sweep (currently in an appendix table) in the main text with variance, and state plainly in the conclusion the depth range over which the convolution finding is expected to matter."
+    }
+  ],
+  "questions_for_authors": [
+    "How close are the parameters of a trained full Mamba to the explicit construction in Theorem 1? Can you report a quantitative alignment measure, or show that initializing at the construction is a fixed point of training?",
+    "Does the loss-gap metric |L(theta) - L_beta| in Figure 3a use matched parameter counts across full Mamba, Mamba-without-convolution, and MambaZero? Removing the convolution also removes parameters, so how do you rule out a capacity confound?",
+    "What is the seed-to-seed variance of the WikiText-103 perplexities in Table 1, and is the 0.61 perplexity transformer gap distinguishable from noise?",
+    "Section 4.2.1 says the requirement can be strengthened to w_c = k while w_X, w_B >= k+1. Is the empirical w >= k+1 result in Figure 3b consistent with per-branch window sizes, and did you ablate the three convolution branches separately?",
+    "For the switching-Markov experiment, how does Mamba compare to the exact reset-on-switch oracle in loss (not just in the qualitative behavior of a_t), and how does performance degrade as p_switch increases?",
+    "Does Theorem 2 have an average-case counterpart under expected KL divergence, and if so how does the resulting bound on d*p change?",
+    "How large a state space S was tested for the order-k results, and does the 2^k dimension requirement show up empirically as a failure threshold when d is held fixed and k is increased?"
+  ],
+  "calibration_check": "Claims are mostly well scoped, with explicit acknowledgement that the theory covers representation rather than learning dynamics and that higher-order results are empirical, but the conclusion's 'unlike transformers, even a single-layer Mamba efficiently learns' blends representation with optimization and rests on a transformer baseline whose tuning is not documented, and the language-modeling generality claim leans on unreplicated single-seed numbers.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The convolution-as-load-bearing-component finding and the 2^k state lower bound are results the SSM interpretability and architecture-design community would cite, but the setting is a synthetic Markov sandbox and the practical design consequence attenuates with depth by the authors' own data."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "First transfer of the Markov-ICL framework to selective SSMs with an exact constructive realization of the add-beta estimator plus a new depth-independent recurrent lower bound; the framework itself is borrowed from prior transformer work, so the novelty is in the analysis rather than the setup."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The construction is concrete and unusually well matched to measured parameter structure, but the proved statement covers a simplified architecture at first order while the claims are made for full Mamba at all orders, and the lower bound's almost-sure sup-norm assumption is stronger than the training objective."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Five seeds with standard deviations appear in Figure 1b, but the ablation losses, the switching experiment, and especially the WikiText-103 table are reported without variance or significance testing, and the 2% transformer perplexity gap used in the argument is plausibly within seed noise."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are stated in several places (representation not dynamics, higher orders empirical only, convolution's importance shrinking with depth, comparative study not the focus), though the 'unlike transformers' framing and the exponential-versus-linear comparison are stated more strongly than the evidence and the memory-model asymmetry warrant."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The logical arc from empirical observation to simplified model to construction to lower bound is easy to follow and the proof-sketch intuition is well written, but the architecture equations are densely presented, notation for the convolution branches is heavy, and much load-bearing detail sits in appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization (introduction, related work, setup, empirical phenomenon, theory, beyond-Markov, conclusion) with appropriate length and a sensible main-text/appendix split."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "The data-generating process, architecture equations, simplified model, optimizer, and evaluation metric are specified precisely enough to reimplement the synthetic experiments; hyperparameters and the WikiText setup are deferred to appendices, and the training details described in the main body alone would leave some ambiguity."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against transformer Markov-ICL work, SSM expressivity work, and the conflicting empirical Mamba-ICL literature is fair and the delineation of the contribution is explicit, though comparison to other recent gated linear RNNs is discussed rather than experimentally engaged."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that directly test claims (probability tracking, L1 deviation versus order with error bars, the three-way convolution ablation, window size versus Markov order), but Table 1 conveys four unreplicated numbers and several mechanism-verification figures are relegated to the appendix."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Evidence is concentrated on small-state-space synthetic chains with one 14M-parameter language-model check and one non-Markovian process; there is no comparison to other recurrent architectures and no scale study, which under-supports the paper's stated generality about selective SSMs broadly."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A clean, honest, and mechanistically satisfying contribution that is borderline-accept: the theory-to-practice gap is real and the statistical reporting outside one figure is thin, but the construction, the lower bound, and the convolution ablation together clear the bar for a useful ICLR paper."
+    }
+  },
+  "publishability_probability": 0.55
+}

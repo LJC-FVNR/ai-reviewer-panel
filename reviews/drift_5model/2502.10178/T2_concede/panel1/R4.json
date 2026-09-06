@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper studies Mamba's in-context learning on random Markov chains, showing empirically that a single-layer Mamba learns the Bayes/minimax-optimal Laplacian (add-β) smoothing estimator, and provides a constructive theorem (Theorem 1) that a simplified 'MambaZero' can exactly represent this estimator for first-order chains, together with a lower bound (Theorem 2) showing hidden-dim·precision must scale as 2^k. The framing (Markov-ICL for Mamba) is a natural and useful extension of prior transformer-focused work, and the constructive proof aligning with empirically-observed learned parameters is the paper's strongest contribution. The main limitations are the narrowness of the formal result (first-order Markov, single-layer, L1 normalization instead of softmax), thin natural-language evidence, and a lower bound that (as written) does not clearly disentangle depth vs. dimension in a way that supports the strongest Mamba-vs-Transformer statement.",
+  "strengths": [
+    "Clean theoretical contribution: an explicit constructive representation of Laplacian smoothing by a first-order MambaZero, whose construction (a_t≈1, w=k+1, count-orthogonality of b(ij)·c_t) is validated by matching empirically learned parameters (Figs. 4, 5) — this alignment is genuinely informative rather than a post-hoc curve fit.",
+    "Non-trivial architectural insight: the ablation showing that convolution is the load-bearing component in the Markov setting (Fig. 3a, MambaZero matches full Mamba while conv-free Mamba fails) is a crisp, mechanistically interpretable finding.",
+    "The Ω(2^k) hidden-dimension lower bound (Thm. 2) is a useful complement to Thm. 1 and provides a clean architectural comparison point against known transformer results (linear in k with depth 3).",
+    "Nice extension beyond pure Markovianity: the switching-Markov experiment (Sec. 5.1) demonstrates that a_t is used exactly as the theory suggests when the optimal predictor requires resetting counts — a strong sanity check of the mechanism.",
+    "Claims are generally well-scoped: the paper repeatedly notes that higher-order results are empirical, that comparisons are contextual rather than central, and that learning dynamics are out of scope."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Theorem 1 is proved for MambaZero (a simplified architecture with L1-normalized prediction, no ReLU, no gating), not for the actual Mamba/Mamba-2 architecture used in Section 3's experiments. The paper's headline framing ('even a single-layer Mamba learns the optimal Laplacian estimator') therefore rests partly on an empirical extrapolation from a simplified model to the full model, and the gap is not sharply quantified. A reader could reasonably worry that softmax vs. L1 normalization and gating/ReLU change the achievable optimum non-trivially.",
+      "suggested_fix": "Either (a) prove or approximately-prove the representation result for the full Mamba/Mamba-2 block (perhaps up to ε in KL), or (b) add an explicit head-to-head comparison of MambaZero vs. full Mamba at convergence on the exact Laplacian target (KL, not just training-loss curves) across state sizes S and orders k, so the reader can see how tight the simplified-model claim is as a stand-in for the full model."
+    },
+    {
+      "severity": "major",
+      "issue": "Higher-order representation is only supported empirically (Fig. 1b, Fig. 10a). The paper's contribution list emphasizes 'all Markov orders,' but the formal construction is first-order only, and the lower bound (Thm. 2) actually cuts against a dimension-efficient higher-order construction (needs d·p ≳ 2^k). This tension is acknowledged only briefly and deserves either a construction for order k or a more explicit statement that the upper bound is first-order.",
+      "suggested_fix": "Add a construction (even a lossy one, or one with d = O(S^k)) for kth-order chains, or tighten the statement of contribution 2 to 'first-order' and separate the empirical higher-order evidence from the theoretical claim in the introduction and abstract-equivalent framing."
+    },
+    {
+      "severity": "major",
+      "issue": "The Mamba-vs-Transformer conclusion drawn from Fig. 1 ('1-layer Mamba tracks the optimal estimator more sharply than a transformer') is used to motivate the paper but rests on a small, potentially under-tuned comparison. Transformer baselines are described generically; there is no explicit statement that both were tuned with matched compute, matched positional encodings, matched width, or with linear-attention/rotary variants that are known to help on synthetic count-based tasks. Given the induction-head literature the paper cites, a fair 2-layer transformer often does match on this task, so the sharpness of the qualitative claim needs firmer support.",
+      "suggested_fix": "Report parameter-matched Mamba vs. 1L/2L/3L transformer sweeps with tuning budget, seeds and error bars for L1-to-optimal, across orders k∈{1..4}, and include at least one strong transformer variant (rotary + short conv, or a state-of-the-art hybrid). Alternatively, soften the comparative claim and clearly frame it as motivating context rather than a headline finding."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2's framing as 'recurrent models of any depth' is subtle: the theorem constrains the final-state size d and precision p, but multi-layer recurrent stacks can carry additional information across layers within a step, and the reduction from a depth-L recurrent model to a single H_t is not spelled out. The reader is left to infer whether the bound really applies to stacked Mamba layers.",
+      "suggested_fix": "Add one paragraph in App. D formalizing how a depth-L recurrent model is folded into the (h_t, g_t) form so that d becomes the total per-step state footprint. State clearly whether the bound is per-layer state or aggregate state."
+    },
+    {
+      "severity": "minor",
+      "issue": "The natural-language section (Sec. 5.2, Table 1) is thin: single dataset (WikiText-103), single model size (~14.5M params), single seed reported. The 11% vs. 2% perplexity gap is used to argue generality of the convolution finding, but this is a fragile empirical claim at this scale.",
+      "suggested_fix": "Add seeds/variance for Table 1, at least one additional corpus (e.g., a subset of C4 or The Pile), and one larger model size, or explicitly downgrade the wording to 'preliminary evidence' in Sec. 5.2 and the conclusion."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'Laplacian smoothing implies ICL' argument (end of Sec. 2.4) is somewhat rhetorical: matching the add-β estimator on a Dirichlet-prior random Markov process is what Bayes-optimal any-predictor does, so 'ICL' here just means the model does not memorize a single kernel. This is fine, but the paper occasionally slips into calling this an ICL 'ability' as if it were the richer few-shot ICL sense of Brown et al. — a distinction worth making explicit.",
+      "suggested_fix": "Add a short paragraph distinguishing Bayes-optimal in-context estimation on random Markov data from prompt/few-shot ICL, and be consistent in later sections about which sense is meant."
+    }
+  ],
+  "questions_for_authors": [
+    "How tight is the MambaZero-to-full-Mamba gap? Specifically, when training the full Mamba-2 with softmax and gating on random first-order chains, does the achieved KL to the Laplacian target reach 0, or does it plateau at some strictly positive value that MambaZero avoids?",
+    "For higher-order chains (k>1), do you observe that the empirical d needed by trained Mamba grows in line with the 2^k lower bound of Thm. 2? A d-vs-k sweep at fixed precision would make this a much stronger claim.",
+    "In Thm. 2, does d refer to the per-step state width of a single Mamba block, or to the total per-step state summed across layers? If a depth-L Mamba can share the 2^k budget across layers, does the lower bound still bite for typical Mamba stacks?",
+    "The claim that convolution's importance diminishes with depth (Sec. 5.2) is intriguing but relies on 'other Mamba layers approximating convolution.' Do you have a direct probe (e.g., a per-layer ablation in a deeper Mamba) showing which layers take over the role convolution plays in the shallow model?",
+    "Transformer comparison: were the transformer baselines in Fig. 1 tuned with the same compute budget and comparable width/depth to Mamba? Would a 2-layer transformer with a short causal conv (Hyena/H3-style) match Mamba on Fig. 1b?"
+  ],
+  "calibration_check": "Claims are for the most part appropriately scoped — first-order construction is stated as such, higher-order and language claims are explicitly framed as empirical — but the introductory framing ('for all Markov orders') and the Mamba-vs-Transformer qualitative comparison run slightly ahead of the evidence and should be tightened.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Explaining an SSM mechanism via a known optimal statistical estimator is a genuinely useful contribution to the mechanistic-understanding line of work on Mamba; impact is real but bounded by the narrow (Markov, first-order) formal setting."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "First application of the Markov-ICL framework to Mamba, with a new constructive proof and a new 2^k dimension lower bound; the constructive alignment with learned parameters is a genuinely fresh angle rather than an incremental extension."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "The first-order construction and lower bound appear sound and the empirical verifications (a_t≈1, b(ij)c_t orthogonality) are the right diagnostics; however, the gap between MambaZero and full Mamba, and the depth-vs-state-size subtlety in Thm. 2, are not fully closed."
+    },
+    "statistical_soundness": {
+      "score": 6,
+      "justification": "Error bars over 5 seeds are shown for the main ICL curves, which is adequate for a synthetic setting, but the transformer comparison and the WikiText table are reported without variance and with limited tuning detail, weakening the strongest comparative claims."
+    },
+    "calibration_honesty": {
+      "score": 8,
+      "justification": "The paper is generally careful: it flags that higher-order results are empirical, that learning dynamics are out of scope, and that comparisons are contextual — with only mild overreach in the intro's 'all Markov orders' framing."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The problem setup, MambaZero simplification, and proof sketch are readable and well organized; some equation blocks (particularly the Mamba update in Sec. 2.2) are notation-heavy and would benefit from a compact schematic in-text."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure with problem setup, mechanism, theory, extensions, and conclusion; length appears appropriate for ICLR, and a Limitations section is present."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Data-generation process, architectural equations, optimizer, and key hyperparameters (w, N, d, e) are specified, and appendices are referenced for details; anonymized links are the only obvious gap and are not counted against the paper."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positions the work well relative to the Markov-ICL transformer literature and to prior Mamba/SSM analyses; a slightly deeper treatment of Hyena/H3/conv-augmented attention lines would strengthen the 'convolution matters' story."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative figures — L1-to-optimal across orders, ablation on convolution, window-vs-order scaling, and the switching-Markov a_t behavior — each tied to a specific claim rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Formal results are first-order and single-layer MambaZero; higher-order, deeper-model, and language experiments are supportive but not decisive, so the 'general' framing outruns the evidence somewhat."
+    },
+    "overall_recommendation": {
+      "score": 7,
+      "justification": "A solid, mechanistically-interpretable theoretical contribution with matching empirics; a clear-accept-if-borderline paper at ICLR whose acceptance case would strengthen materially with a tighter full-Mamba result and a fairer transformer comparison."
+    }
+  },
+  "publishability_probability": 0.62
+}

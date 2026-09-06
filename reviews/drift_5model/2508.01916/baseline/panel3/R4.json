@@ -1,0 +1,110 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper introduces Neighbor Distance Minimization (NDM), an unsupervised method for decomposing a model's residual-stream representation into orthogonal, interpretable subspaces by learning a rotation that minimizes nearest-neighbor distance within each subspace. The method is motivated via a feature-group / mutual-exclusiveness argument (with a total-correlation reinterpretation), validated in a toy superposition model, benchmarked against known GPT-2 Small circuits (IOI, greater-than) via subspace activation patching, and scaled to 2B models by isolating subspaces mediating context vs. parametric knowledge routing. The core idea is fresh, the toy sanity check is clean, and the GPT-2 quantitative results beat several unsupervised baselines by a nontrivial margin; however, baselines exclude the most natural supervised competitor (DAS), the Gini-coefficient metric is unconventional and only loosely justified, statistical variance/seed reporting is thin, and the qualitative subspace interpretations lean on a preimage tool from the authors' own prior work whose validity for subspaces is asserted more than demonstrated.",
+  "strengths": [
+    "Genuinely novel unsupervised framing: prior subspace work (DAS, distributed alignment) almost universally requires a supervised causal-abstraction target, whereas NDM extracts non-basis-aligned subspaces from activation statistics alone; the mutual-exclusiveness / total-correlation motivation is a clean conceptual contribution.",
+    "The method is grounded by a toy sanity-check where ground truth is known (Fig. 1a,d), showing RW recovers the block-diagonal structure — a proper prerequisite before moving to real models.",
+    "Quantitative evaluation is tied to established circuits (Wang et al. IOI, Hanna et al. greater-than) rather than ad-hoc probes, with five unsupervised baselines (identity, random, PCA×2, SAE-feature clustering) using matched dimension configurations; NDM's average Gini (0.71) meaningfully exceeds baselines and clears the paper's own 0.6 threshold.",
+    "The scale-up to 2B (Qwen2.5-1.5B, Gemma-2-2B) with the knowledge-conflict counterfactual design (Param Corrupt vs. Context Corrupt) is a well-designed causal probe and yields a striking dissociation (subspace 2 vs. subspace 10 in Qwen), providing evidence of applicability beyond GPT-2 Small.",
+    "The MI-based subspace-merging procedure with KSG estimator is a reasonable, principled answer to the otherwise awkward problem of choosing subspace count/dimensions, and the ablation in App. G.4 is acknowledged."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The evaluation omits the most obvious supervised upper-bound baseline: DAS / distributed alignment search (Geiger et al. 2024), which is repeatedly cited as the closest prior method. Without it, readers cannot tell whether NDM approaches supervised subspace-finding quality on the very circuits (IOI, greater-than) where DAS-style methods have published results, nor how much is lost by going unsupervised.",
+      "suggested_fix": "Add a DAS (or boundless DAS) supervised baseline on Tests 1–5 as a soft ceiling, and clearly frame NDM's gap to it as the 'unsupervision tax'; this would strengthen rather than weaken the paper."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin. Table 1 reports point estimates of Gini coefficients with no confidence intervals, seed variance, or significance tests, and the 2B knowledge-routing result (Fig. 5) is presented on a single layer / single subspace index per model with no report of variability across NDM training seeds or across layers. Since NDM training involves nearest-neighbor optimization over a learned orthogonal matrix, seed sensitivity is a live concern.",
+      "suggested_fix": "Rerun NDM with ≥3 seeds and report mean ± std on all Gini numbers and on the Param/Context patching effects; add a bootstrap CI or a paired test vs. the strongest baseline column-by-column."
+    },
+    {
+      "severity": "major",
+      "issue": "The Gini-coefficient metric is unconventional in ML and the >0.6 'satisfactory' threshold is calibrated only qualitatively in App. D.4. Because Gini is sensitive to the number of bins (subspaces), the [d1,…,dS] configuration is itself a per-method choice — baselines are forced to use NDM's configuration, which could bias the comparison in either direction and is not obviously fair.",
+      "suggested_fix": "Report an alternative concentration metric (e.g., top-1 mass of patching effect, entropy, or effective number of subspaces) alongside Gini; and add a robustness check where each baseline uses its own most-favorable dimension configuration."
+    },
+    {
+      "severity": "major",
+      "issue": "The qualitative interpretation pipeline (Fig. 2, 3) depends on InversionView-style preimage search from prior work of the (anonymized) authors, applied here to subspaces with only an appendix-level justification. Because interpretability claims — 'current token', 'prior token', 'topic' — carry most of the paper's narrative weight, the absence of blinded human evaluation or automated interpretability scoring means these claims are essentially anecdotal.",
+      "suggested_fix": "Add a small blinded rater study, or an automated interpretability metric (e.g., predicting the labeled attribute from a held-out subspace projection with a linear probe) across many subspaces, so consistency claims ('always encodes current token') are quantified rather than illustrated with cherry-picked examples."
+    },
+    {
+      "severity": "minor",
+      "issue": "The prose is often dense and grammatically rough (e.g., missing spaces between words, run-on sentences in Sections 2–3), and key equations (Eq. 2–4) are typeset in a way that makes the nearest-neighbor argmin and the objective hard to parse at first read. The main algorithm is deferred to the appendix.",
+      "suggested_fix": "Tighten Sections 2 and 3, move a compact pseudocode block for Algorithm 1 into the main text, and clean up equation typesetting so the objective is legible without cross-referencing the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning is compressed into a single paragraph in the Discussion and does not explicitly contrast NDM's guarantees (or lack thereof) with SAE-based decompositions, PCA/ICA-style unsupervised probes, and DAS — despite all three being natural competitors. The Engels et al. multi-dimensional feature hypothesis is invoked but not really engaged with beyond a sentence.",
+      "suggested_fix": "Add a dedicated Related Work section with an explicit comparison table (unit type, supervision, input-dependence, causal validation) situating NDM against SAEs, DAS, PCA/ICA, and feature clustering."
+    },
+    {
+      "severity": "minor",
+      "issue": "Calibration: some abstract claims — 'variables used by the model', 'input-independent circuits', 'better fundamental units to build circuits' — outrun the evidence, which is essentially concentration of patching effect in a few well-chosen cases. The paper does mention limitations honestly at the end, but the framing in Introduction/Discussion still reads stronger than the results warrant.",
+      "suggested_fix": "Soften forward-looking framing about 'subspace circuits' and explicitly note that circuit-level composability across layers via NDM subspaces is claimed but not demonstrated in this paper."
+    }
+  ],
+  "questions_for_authors": [
+    "How does NDM compare against DAS (or Boundless DAS) supervised at the exact target variables of Tests 1–5? What fraction of the supervised Gini does NDM recover?",
+    "How stable are the reported Gini values (Table 1) and the 2B knowledge-routing dissociation (Fig. 5) across NDM training seeds and across nearby layers? Does the identity of the 'parametric' vs. 'context' subspace remain the same, or only its existence?",
+    "How was the MI merge threshold chosen, and how sensitive are downstream results (both Table 1 and Fig. 5) to that threshold and to the initial small-subspace size (32)?",
+    "Why is Gini computed over 'effects normalized by variance' — could a subspace with high variance but no causal role be artificially deflated (or inflated)? What does an oracle upper bound look like on this metric?",
+    "Does the KSG-estimated MI actually decrease monotonically during training on real language-model activations, and how does that curve compare between NDM and the random-orthogonal baseline?",
+    "For the qualitative subspace labels (current token / prior token / position / topic), can you provide a quantitative check — e.g., a linear probe accuracy for each labeled attribute in each subspace vs. its complement?",
+    "Why does NDM underperform 'Feature' clustering on some individual test columns (e.g., test 3-Vars, test 4-ds) despite winning on average? What determines when SAE-feature clustering is competitive?"
+  ],
+  "calibration_check": "Claims are mostly scoped to the evidence within each experiment, but the framing around 'variables', 'input-independent circuits', and generality to large models is somewhat over-projected relative to the two 2B checkpoints and single-layer analyses actually presented.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Unsupervised decomposition of representation space into causally meaningful subspaces would be a genuinely useful primitive for interpretability, and the 2B knowledge-routing dissociation is the kind of result the subfield cares about."
+    },
+    "novelty": {
+      "score": 8,
+      "justification": "Framing subspace discovery as nearest-neighbor / total-correlation minimization without any supervised causal target is a clean, original take that departs meaningfully from DAS-style methods and SAE clustering."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Toy validation is clean and the causal-intervention design is sound, but key methodological choices (Gini threshold, dimension configuration reused across baselines, single-layer 2B analyses) leave room for subtle bias in favor of the proposed method."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seed variance, no error bars, no significance tests on Table 1 or Fig. 5; given that NDM trains an orthogonal matrix with a nonconvex objective, this is a real gap."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations section is honest about interpretability failures and compute constraints, but the introduction and 'subspace circuits' framing outrun the actual demonstrations."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Core intuition (Fig. 1b) is well conveyed, but the prose has frequent typographical/spacing issues, equations are awkwardly typeset, and the main algorithm is offloaded to the appendix."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard sections are present, but Related Work is folded into Discussion at the end rather than positioned upfront, and much load-bearing detail lives in appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Method, hyperparameters, datasets (MiniPile, IOI, greater-than, RAVEL), and models are named and the algorithm is described; MI-threshold sensitivity and seed protocol are the main gaps rather than the redacted links."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "The Related Work paragraph enumerates prior subspace findings but does not sharply contrast NDM against DAS, SAEs, or classical unsupervised decompositions (PCA/ICA) as competitors, and lacks a positioning table."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From the captions, figures directly serve their claims — Fig. 1a/d shows recovery of block structure, Fig. 3 illustrates per-subspace preimages, and Fig. 5 makes the dissociation immediately visible."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Coverage spans a toy model, GPT-2 Small on two circuits, and two 2B models — respectable, but each 2B result is essentially one layer / one prompt template, so claims of general applicability lean on limited evidence."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: original idea, sensible empirical story, but missing DAS baseline, weak statistical reporting, and heavy reliance on qualitative preimage interpretation keep it from being a clear accept."
+    }
+  },
+  "publishability_probability": 0.5
+}

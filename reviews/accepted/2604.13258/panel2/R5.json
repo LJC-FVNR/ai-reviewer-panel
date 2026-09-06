@@ -1,0 +1,110 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a principled three-component framework (causal attention-value flow, Hessian-based curvature, KL-divergence under masking) for token attribution in decoder-only LLMs, addressing a real and important gap. The high-level design is motivated and the ablations confirm each component's contribution. However, the reported performance margins are implausibly large (Soft-NC ~10× the next-best gradient methods and ~2× the next-best recent method), the flagship evaluation metric (DSA) is both author-designed and evaluated on an author-curated dataset with no independent validation, ReAgent appears to be omitted from two of three model blocks in Table 3 with no explanation, and no runtime/memory comparison against baselines is provided. These issues must be resolved before the work can be accepted.",
+  "strengths": [
+    "Addresses a genuine and under-served problem: most attribution methods are designed for encoder architectures, and faithfully attributing decoder-only autoregressive generation is non-trivial.",
+    "The three-component design is well-motivated: causal gating via attention rollout enforces decoder causal masking, Hessian-via-HVP captures second-order effects missed by gradient methods, and KL-divergence under masking provides an information-theoretic anchor.",
+    "Ablation studies (Figure 2) isolate the contribution of each component, and the six-configuration design (full, each singleton, no-gating, uniform-gating) is thorough.",
+    "Robustness evaluation over a grid of decoding hyperparameters (temperature, top-p, top-k, repetition penalty) is a practically important stress test that is often absent from attribution papers.",
+    "A broad and recent set of baselines (ContextCite, TDD, PML, ReAgent, SEA-CoT, Progressive Inference, fAML, IG, Attention Rollout) is included, spanning sentence-level surrogates, hidden-state projection, and gradient approaches."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Performance margins are implausibly large and warrant independent verification. HETA achieves Soft-NC of 10.3 on GPT-J/LongRA while the next-best reported method (SEA-CoT ~1.54, ReAgent not shown for this model block) is roughly 6–7× lower. Improvements of this magnitude on a well-studied metric are extraordinary and must be accompanied by statistical significance tests, analysis of metric saturation, error analysis, and ideally a replication by independent code. The current report of 'std < ±0.06 over 3 runs' is insufficient to establish credibility at this scale.",
+      "suggested_fix": "Report two-sided paired t-tests or Wilcoxon tests against the strongest baseline. Provide a breakdown by example difficulty or length to show where the gap originates. Share full per-instance score distributions, not just means."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric is both designed by the authors and evaluated on an author-curated dataset, and HETA wins by a large margin (4.80–5.10 vs. ReAgent 3.50–3.78). This circular evaluation design—where the metric operationalizes exactly the properties that HETA is designed to optimize (causal gating toward a specific segment)—makes it impossible to distinguish genuine improvement from metric overfitting. The annotation pipeline also uses 'GPT-5 Thinking' as a gold annotator, which is an unconventional choice that requires justification.",
+      "suggested_fix": "Validate DSA on a held-out split curated by annotators unaffiliated with the authors. Report inter-annotator agreement between human annotators, not just between two AI systems. Consider adapting an existing controlled benchmark (e.g., ERASER, FEVER evidence spans) as an independent validation."
+    },
+    {
+      "severity": "major",
+      "issue": "ReAgent appears to be absent from the GPT-J and Phi-3 blocks of Table 3, yet it is present for LLaMA-3.1. In Table 1 (DSA), ReAgent is the second-strongest baseline. If ReAgent was evaluated on all models for Table 1 but excluded from Table 3 for two model blocks, this constitutes selective reporting that inflates HETA's apparent dominance.",
+      "suggested_fix": "Report ReAgent results for all model–dataset combinations in Table 3. If ReAgent is missing due to a technical failure (e.g., OOM), state this explicitly and report the failure mode."
+    },
+    {
+      "severity": "major",
+      "issue": "No wall-clock runtime or peak memory comparison against baselines is provided in the main paper, only a qualitative note that HETA 'incurs higher runtime.' For a method whose core novelty includes Hessian-vector products (even low-rank), this omission is critical: if HETA is 10–100× slower than ReAgent or SEA-CoT, the practical contribution is substantially narrowed.",
+      "suggested_fix": "Add a Table comparing per-sample attribution time and peak GPU memory for all baselines and HETA variants (full, LR, LR+WIN, LS) at the evaluated sequence lengths, on the same hardware."
+    },
+    {
+      "severity": "major",
+      "issue": "Qwen2.5-3B results are deferred to the appendix 'due to space constraints' despite being introduced as one of four evaluation models. If results were consistent, there is no reason to relegate them; if they are weaker, this selective demotion introduces reporting bias.",
+      "suggested_fix": "Include Qwen2.5-3B in all main-text tables, or provide a clear quantitative summary in the main text and explain exactly what pattern differs from the other three models."
+    },
+    {
+      "severity": "minor",
+      "issue": "The combination weights β and γ are fixed at 0.5 throughout all experiments with no sensitivity analysis. If performance is highly sensitive to these hyperparameters, the method may require per-dataset tuning, undermining claimed robustness.",
+      "suggested_fix": "Add a 2D grid search over (β, γ) on at least one model–dataset pair and report the sensitivity; a contour plot would suffice."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DSA formula as stated in the text is ambiguous. The formal definition reads 'DSA = Σ_{i∈S_SciQ} ss_i − Σ_{j∈S_NarrQA} fs_j' but then immediately states 'DSA = Σ_{j∈S_NarrQA} fs_j' as a standalone equation, creating a contradiction. The sets S_NarrQA and S_SciQ are described as 'model-selected important token indices,' which conflates the attribution output with the evaluation input.",
+      "suggested_fix": "Rewrite the DSA definition with a single, unambiguous equation. Clarify whether S_NarrQA and S_SciQ are fixed annotation sets or model-selected sets, and resolve the definitional inconsistency."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide per-model, per-dataset runtime (seconds per sample) and peak GPU memory for HETA and the top-3 baselines (ReAgent, SEA-CoT, Progressive Inference) at sequence length 512?",
+    "Why is ReAgent absent from the GPT-J and Phi-3 blocks of Table 3? If it was evaluated, please include it; if not, please explain why.",
+    "The DSA formula is stated twice with conflicting forms. Can you provide the single definitive mathematical definition, clarify whether the sets are annotation-fixed or model-selected, and confirm that the reported scores are computed from this definition?",
+    "How sensitive are the Soft-NC and DSA scores to the choice of β and γ? Were these hyperparameters tuned on a validation set, or fixed a priori?",
+    "For the curated dataset annotations, 'GPT-5 Thinking' is listed as one of two annotators. What version/API is used, and why is a second AI system treated as a substitute for human gold labels? Have any human spot-checks been performed?",
+    "The Hutchinson estimator uses m random Rademacher vectors. What value of m was used in practice, and how does attribution quality degrade with smaller m (e.g., m=1 vs. m=10 vs. m=50)?",
+    "HETA uses a causal gate MT that restricts credit to tokens with causal paths to the target. How is this gate computed for the LLaMA-3.1-70B model where second-order terms are only computed in the last 6 layers — does the gate still span all layers?"
+  ],
+  "calibration_check": "The claim to 'establish a new standard for interpretability in autoregressive language models' is overclaimed relative to evidence gathered primarily on the authors' own dataset and metric; the main-benchmark results on LongRA, TellMeWhy, and WikiBio are more credibly scoped, though the magnitude of those results also requires independent verification.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Decoder-only attribution is an underserved problem and the combination of causal gating, Hessian curvature, and KL divergence is a meaningful step, but the contribution's impact is currently undermined by evaluation concerns that prevent confident acceptance of the claimed gains."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Each individual component (attention rollout, Hessian-vector products, KL under masking) exists in the prior literature; the novelty lies in their integration under a causal-gating formalism for autoregressive models, which is a genuine but incremental combination."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method derivation is sound and the ablation design is appropriate, but the implausibly large reported margins, the absence of significance testing, and the potential omission of a strong baseline (ReAgent) from two model blocks weaken the claim–evidence link significantly."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Three seeds with std<0.06/0.2 is inadequate to establish credibility for margins as large as 6–7× over many baselines; no significance tests are reported, and the hyperparameter grid for β/γ is never explored."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper claims to 'establish a new standard' and uses an author-designed metric on an author-curated dataset to demonstrate overwhelming superiority, without adequately flagging the circularity or the missing runtime costs as limiting factors."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall narrative is readable and the method section is reasonably precise, but the DSA definition is stated twice with contradictory forms, and Table 3 formatting (missing ReAgent rows, merged cell values) creates confusion."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Abstract, Introduction, Motivation, Background, Method, Experiments, Related Work, Conclusion) at appropriate ICLR length, with ablations and robustness analysis clearly separated."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Model identifiers, hardware, batch sizes, sequence lengths, and hyperparameters (β, γ, rank, window) are specified, but the Hutchinson sample count m is not given in the main text, the DSA formula is inconsistent, and key algorithmic details (full procedure) are deferred to an unavailable appendix."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of gradient, attention, and recent generative attribution methods is adequate and the positioning of HETA against ContextCite, TDD, PML, and ReAgent is specific, but mechanistic interpretability and influence function literature receive only superficial treatment."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe informative content—ablation bar plots (Figure 2), robustness comparisons and noise sensitivity (Figure 3), and a pipeline overview (Figure 1)—but Figure 3(d) appears to duplicate Figure 2(d) content (both show 'input importance distributions for a generative task'), suggesting a possible error in caption assignment."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four models of varying scale is reasonable in principle, but one model's results are deferred to the appendix, ReAgent appears absent from two of three model blocks in Table 3, and no runtime analysis contextualizes the computational trade-off against the broad baseline set."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The core idea is sound and the problem is important, but the implausibly large margins, circular self-evaluation, potential selective baseline reporting, and missing computational costs constitute substantive scientific deficiencies that require major additional experiments and honest disclosure before this work meets the ICLR acceptance bar."
+    }
+  },
+  "publishability_probability": 0.15
+}

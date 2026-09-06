@@ -1,0 +1,127 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a three-component attribution score for decoder-only LMs that combines target-conditioned attention rollout, Hessian-vector-product sensitivity, and KL under token masking. The framing is sensible and the paper addresses a real gap (attribution for autoregressive generation), but the empirical case is undermined by unusually large and clean margins over every baseline, an author-introduced alignment metric (DSA) whose definition appears internally inconsistent, and a lack of statistical significance testing. With tighter experimental methodology and honest scoping, this could be a solid contribution; as written the evidence does not support the strength of the claims.",
+  "strengths": [
+    "Well-motivated critique of first-order and pure-attention attribution in decoder-only models, including a clear worked argument for why gradients can miss finite-perturbation effects.",
+    "The three-component design (causal gate via attention rollout, second-order sensitivity via HVPs, information contribution via KL) is a reasonable synthesis, and the causal-gate restriction to paths terminating at the target position is architecturally appropriate for decoder-only models.",
+    "Evaluation spans four model families / scales (GPT-J 6B, Phi-3-Medium 14B, LLaMA-3.1 70B, Qwen2.5 3B) and three public benchmarks plus a new curated set, which is broader than typical attribution papers.",
+    "Practical scalability discussion is included: low-rank HVP, windowing, and last-layer-only sampling for the 70B model, with reported hyperparameters (rank 64, 512 windows with 50% overlap).",
+    "Ablations cover each component (Transition-only, Hessian-only, KL-only, no gating, uniform gating), which is the right decomposition for the proposed score.",
+    "Robustness section evaluates the right things in principle: Gaussian input perturbation, active/passive paraphrase stability, and decoding-hyperparameter sweeps."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric definition is internally inconsistent. The text states attributions are normalized so 'the total mass over the paragraph sums to one' and DSA is a difference of two such masses, which bounds DSA in [-1, 1]. Yet reported DSA values reach 4.80–5.10 for HETA and range down to -0.52 for baselines. Either the normalization, the definition, or the reported numbers are wrong, and this is the headline alignment table (Table 1).",
+      "suggested_fix": "Restate the DSA definition precisely (are the ss_i / fs_i averaged, summed, scaled by |S|, or unnormalized log-mass ratios?), and either reconcile the reported values with a bounded metric or drop the normalization claim. Report per-instance distributions, not just means."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Reported margins over baselines are implausibly large and uniform. On Table 3 HETA reports Soft-NC of 10.3 vs ~3.6 for the next best (>2.8x), across every model and dataset; on Table 2 HETA is <1% variability under decoding sweeps while every one of nine baselines is 2–5%. With std<0.2 or <0.06 claimed, this magnitude of separation should be trivially statistically significant, yet no paired significance tests, confidence intervals, or per-seed distributions are shown. Uniform dominance across four architectures × three datasets × three metrics × ~9 baselines with tiny variance is a red flag that warrants direct scrutiny of the evaluation pipeline.",
+      "suggested_fix": "Add paired significance tests (bootstrap or Wilcoxon) per (model, dataset, metric), report full per-seed spreads, and audit whether baselines were tuned/normalized on the same footing as HETA (e.g., same tokenization, same target-token conditioning, same masking scheme for KL where applicable). Consider whether HETA and baselines are being scored on comparable score scales for Soft-NC/Soft-NS."
+    },
+    {
+      "severity": "major",
+      "issue": "Ground-truth alignment labels are produced by GPT-4o and 'GPT-5 Thinking' with reported F1=0.91 / κ=0.89 inter-annotator agreement, then the paper's own method (which uses KL over model output distributions) is scored against those LLM-produced labels. This creates a plausible circularity: methods whose scoring signal is closer to next-token-distribution behavior of similarly trained LLMs will look better against LLM-generated 'gold' spans, independent of true causal faithfulness.",
+      "suggested_fix": "Include a non-trivial subset with human annotation, and report DSA / F1 against human labels. Report agreement between GPT annotators and humans, not just between the two GPT annotators."
+    },
+    {
+      "severity": "major",
+      "issue": "The core method is an unweighted combination of three existing ideas (attention rollout, HVP-based sensitivity, KL under masking), each of which appears in prior work the paper itself cites (Abnar & Zuidema; Dhamdhere; ReAgent-style masking). β=γ=0.5 is used throughout with no sensitivity analysis over the weights, and no theoretical justification for the specific product-of-gate-times-(β·S+γ·I) form. This weakens both the novelty and the rigor claims.",
+      "suggested_fix": "Provide a sweep over β, γ; motivate the multiplicative gate × additive (S,I) form (why not additive gating, why not multiplicative S·I?); and delineate more sharply what is new relative to ReAgent + attention-rollout + HVP saliency."
+    },
+    {
+      "severity": "major",
+      "issue": "Hessian tractability at 70B is under-specified. The paper says second-order terms are computed 'only in the last six layers' for LLaMA-3.1-70B and uses rank-64 blockwise low-rank plus Hutchinson HVPs, but does not report the number of samples m used in practice, the variance of the Hutchinson estimator, memory footprint, or wall-clock for the 70B configuration. It also does not compare 'full HETA' vs the low-rank variant on the 70B model, so it is unclear whether Table 3's LLaMA numbers reflect the full method.",
+      "suggested_fix": "Report m, wall-clock, peak memory per (model, config); include HETA vs HETA-LR+WIN vs HETA-LS head-to-head on at least one model at each scale; explicitly state which variant produced each row of Tables 1–3."
+    },
+    {
+      "severity": "major",
+      "issue": "Faithfulness is measured almost entirely with perturbation-family metrics (Soft-NC, Soft-NS) that reward methods whose top-ranked tokens change the output distribution when removed — which is essentially what HETA's KL component directly optimizes. This is a well-known evaluator/attributor coupling problem and inflates apparent gains.",
+      "suggested_fix": "Include at least one faithfulness metric whose objective is not aligned with any HETA component (e.g., sufficiency/comprehensiveness with hard deletions, counterfactual generation faithfulness, or a downstream-task fidelity check), and discuss the coupling explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'Peering' baseline is described as matching hidden states of the generated answer token to context tokens; but on the curated dataset the attribution is computed 'with respect to this onset token' — it is unclear whether all baselines were run in exactly this next-token-onset regime, or whether some were adapted more heavily than others. Fair-baselines documentation is thin.",
+      "suggested_fix": "Give a per-baseline description of exactly what target/onset was used, any adaptation from encoder-based defaults, and whether hyperparameters (e.g., IG steps, ContextCite ablation count) were tuned per baseline or taken from defaults."
+    },
+    {
+      "severity": "minor",
+      "issue": "The conclusion notes higher runtime/memory on long texts but the main body does not quantify it. Given HVPs across all layers for smaller models, this is likely a real cost, and readers cannot judge the compute/quality tradeoff.",
+      "suggested_fix": "Add a compute table (tokens/sec, GPU-hours per instance) for each variant and each model."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work discusses generative-attribution methods (ContextCite, TDD, Peering, ReAgent) but omits recent perturbation-based causal attribution (e.g., counterfactual token replacement, contrastive explanations for generation) and Shapley-for-LLM work, which are the most direct competitors on faithfulness.",
+      "suggested_fix": "Broaden the related work and, where feasible, add at least one of these as a baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: the extracted equations are mangled (spacing, indices), the DSA formula in prose does not match the metric-normalization sentence, and 'Soft-NS < 0' is treated as bad without explaining what negative values mean physically. Even allowing for extraction artifacts, several formulas need cleanup.",
+      "suggested_fix": "Camera-ready pass on notation; explicitly state the range and interpretation of every metric."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the exact definition of DSA, including per-instance normalization, and what is its theoretical range? How do values above 1 arise if 'the total mass over the paragraph sums to one'?",
+    "Do you have paired significance tests (per instance, per seed) supporting the >2× Soft-NC gaps in Table 3? Can you show per-instance score distributions rather than means with tiny std?",
+    "For the LLaMA-3.1-70B rows in Tables 1–3, which HETA variant was used (full, LR, LR+WIN, LS)? Have you compared full vs LR+WIN on any 70B subset?",
+    "How sensitive are the reported numbers to β and γ? What happens at β=1,γ=0 and β=0,γ=1 (i.e., are these already captured by the 'Hessian Only' and 'KL Only' ablations, and if so why is the full model so much better)?",
+    "Baselines like ContextCite and ReAgent are designed for sentence- or span-level attribution; how were they adapted to token-level attribution on the curated dataset, and are those adaptations disclosed?",
+    "Given that Soft-NC/Soft-NS are perturbation-based and the KL component directly measures the same kind of perturbation effect, do you have a faithfulness metric that is not aligned with any HETA component?",
+    "GPT-4o and 'GPT-5 Thinking' are used as annotators; do you have human validation of these labels on a subset, and what is human–LLM agreement (not just LLM–LLM)?",
+    "How does HETA behave when the true evidence tokens genuinely have zero causal path in the attention rollout (e.g., late-layer copy heads override earlier structure)? The gate can zero out contribution regardless of the S and I terms."
+  ],
+  "calibration_check": "Claims of 'new state-of-the-art' and 'remarkable stability' are stronger than the evidence supports: the largest gains are on an author-introduced metric whose definition appears inconsistent, and the perturbation-based faithfulness metrics are evaluator-aligned with one of HETA's own terms.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LMs is a live and important subarea, but the paper does not clearly demonstrate that HETA changes practice beyond adding another combined-score method; impact depends on the empirical claims holding up."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "The three ingredients (attention rollout, HVP sensitivity, KL under masking) are each drawn from prior work the paper cites; the contribution is the specific combination and the target-conditioned gate, which is incremental rather than a new mechanism."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method is described at a workable level, but the DSA metric definition is inconsistent with its reported values, the faithfulness evaluator overlaps with the method's own KL term, and the Hessian variant used per experiment is not consistently disclosed."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Very large uniform margins over nine baselines with std<0.2 and no paired significance tests, confidence intervals, or per-instance distributions; only three seeds; the reported stability numbers (all baselines 2–5%, HETA <1%) are suspiciously clean and warrant scrutiny."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Language ('new standard,' 'state-of-the-art,' 'remarkable stability') outruns the evidence, especially since the strongest gains are on an author-introduced metric and on evaluator-aligned faithfulness scores."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The motivation and high-level pipeline are readable, but the core equations are typographically rough, the DSA formula in prose does not match its stated normalization, and per-experiment variant choices are scattered across body and appendix."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard ICLR structure is present (motivation, background, method, experiments, ablations, robustness, related work, conclusion/limitations), and length appears reasonable."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters, HVP scheme, low-rank rank, window size, and model list are given, but the number of Hutchinson samples m, the exact HETA variant per row, and the baseline adaptation details are underspecified; not judged on missing link (removed for anonymization)."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attribution literature and of recent generative-attribution methods is reasonable; more recent Shapley-for-LLM and counterfactual-token methods are absent."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe standard ablation bars and importance-distribution visualizations that plausibly support the claims; no display item breaks new communicative ground."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models across two orders of magnitude and three public benchmarks plus a curated set is broad; the generality is partly offset by the curated set and DSA metric being author-designed and by evaluator/attributor overlap."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Interesting direction and a reasonable methodological synthesis, but multiple substantive concerns (metric consistency, evaluator coupling, missing significance tests, implausibly uniform margins) put this below the ICLR bar as written; borderline reject leaning toward major revision."
+    }
+  },
+  "publishability_probability": 0.17
+}

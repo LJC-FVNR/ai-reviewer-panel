@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents the first formal robustness analysis of Differential Attention (DA), arguing that its subtractive structure (A1 – λA2) induces negative gradient alignment, amplifying local sensitivity relative to standard attention — a phenomenon the authors call the 'Fragile Principle.' The theoretical framework (Lemmas 1–2, Theorems 1–4) is clean and the depth-dependent crossover result is a genuine additional contribution. However, the empirical evidence is concentrated at toy scale (CIFAR-10/100 on lightweight ViTs trained from scratch), the most ecologically valid experiments (pretrained CLIP/DiffCLIP on ImageNet) produce equivocal or contradictory results that significantly undercut the main claim, and the statistical treatment is inadequate for a venue like ICLR (no error bars, no seed variance, no significance tests). The central mechanistic premise — that DA training structurally encourages negative gradient alignment — is stated as intuition and validated empirically but not derived from any formal training dynamics, which weakens the theoretical argument.",
+  "strengths": [
+    "First formal theoretical treatment of DA's adversarial robustness, filling a clear gap given DA's adoption in safety-critical applications; the gradient alignment decomposition (Lemma 1, Theorem 1) is mathematically clean and the argumentation is self-contained.",
+    "The depth-dependent crossover analysis (Section 4.2, Corollary 1) is a non-trivial additional result that explains both the fragility and the partial recovery at depth, producing testable predictions that are confirmed in Figure 3.",
+    "The λ ablation (Table 1) provides useful actionable insight: ASR peaks near λ = 0.8 and falls off at higher values, suggesting that the subtraction strength is a tunable robustness knob, which practitioners can directly exploit.",
+    "The paper is clearly written and honestly structured; the limitations section is unusually candid about local linearization and layer isolation assumptions, and the discussion correctly frames the depth crossover as a complication rather than a cure.",
+    "Three complementary empirical metrics (ASR, gradient alignment frequency, local Lipschitz estimates) triangulate the theoretical claims from different angles, strengthening evidentiary coherence on the CIFAR-scale experiments."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The most ecologically valid experiments contradict or strongly weaken the main claim. Figure 2 caption explicitly states that the ASR gap 'narrows on large-scale ones (ImageNet),' and the text admits that under adversarial patch attacks on ImageNet, 'CLIP marginally outperforms DiffCLIP.' The primary practical motivation for the paper is safety-critical applications of large pretrained models; the evidence at that scale is mixed or negative, yet the abstract and introduction present structural fragility as essentially universal.",
+      "suggested_fix": "Either (a) conduct controlled ViT/DiffViT experiments at ImageNet scale to test whether the CIFAR trend holds, or (b) substantially revise the framing: the fragility claim should be scoped explicitly to small-class / low-diversity data regimes, with the ImageNet attenuation explained mechanistically (e.g., increased class diversity dilutes negative alignment). A figure comparing alignment frequency across dataset scales would directly address this."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No statistical rigor: the paper reports single-run point estimates throughout. There are no error bars, no seed variance, no confidence intervals, and no significance tests for any comparison. Given that the ASR differences on ImageNet are described as 'marginal' and the crossover depth is claimed to vary with scale, it is impossible to judge whether any reported difference is larger than experimental noise.",
+      "suggested_fix": "Re-run all ViT/DiffViT experiments with at least 3–5 seeds and report mean ± std. For the Lipschitz estimation procedure, report the number of noise samples drawn and the resulting variance. Apply paired statistical tests for the ASR comparisons where differences are small."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that 'DA training structurally encourages negative gradient alignment' is the load-bearing premise of the entire theoretical argument, but it is nowhere formally derived from properties of the DA training objective. It is stated as intuition (Section 4.1: 'the model is implicitly encouraged…') and then confirmed empirically in Figure 5. This circular structure means the theory predicts what it assumes: the Lemmas and Theorems are vacuous unless the alignment condition is independently established or its probability formally bounded.",
+      "suggested_fix": "Either (a) prove a formal statement about the probability or expected value of cos θ under DA training (even an approximate or asymptotic argument), or (b) clearly reframe the contribution as conditional: 'if negative alignment occurs — which we empirically observe — then the following amplification bounds hold.' Option (b) requires weakening the abstract/introduction to match."
+    },
+    {
+      "severity": "major",
+      "issue": "The depth-dependent analysis introduces α(d) as an 'emergent factor' explicitly stated to be non-computable ('cannot be reduced to a deterministic function of λ'), which makes Equation 5 and Theorem 4 empirically unverifiable: the bound cannot be tested without knowing α. The crossover depth D* similarly cannot be predicted a priori.",
+      "suggested_fix": "Provide an empirical estimate of α from the experimental data (e.g., fit it from the observed Lipschitz trajectories across depth) to make the bound quantitatively meaningful. Alternatively, bound α in terms of λ and observable statistics and discuss how tight the resulting estimates are."
+    },
+    {
+      "severity": "major",
+      "issue": "Adversarial training is mentioned only in passing (Appendix D.2) and as a future direction. The natural question — whether adversarially trained DA and adversarially trained standard attention still exhibit a fragility gap — is unanswered. If AT largely eliminates the gap, the finding is of primarily theoretical interest; if AT preserves the gap, it is a serious practical concern. This comparison is essential for assessing practical significance.",
+      "suggested_fix": "Include a main-text experiment comparing adversarially trained ViT vs. DiffViT at matched ε budgets and report whether the gap persists. Even a small-scale CIFAR-10 result would substantially strengthen or qualify the claims about safety-critical deployment."
+    },
+    {
+      "severity": "minor",
+      "issue": "Model architecture details for the custom ViT/DiffViT are insufficiently specified: 'lightweight transformer with D-layer Attention or Differential Attention module' gives no patch size, embedding dimension, number of heads, MLP ratio, positional encoding, or training schedule. Reproducing these experiments requires guessing multiple key parameters.",
+      "suggested_fix": "Add an architecture table (or at minimum a compact hyperparameter list) to the experimental setup section."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'Fragile Principle' is introduced as a named phenomenon but is defined inconsistently — sometimes it refers to the single-layer sensitivity amplification, sometimes to the broader claim including depth effects. Naming a conditional property (sensitivity amplification when cos θ < 0) as a 'principle' overstates its inevitability.",
+      "suggested_fix": "Scope the Fragile Principle precisely to the single-layer amplification result and use distinct terminology (e.g., 'depth-dependent crossover') for the multi-layer finding."
+    }
+  ],
+  "questions_for_authors": [
+    "The ImageNet patch-attack result (CLIP outperforms DiffCLIP) directly contradicts the Fragile Principle — what is the mechanistic explanation? Is negative alignment frequency lower on ImageNet (cf. Figure 5 which only shows CIFAR and COCO)?",
+    "How sensitive are the Lipschitz estimates in Figures 3(d) and 4 to the number of noise samples drawn? What sample size was used, and how stable are the estimates across runs?",
+    "In real Differential Transformer deployments (e.g., Ye et al. 2025), the model depth is comparable to standard Transformers (12–24 layers). Given the depth-crossover result, do the practical fragility claims survive at deployment depth, particularly at the small ε = 1/255 budget?",
+    "Can you provide a formal or semi-formal argument that DA training — as opposed to random initialization — specifically biases toward cos θ < 0? A histogram of cos θ at initialization vs. after training would help disentangle the structural vs. training-induced contributions.",
+    "For Equation 5, what values of α were estimated from the experimental data, and does the implied crossover depth D* match the empirically observed crossover in Figures 3(a)–3(b)?"
+  ],
+  "calibration_check": "The abstract and introduction present DA fragility as a structural universal, but the paper's own ImageNet results are equivocal and the depth crossover shows DA can be more robust than standard attention at small ε; the claims are systematically over-scoped relative to the evidence, especially at large scale.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Identifying a robustness trade-off in DA is practically relevant given DA's adoption in safety-critical settings, but the equivocal ImageNet results and the depth-crossover mitigant substantially limit the immediate practical impact."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The paper is demonstrably first in formally analyzing DA's adversarial robustness; the gradient alignment decomposition and depth-dependent crossover are original contributions, though the individual mathematical steps are elementary."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theoretical structure is logically consistent within its stated assumptions, but the load-bearing premise (DA training encourages negative gradient alignment) is assumed rather than derived, making the key theorems conditionally vacuous without independent support."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "All results are single-run point estimates with no error bars, no seed reporting, no confidence intervals, and no significance tests; for a venue like ICLR this is a serious deficiency, especially given the small differences reported on ImageNet."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section is candid about local linearization and layer isolation, but the abstract and introduction systematically overstate the universality of fragility given the equivocal large-scale results."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and clearly written; the theoretical framework is presented in a logical sequence and the experimental metrics are well-motivated, though minor terminological inconsistencies (e.g., scope of the Fragile Principle) slightly reduce precision."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure is followed, the paper is within a reasonable length, and all major components (theory, experiments, limitations, discussion) are present and appropriately ordered."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Attack hyperparameters and CLIP model details are reasonably specified, but the custom ViT/DiffViT architecture is incompletely described (no embedding dimension, head count, or training schedule), and the Lipschitz estimation procedure lacks sample-size details."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The related work covers Transformer robustness, Lipschitz analysis, and structural fragility adequately, but does not discuss certified robustness methods (e.g., LipFormer, randomized smoothing for ViTs) that are directly relevant to the Lipschitz discussion."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions are informative and each figure maps clearly to a theoretical claim; the λ ablation table and depth-ASR plots are particularly well-designed, though the absence of error bounds in all plots limits interpretability."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Controlled experiments cover only toy-scale CIFAR models; the large-scale pretrained experiments yield mixed results on ImageNet; adversarial training comparison is absent from the main paper; only gradient-based attacks are tested, with no evaluation against physically realizable or semantic adversarial examples."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper targets a genuine and timely gap with a clean theoretical framework and honest presentation, but the experimental evidence is insufficient in scale and statistical quality to support the strength of the fragility claims, placing it at borderline reject pending substantial revisions."
+    }
+  },
+  "publishability_probability": 0.18
+}

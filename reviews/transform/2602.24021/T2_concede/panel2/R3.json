@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free video anomaly detection framework that keeps an MLLM (InternVL3) frozen, selects discriminative attention heads via an inter-to-intra scatter ratio (RSA), and applies context-conditioned element-wise gating (HMC) to their features before a logistic-regression scorer. The method is coherent, the ablations (component, expert-selection, data-efficiency, seed-stability) are reasonably complete, and the 1%-data calibration story is appealing. However, improvements over prior tuning-free/few-parameter methods are marginal (≈0.4–0.9%) with no statistical comparison against baselines, the 'manifold rectification' framing dramatically oversells what is a FiLM-style gating operation, and several claims (SOTA, real-time, contextual-ambiguity resolution, 'tuning-free') are not well supported by the evidence.",
+  "strengths": [
+    "Clear, complete method with a sensible pipeline: gradient-free head selection (a Fisher-style separability ratio), a lightweight global+local gating controller, and a simple logistic scorer trained on only 1% of data.",
+    "Good empirical hygiene on the authors' own method: 10-seed stability analysis showing identical head selection and σ≈0.04% AUC, plus a data-scaling saturation study (1%→100% gives only +0.27% AUC).",
+    "Informative ablations isolating the value of steering (linear probing 81.33% vs full 87.15%), the GSG/LGM contributions, and expert-selection strategy (RSA vs random/positional heuristics).",
+    "Honest, appropriately scoped Limitations section acknowledging single-architecture evaluation and unisolated confounders."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Marginal gains without statistical comparison to baselines. SteerVAD (87.15/83.02) beats the nearest tuning-free competitors HiProbeVAD (86.72/82.15) and VERA (86.55/70.54) by only ~0.4% AUC / ~0.9% AP, and is below weakly-supervised VadCLIP (88.02/84.51). No error bars or significance tests are reported for the head-to-head comparison in Table 1, so the claimed superiority is not established as real.",
+      "suggested_fix": "Report mean±std over seeds for SteerVAD AND re-run/obtain variance for the closest baselines, with a significance test (e.g., paired bootstrap on AUC/AP). Temper 'new SOTA' language to 'on par with' where margins are within noise."
+    },
+    {
+      "severity": "major",
+      "issue": "Overclaiming via terminology. The core operation h'=h(1+s_global·g) is standard context-conditioned element-wise (FiLM/gating) modulation, yet it is framed as 'anisotropic manifold scaling', 'geometric rectification of representation manifolds', and backed by an invoked 'rigorous topological analysis' that lives only in an appendix. The geometric/manifold interpretation is asserted, not demonstrated.",
+      "suggested_fix": "Either provide direct evidence that the geometric framing has explanatory/predictive value beyond gating (e.g., measured manifold-separation metrics before/after, not t-SNE), or reframe the contribution in the more accurate language of learned feature gating on selected heads."
+    },
+    {
+      "severity": "major",
+      "issue": "Circular qualitative evidence. The t-SNE 'rectification' visualization (Fig 4) shows separation of features that were explicitly trained (via BCE) to separate normal/anomalous, so improved clustering is expected by construction and does not independently validate 'manifold restructuring'. t-SNE/UMAP are also known to manufacture apparent clusters.",
+      "suggested_fix": "Replace/augment with quantitative, non-circular separability measures on held-out data, and avoid drawing structural conclusions from t-SNE/UMAP geometry."
+    },
+    {
+      "severity": "minor",
+      "issue": "'Tuning-free' is a misnomer and 'real-time/single-pass' is unsupported. The HMC (GSG + K low-rank adapters) and the scorer are trained; the paper itself files SteerVAD under 'Few-Parameter Learning'. No latency/throughput numbers are given to support the real-time claim.",
+      "suggested_fix": "Use 'parameter-efficient/frozen-backbone' terminology consistently, and report inference latency/FPS and trainable-parameter counts to substantiate efficiency/real-time claims."
+    },
+    {
+      "severity": "minor",
+      "issue": "Limited generality evidence relative to the 'new paradigm/direction' framing: only two datasets (UCF-Crime, XD-Violence) and a single backbone (InternVL3). Missing details (rank r, d_hidden, exact token/positions from which LAE features are pooled, how 1% frame-level labels are used).",
+      "suggested_fix": "Add at least one more dataset (e.g., ShanghaiTech) and a second MLLM backbone to support cross-architecture claims; specify the missing hyperparameters and feature-extraction positions."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the zero-shot AUC/AP of the frozen InternVL3 backbone itself (no steering), and what are the trainable parameter counts and per-video inference latency?",
+    "Are the improvements over HiProbeVAD/VERA statistically significant? Please report variance and a significance test for the Table 1 comparisons.",
+    "How is the RSA scatter ratio computed per head — over which token(s)/pooling, and how do 1% frame-level labels map to segment features during calibration?",
+    "Given identical LAE selection across all 10 seeds on ~16-video subsets, how sensitive is selection to the specific videos sampled (not just the seed for classifier init)?",
+    "Does the 'geometric/manifold' interpretation make any prediction that plain context-conditioned gating would not, and can you test it?"
+  ],
+  "calibration_check": "Claims are only partially scoped to the evidence: the Limitations section is honest, but the main text overclaims SOTA on sub-noise margins, dresses simple gating as 'manifold rectification', and asserts real-time/paradigm-level generality not backed by latency data, additional datasets, or backbones.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A data-efficient frozen-MLLM approach to VAD is relevant, but gains over existing tuning-free methods are marginal and the work is unlikely to change practice as presented."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Components are largely known—a Fisher-style separability ratio for head selection plus FiLM-like context-conditioned gating—recombined for VAD rather than a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is sound and ablations isolate steering's value, but the central geometric/manifold claims are asserted rather than validated, and key evidence (t-SNE) is circular."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Strong seed-stability and data-scaling analyses for the authors' own method, but no error bars or significance tests for the head-to-head baseline comparisons where margins are ~0.4–0.9%."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "A candid limitations section is undercut by SOTA claims on sub-noise margins, 'tuning-free' mislabeling, unsupported real-time claims, and grandiose manifold/topology language over a simple gating op."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method and objective are stated clearly enough to follow despite garbled extraction, though ornate 'geometric' phrasing sometimes obscures the underlying simplicity."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Conventional and complete structure (Abstract, Intro, Related Work, Method, Experiments, Ablations, Conclusion, Limitations) at reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, K/F, optimizer, lr, epochs, batch, λreg, σg are given, but rank r, hidden dims, exact feature-extraction positions, and calibration-label handling are missing and appendices are unavailable."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Traditional VAD, MLLM-based VAD, and mechanistic-interpretability/model-editing lines are covered and the gap is delineated, though positioning against representation-engineering/steering is thin given the method's closeness to it."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe a clear schematic (Fig 1/3) and visualizations (Fig 2/4), but the t-SNE/UMAP evidence is circular/qualitative and the tables carry most of the actual support."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two datasets and a single backbone support broad 'new paradigm/direction' and generality claims, limiting the demonstrated breadth."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, complete but incremental contribution with marginal, statistically unverified gains and notable overclaiming; borderline reject pending stronger evidence."
+    }
+  },
+  "publishability_probability": 0.32
+}

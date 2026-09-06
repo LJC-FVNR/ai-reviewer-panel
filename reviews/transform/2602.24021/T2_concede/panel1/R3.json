@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free (frozen-MLLM) video anomaly detection framework that selects discriminative attention heads via a gradient-free separability ratio (RSA), then applies context-conditioned element-wise scaling (HMC: a global gate + low-rank local adapters) to those head features before a logistic-regression scorer. The method is data-efficient (1% calibration data) and reports competitive numbers among tuning-free VAD methods on UCF-Crime and XD-Violence, with reasonable ablations and a stability analysis. However, the gains over prior tuning-free work are marginal and reported without significance testing, the 'manifold steering' framing substantially overstates what is mechanically a learned per-dimension gating adapter, and generality is tested on only two datasets and a single backbone.",
+  "strengths": [
+    "Clear, well-motivated framing of tuning-free VAD around exploiting frozen-MLLM internals, with a concrete and lightweight pipeline (head selection + gated scaling + logistic scorer) that is computationally cheap and trains on only 1% of data.",
+    "Reasonable experimental scaffolding: component ablation (Table 2A), expert-selection ablation (Table 2B), seed-stability analysis (Table 3), data-scaling/saturation study (Table 4), and K/F hyperparameter sweep (Table 5).",
+    "The RSA head-selection idea is intuitive and clearly outperforms positional/random heuristics in the ablation, and the low-rank adapter design keeps trainable parameters small.",
+    "The abstract scopes results honestly as 'competitive,' and a limitations section is included."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Conceptual overclaiming. The paper repeatedly frames the contribution as 'steering and rectifying latent representation manifolds' and 'geometric intervention,' but the actual operation (Eq. 4) is an element-wise residual scaling h'_i = h_i(1 + s_global · g_i) with a learned gating vector, followed by logistic regression. No manifold-level analysis (topology, curvature, actual geometry of the transformation) appears in the main text; the 'manifold' language is largely rhetorical and not substantiated by the method as presented.",
+      "suggested_fix": "Either substantiate the manifold claims with rigorous analysis in the main body (e.g., quantify manifold separation/entanglement before vs. after, not just a trained t-SNE), or retitle/reframe the method as a context-conditioned attention-head gating/adapter approach to match what is actually done."
+    },
+    {
+      "severity": "major",
+      "issue": "Marginal SOTA claim without statistical support. In Table 1, SteerVAD (UCF 87.15, XD 83.02) improves over the nearest tuning-free baseline HiProbeVAD (86.72, 82.15) by only +0.43 AUC / +0.87 AP. The body asserts 'a new competitive (SOTA)' but provides no error bars, variance, or significance tests on the main comparison. Table 3's tight std (~0.04) reflects only calibration-seed variance, not full end-to-end variance across the reported comparison.",
+      "suggested_fix": "Report mean ± std over multiple full training/eval runs for SteerVAD and, where possible, for reproduced baselines; add a significance test (or at least confidence intervals) to justify claims of superiority given the small margins."
+    },
+    {
+      "severity": "major",
+      "issue": "Limited breadth for the generality claimed. The paper positions itself as a general paradigm for 'frozen MLLMs' but evaluates a single backbone (InternVL3) on two datasets, both weakly-supervised violence/surveillance benchmarks. No ShanghaiTech/other domains, no alternative MLLM backbone, so backbone-invariance and cross-domain transfer are unsupported.",
+      "suggested_fix": "Add at least one additional MLLM backbone and one additional dataset/domain to demonstrate the method is not tuned to InternVL3 + these two benchmarks."
+    },
+    {
+      "severity": "minor",
+      "issue": "Circular qualitative evidence. The t-SNE 'Original vs Rectified' visualization (Figure 4) shows separation after a transformation explicitly trained to separate the two labeled classes; improved separability is expected by construction and does not independently validate the manifold hypothesis.",
+      "suggested_fix": "Complement with a quantitative separability metric computed on held-out data, and clarify that the t-SNE is illustrative rather than evidentiary."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'tuning-free' label is in tension with training the HMC and scorer; the paper is more accurately a few-parameter-learning method (as its own Table 1 category acknowledges), yet the title/abstract emphasize 'tuning-free.'",
+      "suggested_fix": "Consistently characterize the method as few-parameter / lightweight-adapter learning on a frozen backbone, and state trainable parameter counts explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The seed-stability result (100% identical top-4 heads across 10 seeds on resampled 1% subsets, σ≈0.04% AUC) is presented as a strong robustness claim but is unusually clean; it is unclear whether the 1% subset is resampled per seed or only the training seed changes.",
+      "suggested_fix": "Clarify exactly what varies across seeds (data resampling vs. init) and report the RSA score distribution near the top-K boundary to show the margin driving the perfect match."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the end-to-end run-to-run variance of the reported Table 1 numbers (not just calibration-seed variance in Table 3)? Is the +0.43 AUC / +0.87 AP gain over HiProbeVAD statistically significant?",
+    "In the Table 3 stability analysis, is the 1% subset independently resampled for each seed, or is only the model initialization/training seed varied?",
+    "Does the method transfer to a different frozen MLLM backbone and to a different VAD dataset/domain (e.g., ShanghaiTech), or are the LAEs and gains specific to InternVL3 on these two benchmarks?",
+    "Beyond the trained t-SNE, can you provide a quantitative, held-out measure of manifold separability before vs. after rectification to support the geometric claims?",
+    "How does performance compare when the same context-conditioned gating is applied to heuristically-chosen heads vs. RSA-chosen heads under matched capacity, to isolate RSA's contribution from the gating mechanism's?"
+  ],
+  "calibration_check": "The abstract is appropriately scoped ('competitive'), but the introduction, body, and title overclaim ('SOTA', 'first to steer/reshape manifolds', 'geometric rectification') relative to marginal, significance-untested gains produced by a simple learned gating operation.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Tuning-free MLLM-based VAD is a relevant direction, but the contribution advances the state of the art only marginally and on a narrow evaluation, so impact is moderate."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Applying attention-head selection plus context-conditioned gating to VAD is a reasonable recombination of mechanistic-interpretability ideas, but the core mechanism is a lightweight adapter rather than a fundamentally new technique."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is internally coherent and ablated, but the central 'manifold steering' claim is not matched by the actual element-wise scaling operation, and key qualitative evidence (trained t-SNE) is circular."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main-table gains are sub-1-point with no error bars or significance tests; the only variance reported (Table 3) covers calibration seeds rather than full end-to-end performance variability."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The abstract is honest, but repeated 'SOTA', 'first', and 'manifold rectification' claims overstate marginal, untested gains, and the limitations section is generic boilerplate."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method and objectives are stated clearly enough to follow despite extraction artifacts, with each component defined by an equation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, ablations, conclusion, limitations) is present and well organized within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core formulas and key hyperparameters (K, F, lr, epochs, backbone) are given, but several implementation details and analyses are deferred to unavailable appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Traditional, LLM/MLLM-based, and interpretability-based lines are covered and the contribution is delineated, though positioning against the closest few-parameter tuning-free baselines could be sharper."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Tables (ablations, stability, data-efficiency, hyperparameters) are informative, but the UMAP surface rendering and the trained t-SNE separation figure are more decorative/circular than evidentiary."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Generality is claimed for 'frozen MLLMs' but supported by only one backbone and two similar benchmarks, with no cross-backbone or cross-domain evidence."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, data-efficient method with reasonable ablations but marginal, significance-untested gains, overclaimed framing, and narrow evaluation—borderline reject pending substantial added evidence."
+    }
+  },
+  "publishability_probability": 0.3
+}

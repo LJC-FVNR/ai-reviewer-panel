@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies an empirically interesting phenomenon (the PCC plateau in attention-based regressors trained with joint MSE+PCC loss) and provides a theoretical framing centered on two limitations: (i) a gradient-scale conflict between MSE and PCC terms, and (ii) a convex-hull capacity ceiling for softmax attention. It then proposes a three-part module (SRA, DATS, DNPL) and reports gains on synthetic data, three UCI tabular tasks, spatial transcriptomics, and MOSI. The framing is useful and the ablations are appropriate, but the theoretical claims are modest (the MSE decomposition and convex-hull argument are essentially textbook), several main tables lack seed/variance reporting, and the writing has substantial clarity problems; the balance places the paper below the ICLR bar as submitted.",
+  "strengths": [
+    "Identifies a concrete, previously under-examined training pathology (PCC plateau) and ties it to a specific decomposition (Prop. 2.1) that gives an interpretable narrative.",
+    "The three proposed components (SRA, DATS, DNPL) each target a specific mechanism in the analysis, and per-component ablations are reported (Table 1), which is unusually well-aligned method-to-theory.",
+    "Multi-domain evaluation (synthetic homogeneity sweep, UCI tabular, spatial transcriptomics with 3-fold ±values, MOSI) demonstrates the method is drop-in and generalizes beyond a single benchmark.",
+    "The extrapolation-beyond-convex-hull framing (Fig. 1c) is a clean geometric picture that gives the SRA design a principled motivation rather than being purely heuristic.",
+    "The 1/σ̂_y attenuation and the StopGrad-based DNPL fix are internally consistent — the fix precisely counteracts the identified attenuation without changing stationary points."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is uneven. Table 1 (UCI) and Table 2 (MOSI) appear to report point estimates without seeds/std/CIs. On MOSI the ECA-over-ALMT gains (F1 +0.008, PCC +0.023, MAE −0.026) are the kind of margins routinely erased by seed variance, and without variance reporting or significance tests the headline claim of consistent improvement is not well supported.",
+      "suggested_fix": "Report mean±std over ≥3 seeds for every model in Tables 1 and 2 (matching what Table 3 already does), and add a paired significance test or bootstrap CI for the key +ECA vs. baseline comparisons."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical contributions are more modest than the framing suggests. Proposition 2.1 (MSE = mean²+std²+2σσ̂(1−ρ)) is a standard identity and Lemma 2.1 (PCC affine-invariance) is elementary; the substantive results — the O(1/σ̂_y^{3/2}) ratio bound (Cor. 2.1) and the R/(σ₀/‖w‖) hull-radius bound (Thm. 2.2) — are useful but limited in scope. Claims like 'first rigorous theoretical analysis' and 'we prove ... for any convex aggregator' need to be scoped honestly, especially because Thm. 2.2 only applies when R < σ₀/‖w‖.",
+      "suggested_fix": "Soften priority claims, explicitly state the regime of validity for Thm. 2.2 (and what happens when the precondition fails), and either derive a tighter/more general bound or acknowledge that the analysis captures a stylized case rather than 'any' convex aggregator."
+    },
+    {
+      "severity": "major",
+      "issue": "The convex-hull limitation argument is presented as a fundamental capacity ceiling, but a linear head applied after any convex aggregator can already produce predictions outside the convex hull of scalar predictions — the bound is over the *aggregated embedding*, not the *scalar output*, and PCC is scale-invariant. Thm. 2.2 therefore constrains a quantity (embedding location) whose downstream effect on PCC depends on w, and this subtlety is glossed. It is not obvious that softmax with a well-trained w is truly capacity-limited in PCC in practice, versus optimization-limited.",
+      "suggested_fix": "Add a discussion (or experiment) that isolates capacity limitation from optimization limitation — e.g., show that even at optimum, mean-pooling+linear head cannot recover a given PCC on the synthetic data — and clarify what work Thm. 2.2 does beyond the optimization story."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage for the *method* is thin. The paper's core claim is that ECA fixes a general training pathology, yet the empirical comparisons are essentially ECA vs. vanilla softmax attention (plus a PCC-loss ablation on MOSI). There are natural competing fixes — sparsemax/entmax, temperature-annealed softmax, Spearman/CCC surrogate losses, gradient re-weighting schemes, residual/skip aggregators, MoE gating — that also break convexity or address gradient imbalance and are not compared.",
+      "suggested_fix": "Add head-to-head comparisons against at least (a) sparsemax/α-entmax, (b) a fixed high-temperature softmax, and (c) a re-weighted PCC loss without SRA/DATS, on ≥2 of the four benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "Scale and diversity of experiments is limited relative to a 'general correlation-learning failure mode' claim. Three UCI tabular datasets, one small MSA benchmark (2,199 clips), and one pathology dataset is a narrow slice; larger transformers, longer training, and standard time-series/regression benchmarks (e.g., ETT, Informer suite, larger multimodal sets) are absent, and Sec. F is referenced but not present in the main text.",
+      "suggested_fix": "Either broaden benchmarks (at minimum add a time-series regression suite and a larger multimodal or pathology dataset), or narrow the generality claim to the settings actually tested."
+    },
+    {
+      "severity": "minor",
+      "issue": "Writing quality is uneven throughout — many run-on sentences, comma splices, dropped spaces (e.g., 'Mean-Squared', 'first, and'), and awkward phrasings ('and second, therefore') that hurt readability and would ordinarily be caught in a careful revision.",
+      "suggested_fix": "Copy-edit the entire manuscript, particularly Sections 1–2, and tighten paragraph structure so each paragraph has a single thesis sentence."
+    },
+    {
+      "severity": "minor",
+      "issue": "Hyperparameter and design details for ECA (choice of γ_max, T_min, β, MLP architecture for γ_s, λ_γ, λ_PCC) are not fully specified in the body, and reproducibility depends on Section G which is not shown here.",
+      "suggested_fix": "Move a compact hyperparameter table to the main text and state search ranges and selection protocol (val split, criterion)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is thin — one paragraph on correlation losses and one on softmax expressivity — and does not engage seriously with alternative attention aggregators (sparsemax, entmax, gated attention, set transformers) whose non-convex or sparse behavior is directly relevant.",
+      "suggested_fix": "Add a paragraph explicitly positioning ECA against sparse/non-convex attention variants and CCC/Spearman-surrogate literature."
+    }
+  ],
+  "questions_for_authors": [
+    "In Table 1 and Table 2, what are the seed variances? Do the reported gains survive a paired significance test?",
+    "Can you separate the contribution of SRA from that of simply increasing attention temperature (or using sparsemax) — i.e., does the gain persist when only DATS+DNPL are used?",
+    "Theorem 2.2 assumes R < σ₀/‖w‖. How often is this precondition satisfied on the four experimental datasets, and what does the bound predict quantitatively vs. what is observed?",
+    "How is γ_s regularized in practice across datasets, and how sensitive are results to γ_max?",
+    "In the MOSI setting, ALMT+L_PCC hurts F1/MAE but ALMT+ECA improves them — is this attributable specifically to DNPL, DATS, or SRA? A per-component ablation on MOSI (analogous to Table 1) would clarify.",
+    "How does ECA compare to α-entmax / sparsemax, which also break the pure convex-combination interior constraint via zero weights and can concentrate on extreme elements?",
+    "The paper emphasizes homogeneous data as the failure regime. What happens on heterogeneous data — is there any regression in performance, or is ECA strictly Pareto-improving?"
+  ],
+  "calibration_check": "Claims are moderately over-scoped: phrases like 'first rigorous theoretical analysis', 'any convex aggregator', and 'general correlation learning failure mode' outrun the actual evidence (elementary decompositions, a bound valid only in a specific regime, four moderate-scale benchmarks), and should be tempered.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Addresses a real training pathology that matters for correlation-evaluated regression (pathology, spatial transcriptomics, affect), but the practical gains are moderate and the audience within ICLR is relatively narrow."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The framing of PCC plateau and the joint theoretical+architectural response is a fresh angle, but the individual pieces (MSE decomposition, convex-hull argument, temperature-adaptive softmax, residual/scaled aggregation) each have close analogues in prior work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The proofs sketched in the body appear correct but rely on relatively standard manipulations; Thm. 2.2's applicability regime is not carefully separated from its stated generality, and some claims about 'any convex aggregator' are stronger than the derivation warrants."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only Table 3 reports variance across folds; Tables 1 and 2 give point estimates and no significance tests, so several of the reported margins (especially on MOSI) cannot be assessed for stability."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper acknowledges some limits (e.g., convexity bound conditions), but uses strong priority language ('first rigorous', 'any convex aggregator') and does not report negatives or robustness checks that would let a reader gauge scope."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The overall arc is followable, but the prose has many run-on and mis-punctuated sentences, notation is sometimes introduced before it is used cleanly, and the theoretical motivations for each ECA component would benefit from tighter exposition."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (Intro, Theory, Method, Related Work, Experiments, Conclusion) with a coherent progression from analysis to method to evaluation."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The mathematical formulation of ECA is complete enough to reimplement, and datasets are public standard benchmarks, but hyperparameter values, MLP architecture for γ_s, and training protocols are largely relegated to unshown appendix sections."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related-work discussion is short and omits directly relevant families (sparsemax/entmax, gated/set attention, CCC/Spearman surrogate losses), which weakens positioning of the specific ECA components."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Judged from captions, the figures are informative and tightly linked to specific claims (plateau curves, gradient-ratio validation, per-fold PCC/MSE trajectories), though Figure 5 packs a lot into a single caption and the layout appears crowded."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four domains is a reasonable breadth signal, but each experiment is moderate scale, competitor coverage is thin, and the strong 'general failure mode' framing is not fully backed by the diversity of models/scales tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the paper articulates a real phenomenon and offers a coherent theory-linked fix with multi-domain evidence, but modest theoretical depth, missing seed variance in main tables, and thin baseline coverage keep it below the ICLR acceptance bar as submitted."
+    }
+  },
+  "publishability_probability": 0.32
+}

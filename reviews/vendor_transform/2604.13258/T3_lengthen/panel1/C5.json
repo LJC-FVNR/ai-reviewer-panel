@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a principled, well-motivated attribution framework for decoder-only LLMs combining target-conditioned attention rollout, Hessian-based curvature sensitivity (via scalable HVPs), and KL-divergence information loss, plus a new curated evaluation dataset. The methodology is sound in principle and the experimental breadth (4 models, 9 baselines, 4 datasets, robustness and ablation studies) is above typical. However, reported improvements are implausibly large (e.g., ~6.6x Soft-NC over ReAgent), no significance tests are provided, the new DSA metric and curated dataset are self-serving, key hyperparameters lack sensitivity analysis, and no efficiency comparison is reported despite acknowledged higher cost — together these undermine the strong SOTA claims and require substantial added analysis before acceptance.",
+  "strengths": [
+    "Principled integration of three complementary perspectives (causal semantic flow, second-order curvature, information-theoretic impact) into a single target-conditioned attribution score, with a clear motivation for why first-order methods fail in autoregressive models.",
+    "Scalable estimation via Hessian-vector products with Hutchinson estimators and a low-rank + windowing variant makes second-order attribution feasible for models up to 70B, a practical engineering contribution.",
+    "Broad baseline comparison (9 methods including recent generative-LLM attribution work) and evaluation across four decoder-only models of varying scale and architecture.",
+    "New curated 2,000-instance benchmark with high reported inter-annotator agreement (F1=0.91, κ=0.89) directly probes target-conditioned attribution quality under controlled distractor structure, addressing a real evaluation gap.",
+    "Robustness studies along multiple axes (Gaussian perturbation sensitivity, active/passive syntactic rephrasing, decoding hyperparameter sweep) go beyond single-metric main tables."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Reported gains are implausibly large and lack significance testing: HETA's Soft-NC (10.3 on LongRA/GPT-J) is ~6.6x the next-best method ReAgent (1.55), while most baselines cluster near zero or negative; only a uniform std cap (<±0.06) is reported with no per-method variance or significance tests, making it impossible to assess whether the gaps are real or an artifact of metric computation/scaling.",
+      "suggested_fix": "Report per-method standard deviations (not a uniform cap), add paired significance tests (e.g., Wilcoxon signed-rank or paired bootstrap) for every HETA-vs-baseline comparison, and explain why the Soft-NC scale favors HETA so disproportionately — ideally include a sanity check that the metric is computed identically for all methods."
+    },
+    {
+      "severity": "major",
+      "issue": "The newly introduced curated dataset and the new DSA metric are self-serving: DSA directly rewards target-conditioned attribution mass concentrated on the evidence-bearing (SciQ) segment, which is exactly the property HETA's causal gate is designed to enforce, so HETA winning on DSA is partly tautological and not independently validated.",
+      "suggested_fix": "Validate DSA on an independently annotated subset (ideally human-annotated, not just GPT-4o/GPT-5 intersection), report DSA for the metric in a neutral way that does not structurally favor causal-gating methods, and demonstrate that non-target-conditioned baselines are not penalized by metric construction artifacts (e.g., negative DSA values for gradient/attention methods need explanation)."
+    },
+    {
+      "severity": "major",
+      "issue": "No sensitivity analysis or selection justification for the key combining weights β=0.5, γ=0.5, nor for rank-64, 512-token windows with 50% overlap, or last-6-layer sampling for the 70B model; risk of test-set tuning and unclear generality.",
+      "suggested_fix": "Provide a sensitivity sweep over β, γ (e.g., a heatmap), justify rank/window/layer choices on a held-out split separate from the reported test sets, and add an ablation on the 70B layer-sampling depth to show attribution quality is preserved."
+    },
+    {
+      "severity": "major",
+      "issue": "No runtime/memory/efficiency comparison in the main text despite acknowledging HETA incurs higher cost; practical adoption claims cannot be assessed, and the LR+WIN and 6-layer approximations are asserted to 'closely match full HETA' without a main-text table quantifying the trade-off.",
+      "suggested_fix": "Add an efficiency table comparing wall-clock time, peak memory, and attribution quality (Soft-NC/DSA) for HETA-full, HETA-LR, HETA-WIN, HETA-LR+WIN, HETA-LS, and the fastest/strongest baselines, on at least one model per scale."
+    },
+    {
+      "severity": "major",
+      "issue": "No comparison with the Hessian-based attribution methods cited as motivation in the Background (Dong et al. 2025, Alvarez-Melis & Jaakkola 2018, Dhamdhere et al. 2018); the novelty of the Hessian component is therefore not positioned against the closest prior art.",
+      "suggested_fix": "Add at least one Hessian/second-order attribution baseline to the main comparison table, or explicitly justify why those methods are inapplicable to decoder-only generative settings and how HETA's Hessian usage differs."
+    },
+    {
+      "severity": "minor",
+      "issue": "The masking scheme for the KL component is not specified in the main text (zero embedding? mean? UNK? deletion?), yet this choice strongly affects the information term and reproducibility.",
+      "suggested_fix": "State the masking scheme explicitly and report a small sensitivity analysis over at least two alternatives (e.g., zero vs. mean embedding)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Qwen2.5-3B results are relegated to the appendix 'due to space constraints,' weakening the across-architecture generality claim that is central to the paper's framing.",
+      "suggested_fix": "Include at least the main Soft-NC/Soft-NS/DSA table for Qwen2.5 in the main text, or move one other model to the appendix to balance the presentation."
+    },
+    {
+      "severity": "minor",
+      "issue": "Labels are produced by GPT-4o and GPT-5 Thinking intersection with no human validation; high inter-annotator agreement may reflect correlated biases of similar model families rather than genuine label quality.",
+      "suggested_fix": "Validate a sample (e.g., 100-200 instances) with human annotators and report human agreement with the model-derived labels."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide paired significance tests (e.g., Wilcoxon signed-rank or paired bootstrap) for the Soft-NC/Soft-NS/DSA gaps and report per-method standard deviations rather than a uniform cap?",
+    "How were β, γ, the low-rank dimension (64), window size (512), overlap (50%), and last-6-layer sampling depth selected — on a held-out set or the reported test sets — and what is the sensitivity to each?",
+    "What masking scheme is used for the KL component, and how sensitive are the results to this choice?",
+    "What is the wall-clock time and peak memory overhead of HETA (full and LR+WIN) relative to the fastest and strongest baselines?",
+    "Why are the Soft-NC gains over ReAgent so large (up to ~6.6x)? Could the metric be saturating, scaling non-linearly, or being computed in a way that structurally favors target-conditioned causal-gating methods?",
+    "Are there any theoretical guarantees (the Appendix A2 'error bounds') that can be summarized in the main text, or is the discussion informal?"
+  ],
+  "calibration_check": "Claims of a 'new standard for interpretability' and 'new state-of-the-art' are overclaimed given implausibly large gains, a self-serving new metric, missing significance tests, absent efficiency analysis, and no sensitivity study on combining weights; the core method is sound but the evidence does not yet support the breadth of the claims.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs is an important open problem and HETA is a reasonable advance, but the overclaimed SOTA and unverified gains temper impact until evidence is strengthened."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The integration is creative and target-conditioning is a sensible twist, but each component (attention rollout, Hessian sensitivity, KL occlusion) is individually established prior work."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The method is principled and HVP estimation is standard, but experimental execution has red flags: implausibly large gaps, no significance tests, unjustified hyperparameters, and no efficiency comparison."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only a uniform std cap is reported with no per-method variance or significance tests, only 3 seeds, and ~6.6x gains that strain credibility without supporting analysis."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Strong SOTA/'new standard' claims are not supported by the evidence as presented; limitations are acknowledged but briefly, and the self-serving metric/dataset is not flagged as a limitation."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Generally readable and well-organized with a clear motivation-to-method flow, though some equations are dense and the masking scheme and theoretical claims are deferred without main-text summary."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is present and the paper is within a reasonable length, though key results (Qwen) and theoretical properties are pushed to appendices."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Main hyperparameters and models are named, but the KL masking scheme, hyperparameter selection protocol, and exact HVP configuration details are underspecified in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Generative-LLM attribution baselines are discussed fairly, but the Hessian-based prior art cited as motivation is not compared against, leaving the novelty of the curvature component under-positioned."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative ablation and robustness analyses that support the claims, but tables show suspiciously clustered baseline scores and negative DSA values that are not explained."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and nine baselines is good breadth, but Qwen in appendix, no efficiency table, no β/γ sensitivity, and no Hessian-baseline comparison under-support the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject / major revision: a promising and well-motivated framework needing substantial added analysis (significance tests, sensitivity, efficiency, neutral metric validation) before its strong claims can be trusted."
+    }
+  },
+  "publishability_probability": 0.22
+}

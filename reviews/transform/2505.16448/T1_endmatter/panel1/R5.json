@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes 'internal bias' — a model's preliminary guess formed before explicit reasoning — as a key causal trigger for overthinking in chain-of-thought reasoning models. The core thesis is novel and the problem is timely. The authors support their claim with three lines of evidence: (1) correlational analysis across multiple models and datasets showing bias deviation predicts reasoning length; (2) two counterfactual interventions (question removal and bias injection via fine-tuning); and (3) attention analysis suggesting excessive focus on the input question at reflection points. While the phenomenon identified is genuinely interesting and the paper is readable, the causal claims overreach the evidence due to confounds in both intervention designs, insufficient statistical rigor (no error bars, tiny AIME samples), and reliance on a single model (R1-Distill-Qwen-14B) for all causal experiments. Revision should address these gaps before acceptance.",
+  "strengths": [
+    "The 'internal bias' framing is a novel and well-motivated contribution: operationalizing implicit priors via forced-no-reasoning 'direct answers' and connecting their deviation to overthinking is a clean and testable hypothesis.",
+    "Multi-model, multi-dataset correlational validation (DeepSeek-R1, QwQ-32B, R1-Distill-Qwen-14B across CharCount, KnowLogic, AIME 2024/2025) consistently supports the association between bias deviation and reasoning length, lending the phenomenon real generality at the correlational level.",
+    "The question-removal intervention (Section 5.1) is a creative and informative counterfactual: forcing the model to reason without the input question and observing 31–54% reduction in post-first-answer length, while maintaining or improving accuracy on complex tasks, is a compelling empirical result.",
+    "The attention analysis in Section 6 provides a plausible mechanistic story — sharp increases in question-token attention at reflection points versus answer points — and the layer-wise decomposition (Figure 4b) adds specificity.",
+    "The paper honestly acknowledges that existing mitigation methods do not address internal bias, and the limitations section is candid about the restriction to tasks with explicit discrete outputs."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The question-removal intervention (Section 5.1) conflates two effects: (a) removing the bias-reactivation signal and (b) removing the original problem statement, which may independently disrupt the model's self-verification loop and degrade or simplify the decision about whether to continue. The claimed causal interpretation requires ruling out the alternative that the length reduction is simply due to reduced context informativeness (the model cannot re-read the problem and so defaults to stopping), not to bias suppression.",
+      "suggested_fix": "Add a control condition in which the question is replaced by an equal-length random or semantically unrelated passage (preserving context length), or replace it with a paraphrase that contains the same facts but no answer-priming structure, to isolate the bias-reactivation mechanism from generic context reduction effects."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The bias injection experiment (Section 5.2) fine-tunes the model on 50 task-specific declarative statements per sample before testing on that exact sample, making it impossible to separate (a) the causal effect of changed internal bias from (b) in-distribution overfitting to the test sample, (c) general gradient-based disruption of the model's reasoning ability, and (d) differential regularization effects across the Low2Wrong vs. High2Correct regimes. The Random2Wrong/Random2Correct baselines help but do not fully control for these confounds because they involve training on different samples.",
+      "suggested_fix": "Consider a cleaner version: inject the bias via a single in-context prepended statement or a prefix fine-tune on a held-out set, and test on a separate set of items with similar characteristics. Alternatively, demonstrate the bias shift actually occurred (verify Dbias changed as intended) and report train vs. test performance across the same domain, not the same samples."
+    },
+    {
+      "severity": "major",
+      "issue": "All causal experiments (question removal, bias injection, attention analysis, mitigation trials) are conducted exclusively on R1-Distill-Qwen-14B. The correlational analysis covers three model families, but causal claims about 'internal bias driving overthinking' rest on a single model, substantially limiting the generality the abstract and introduction assert.",
+      "suggested_fix": "Replicate at minimum the question-removal intervention on QwQ-32B or DeepSeek-R1 671B. Even a single additional model's results in Table 2 would materially strengthen the universality claim."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is systematically insufficient throughout. AIME evaluations use N=30 problems with no reported variance across seeds. Table 1's reasoning-length comparisons (Llow vs. Lhigh) carry no confidence intervals or error bars. Absolute token count differences (e.g., 7706 vs. 10796) are reported to one decimal place without any measure of variance. No significance tests appear anywhere. Small numeric differences in complex settings (e.g., AIME accuracy 63.3% vs. 66.7% with N=30) are discussed as meaningful.",
+      "suggested_fix": "Report bootstrap confidence intervals or standard deviations for all length measurements and accuracy figures. For AIME (N=30), explicitly note the large uncertainty; ideally supplement with MATH500 or MATH Level 5 to provide a larger-N math evaluation. Apply paired t-tests or Wilcoxon signed-rank tests where appropriate."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention analysis (Section 6) is presented as mechanistic evidence of bias reactivation, but increased attention to the input question at reflection points is entirely consistent with the model performing normal, rational self-checking (re-reading the problem to verify the answer). The paper does not demonstrate that this attention is pathological or exceeds what a non-overthinking model would exhibit. Without a counterfactual — e.g., comparing attention patterns for correct-and-stops vs. correct-but-keeps-going cases — the causal interpretation is not established.",
+      "suggested_fix": "Condition the attention analysis on cases that were correct after the first answer and stopped (no overthinking) versus those that continued. If attention to the question at reflection points is significantly higher in the overthinking group than in the non-overthinking group, that would provide cleaner evidence."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'first reasoning length' used to control for question complexity (Section 4.3, Figure 2) is a weak proxy: it measures how long it takes to produce an answer, not the intrinsic difficulty. Questions that are easy for the model to answer but whose answers strongly conflict with its parametric bias could have short first-reasoning lengths yet high-complexity implications.",
+      "suggested_fix": "Supplement with external difficulty estimates (e.g., pass@1 rate across a large model ensemble, or human-rated difficulty) to more credibly rule out difficulty as a confound."
+    },
+    {
+      "severity": "minor",
+      "issue": "The CharCount dataset (counting character occurrences in English/Chinese words) is highly synthetic and may not representative of general reasoning tasks. Many of the main quantitative results rely heavily on CharCount. The extent to which findings generalize to naturalistic reasoning is unclear.",
+      "suggested_fix": "Include at least one additional naturalistic dataset (e.g., GSM8K-hard, MATH Level 5, or a non-toy logical reasoning set) in the counterfactual intervention experiments."
+    }
+  ],
+  "questions_for_authors": [
+    "In the question-removal intervention, after the question is removed, does the model's context still contain the full prior reasoning steps (including all intermediate text that paraphrased the question)? If yes, is the reduction in reflection attributable to the removal of the raw question tokens specifically, or to the truncation of context length? Please clarify the exact prompt structure before and after removal.",
+    "For the bias injection experiment, can you confirm that the test sample was never seen during the fine-tuning phase for the Random2Wrong and Random2Correct baselines? And can you report whether the actual Dbias (deviation degree) changed as expected after injection — i.e., did Low2Wrong training demonstrably shift the model's direct answers toward incorrect values?",
+    "The attention analysis identifies that attention to the question increases at reflection points. Did you check whether this pattern also occurs in non-overthinking models, or in cases where the model produces the correct final answer without excessive reflection? A baseline attention profile for 'clean' (non-overthinking) reasoning would clarify whether the observed attention is anomalous.",
+    "Given that all existing mitigation methods fail to reduce R (the relative reasoning length ratio between high- and low-bias groups), does this mean the bias deviation signal Dbias is invariant to these interventions? Specifically, do FCSSFT and SEAL change the distribution of Dbias at all, and is R still elevated specifically because the high-deviation-bias cases remain long?",
+    "Section 9 of the conclusion mentions an attention-based early-exit mechanism explored in Appendix I.3 that shows improvement on CharCount (zh). Given that the main paper argues existing inference-time methods are insufficient, why is this result not presented as a positive contribution in the main paper rather than an appendix exploration?"
+  ],
+  "calibration_check": "The abstract and introduction use strong causal language ('key trigger', 'causal relationship', 'rigorously') that is only partially warranted: the correlational evidence is solid but the causal evidence rests on a single model and interventions with non-trivial confounds, so claims of causality should be qualified as 'suggestive' or 'preliminary causal evidence' until cleaner controls are in place.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in large reasoning models is a widely recognized efficiency bottleneck, and identifying a concrete internal mechanism (bias-triggered reflection) is a genuinely useful contribution that could redirect mitigation research toward bias-decoupling rather than length penalization."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The specific framing of implicit pre-reasoning guesses as 'internal bias' and their link to overthinking via deviation degree is not present in prior work; while the existence of model priors is well known, connecting them mechanistically to reflection behavior with targeted counterfactuals is an original contribution."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The correlational analysis is internally consistent but the two causal interventions each carry confounds that undermine the causal interpretation, and neither is replicated across multiple models, making the causal claim fragile relative to what is asserted."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars or confidence intervals appear on any length or accuracy measurements; AIME experiments use N=30; multi-seed variability is never reported; numerical comparisons (e.g., 66.7% vs. 63.3% accuracy on N=30) are discussed as meaningful without any uncertainty quantification."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper acknowledges important limitations (open-ended tasks not covered, CharCount is synthetic, existing methods are only a sample) and the conclusion section is reasonably honest, but the abstract and introduction repeatedly assert causal claims with stronger language than the evidence supports."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable with a clear narrative structure, but several anonymization artifacts ('[Author]' citations) appear in the main body, the notation in Section 6.2 is awkward (the sum formula is presented with typographical errors), and the bias injection experimental design takes multiple readings to fully parse."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Related Work, Definitions, Correlation Analysis, Causal Interventions, Interpretability, Mitigation, Conclusion) and is of appropriate length for ICLR."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hardware, datasets, and prompt templates are specified; the 64-sample direct-answer collection and keyword-based reflection counting are described; however, bias injection training details (learning rate, number of steps, batch size) are deferred to an appendix, and the question-removal intervention's exact prompt manipulation is not fully specified in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of overthinking mitigation and model bias literature is solid, but the paper underengages with the mechanistic interpretability literature on attention in transformers (e.g., induction heads, copy suppression, attention sink literature beyond Xiao et al.) that would contextualize the attention analysis in Section 6."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The captions for all figures and tables are detailed and informative: Figure 1's caption clearly describes what the navy vs. green text represents and why each example is diagnostic; Figure 4's caption precisely defines what is plotted in each panel; Table 2's caption specifies all column definitions."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "While three models are tested for correlation, all causal experiments use a single model (R1-Distill-Qwen-14B); all models are from two closely related families (DeepSeek/Qwen); CharCount is a highly synthetic task; and the paper explicitly excludes open-ended tasks, substantially limiting the scope of the generality claim."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper identifies a novel and potentially important phenomenon with some supporting evidence, but the causal claims require stronger experimental controls, the statistical reporting needs error bars and significance tests, and the single-model causal analysis limits the universality the paper asserts."
+    }
+  },
+  "publishability_probability": 0.28
+}

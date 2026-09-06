@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper presents a theoretical analysis of the 'PCC plateau' in attention-based regression — the phenomenon where Pearson correlation stops improving even as MSE continues to decrease. Two mechanistic explanations are offered: a gradient-ratio bottleneck arising from joint MSE+PCC optimization, and a convex-hull capacity bound for any softmax-based aggregator. These motivate the proposed Extrapolative Correlation Attention (ECA), a drop-in module with three components (SRA, DATS, DNPL) tested on four diverse benchmarks. The theoretical contributions are genuine and the design of ECA is well-motivated, but the statistical presentation of experimental results is weak: UCI experiments lack error bars, spatial transcriptomics gains are within one standard deviation of baseline variance, and the ablations are too coarse to firmly attribute credit to each component.",
+  "strengths": [
+    "First rigorous gradient-level analysis connecting joint MSE+PCC optimization to PCC plateau: Theorem 2.1, Corollary 2.1, and Corollary 2.2 are technically sound and reveal a concrete O(1/σ_ŷ^{3/2}) attenuation mechanism that is non-obvious.",
+    "Theorem 2.2 (PCC gain bound for convex aggregators) is a genuinely novel capacity result: it shows the convex-hull constraint is a hard ceiling, not merely a practical difficulty, and directly motivates SRA.",
+    "ECA's three components map one-to-one onto the three identified theoretical bottlenecks, giving the architecture a tight theory–design correspondence that is unusual in the attention literature.",
+    "Experiments span synthetic, tabular, histopathology, and multimodal sentiment domains, showing consistent directional improvements and an ablation table confirming each component's contribution.",
+    "The gradient ratio decay is empirically validated on synthetic data (Figure 3), and training-curve plots (Figures 5, 6) directly illustrate the claimed plateau-breaking behavior."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "UCI tabular results (Table 1) report only point estimates with no standard deviations or confidence intervals across multiple random seeds. The absolute PCC improvements on Online News (0.408→0.420) and Superconductivity (0.920→0.930) are small enough that they could be within run-to-run variance of FT-Transformer alone.",
+      "suggested_fix": "Re-run each UCI experiment over at least 5 seeds and report mean ± std. Include a simple paired t-test or bootstrap confidence interval to confirm statistical significance."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Spatial transcriptomics results (Table 3) show very high within-method variance (ECA: PCC@F 0.690 ± 0.202 vs EGN: 0.602 ± 0.160). With only three folds, the reported gains are not statistically significant at any conventional level; the distributions substantially overlap.",
+      "suggested_fix": "Report fold-level paired differences and a Wilcoxon signed-rank or permutation test. Consider increasing cross-validation folds or reporting patient-level paired evaluation to reduce variance."
+    },
+    {
+      "severity": "major",
+      "issue": "No comparison to other correlation-aware training methods, rank-based objectives (Spearman ρ loss, NeuralNDCG), or concordance correlation coefficient (CCC) losses that also address magnitude-vs-shape tradeoffs. The baseline comparison is restricted to a single FT-Transformer variant per domain.",
+      "suggested_fix": "Add at least one rank-based or CCC-optimized baseline to each benchmark so readers can assess whether simpler loss modifications achieve similar plateau-breaking without the added architectural complexity."
+    },
+    {
+      "severity": "major",
+      "issue": "No hyperparameter sensitivity analysis for the four ECA-specific hyperparameters (γ_max, β, T_min, λ_γ). The method adds several new degrees of freedom, and the performance may be sensitive to their tuning, undermining reproducibility claims.",
+      "suggested_fix": "Provide a sensitivity table or plot for at least γ_max and β across the UCI or MOSI benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "Theorem 2.2 requires the condition R < σ_0/‖w‖_2, which is not verified for any real dataset used in experiments. If this condition fails, the bound is vacuous, and its practical relevance is unclear.",
+      "suggested_fix": "Report measured R and σ_0/‖w‖_2 for each benchmark, confirm the condition holds, and discuss behavior when it does not."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DATS temperature formula assigns lower τ_s to lower-dispersion (more homogeneous) samples, which yields sharper (lower-temperature) softmax — the opposite of the conventional 'temperature as softness' framing. The text says 'τ_s has lower value so small differences become sharper after attention,' which is correct but easily misread.",
+      "suggested_fix": "Clarify the temperature direction with a brief sentence and a small numerical example showing how τ_s changes for homogeneous vs heterogeneous samples."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 1 text is truncated in the submitted manuscript (the table body is cut mid-row for the Superconductivity +ECA ablation rows), making ablation comparisons partially unverifiable from the text.",
+      "suggested_fix": "Ensure the full table is included and properly formatted in final submission."
+    },
+    {
+      "severity": "minor",
+      "issue": "No analysis of ECA's computational overhead (extra MLP for γ_s, temperature computation) relative to baseline inference and training time.",
+      "suggested_fix": "Add a one-row wall-clock or FLOPs comparison in the experiments section."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 1 (UCI) appears to omit standard deviations entirely — were these experiments run with a single seed? If so, can you provide multi-seed results before the rebuttal deadline?",
+    "For spatial transcriptomics (Table 3), a paired t-test on the three fold-level PCC@M values (EGN vs EGN+ECA per fold) would directly test the gain's significance — can you provide this test statistic?",
+    "Corollary 2.1 bounds the RMS ratio of PCC/MSE gradients by O(1/σ_ŷ^{3/2}), which assumes ρ ∈ [0,1]. How tight is this bound in practice when ρ is negative or near zero? Does the plateau persist in such regimes?",
+    "DNPL rescales the PCC loss by StopGrad(σ_ŷ). Since σ_ŷ grows during training, does this effectively act as a curriculum that down-weights PCC early and up-weights it late? How does this compare to manually scheduling λ_PCC?",
+    "For MOSI, ECA is only adapted to the video attention encoder of ALMT. How does ECA perform when applied to all modality encoders, and does it remain beneficial for tasks without strong within-sample homogeneity?"
+  ],
+  "calibration_check": "Claims are largely scoped to the evidence, with the notable exception that statistical significance is never established for real-data improvements — the paper should retract or heavily caveat quantitative comparisons ('+14.64% PCC@F') until significance is confirmed given the large observed variances.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a real and underdiagnosed failure mode in attention-based regression across pathology, genomics, and affective computing, so a principled fix would be widely cited, but the magnitude of demonstrated improvements on most benchmarks is modest."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The joint MSE-PCC gradient conflict (Theorem 2.1/Corollary 2.1) and the convex-hull PCC-gain ceiling (Theorem 2.2) together constitute a genuinely original theoretical characterization not found in prior attention or correlation-loss literature."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The core theoretical results appear technically correct, but Theorem 2.2's precondition is unverified on real data, Corollary 2.1 relies on ρ ≥ 0, and the proofs are deferred to an appendix not included in the submitted text."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "UCI results have no error bars or seeds reported; spatial transcriptomics improvements lie within one standard deviation of the baseline for all three metrics; no significance test appears anywhere in the paper."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The authors are candid about the homogeneity dependency and limitations of convex aggregation, but reporting percentage gains ('+14.64%') without confidence intervals overclaims statistical certainty for high-variance results."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is logically organized and the theory-to-design mapping is clear, but Table 1 is truncated, the DATS temperature direction is easily misread, and some notation (σ vs σ̄, R vs R̄) is introduced without index recap."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard Abstract / Intro / Theory / Method / Related Work / Experiments / Conclusion structure within a reasonable length, with appendices referenced for proofs and supplementary experiments."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "All datasets are publicly available and baselines are cited, but four ECA-specific hyperparameters (γ_max, β, T_min, λ_γ) lack reported values in the main text, and no training code or checkpoints are described."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "The paper covers softmax attention expressivity and MSE+PCC multi-task work, but omits rank-based correlation objectives, concordance correlation coefficient losses, and recently proposed alternatives (e.g., differentiable Spearman loss) that address similar shape-vs-magnitude tradeoffs."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, the figures appear well-chosen: training-curve plots directly illustrate the plateau phenomenon, the gradient ratio plot validates Corollary 2.1, and per-fold PCC/MSE curves demonstrate consistency; the convex-hull illustration (Figure 1c) cleanly communicates SRA."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four domains is commendable, but only one backbone is evaluated per domain, UCI improvements are marginal and lack significance tests, and no cross-architecture test (e.g., applying ECA to a non-Transformer backbone) is provided."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising paper with a genuine theoretical contribution and consistent directional improvements, but the lack of statistical rigor makes the empirical claims unreliable — multi-seed UCI results and significance testing on the pathology benchmark are necessary before acceptance."
+    }
+  },
+  "publishability_probability": 0.28
+}

@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper addresses the PCC plateau phenomenon in attention-based regression by providing a theoretical analysis of two root causes—gradient attenuation under joint MSE+PCC optimization and a convex-hull capacity bound on any convex aggregator—and then proposing ECA, a plug-in module with three theoretically-motivated components. The theory is original and the mathematical development is careful; experiments span four heterogeneous domains and results trend consistently positive. The primary weaknesses are (1) insufficient statistical rigor in the main experiments, (2) an absence of simple competing approaches to the PCC plateau that would contextualize ECA's added complexity, and (3) an underspecified bridge between the single-layer theory and multi-layer practice.",
+  "strengths": [
+    "The theoretical framing is genuinely novel: the MSE–std–correlation decomposition (Proposition 2.1), the gradient bottleneck analysis (Theorem 2.1 / Corollaries 2.1–2.2), and the convex-hull PCC gain bound (Theorem 2.2) are clean and well-stated results that fill a real gap in the literature.",
+    "The three ECA components follow directly from the identified limitations—there is an unusually tight theory-to-design loop that makes the method principled rather than ad hoc.",
+    "The experimental scope is broad: synthetic data with controllable homogeneity, three UCI tabular benchmarks, a high-homogeneity clinical pathology task, and a multimodal sentiment dataset; positive trends hold across all four, lending weight to the generality of the diagnosis.",
+    "The paper is well-written and logically organised; the progression from observed phenomenon → decomposition → gradient analysis → capacity bound → remedy is clear and easy to follow."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No comparison to simple competing remedies for the PCC plateau. The paper claims ECA addresses fundamental limitations, but does not compare against obvious cheaper alternatives: (a) adaptive loss weighting (e.g., GradNorm, uncertainty weighting à la Kendall et al.) that also rescale gradient magnitudes, (b) hard gradient normalisation of the PCC term, or (c) a learning-rate warm-up or curriculum that defers PCC optimisation until σ_ŷ stabilises. Without these controls a reader cannot tell whether ECA's gains come from the theoretically-motivated mechanisms or simply from better gradient scaling in general.",
+      "suggested_fix": "Add at least two ablation baselines that address the O(1/σ_ŷ^{3/2}) attenuation without the full ECA architecture (e.g., a plain gradient-normalised PCC loss with no SRA or DATS, and one multi-task weighting scheme). Show that ECA's improvements exceed these simpler fixes on the key metrics."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical rigor is insufficient throughout. In Table 3, EGN PCC@F = 0.602 ± 0.160 vs EGN+ECA = 0.690 ± 0.202: the improvement (0.088) is well within one standard deviation of both estimates, and with only three folds a paired test has very low power. Table 1 (UCI ablations) and Table 2 (MOSI) report only point estimates with no variance, seeds, or significance tests. Claimed improvements are sometimes in the second decimal place (Online News PCC: 0.408 → 0.420).",
+      "suggested_fix": "Report mean ± std over at least 5 seeds for all UCI and MOSI experiments. For Table 3, report per-fold numbers and add a paired test. For improvements that are within noise, either collect more folds/seeds or temper the claim."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical analysis is formally derived for a single-layer attention model with a linear regression head, but all experiments use multi-layer Transformers (FT-Transformer, EGN, ALMT). Section E apparently addresses this extension but is relegated to the appendix with no formal theorem. The theory could be vacuous or qualitatively different for deep residual networks where intermediate representations adapt jointly.",
+      "suggested_fix": "Either (a) promote a theorem or formal discussion of the deep-network case to the main text with an explicit statement of which conclusions carry over and under what conditions, or (b) narrow the theoretical claims in the abstract/introduction to single-layer models and qualify all experimental conclusions accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Corollary 2.1 assumes ρ ∈ [0, 1] to derive the gradient ratio bound, but PCC is freely in [−1, 1]. In early training when predictions are random, ρ can be negative or near zero, which is precisely when the plateau initiates. The bound may not hold in the regime it is meant to explain.",
+      "suggested_fix": "State the regime clearly (e.g., 'once ρ > 0 the following bound holds…') or re-derive the bound for the full PCC range. Validate on Figure 3 that the bound holds across the entire training trajectory including the initial phase."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is sparse (two short paragraphs) and does not discuss gradient-imbalance mitigation in multi-task learning, which is closely related to the identified 1/σ_ŷ bottleneck.",
+      "suggested_fix": "Add a paragraph covering multi-task gradient balancing (e.g., GradNorm, PCGrad, MGDA) and explain why these general approaches are insufficient for the PCC-plateau problem."
+    },
+    {
+      "severity": "minor",
+      "issue": "In Table 1 the ECA (w/o DNPL) row shows Superconductivity PCC = 0.922 while full ECA appears to give ~0.930 and the baseline gives 0.920. The table extraction is partially cut off, making it impossible to verify the Superconductivity full-ECA number and ensure internal consistency of ablation claims.",
+      "suggested_fix": "Ensure the table is complete and self-consistent in the camera-ready version; add a note where numbers are truncated."
+    }
+  ],
+  "questions_for_authors": [
+    "How does a simple gradient-normalised PCC loss (multiply (1 − ρ) by StopGrad(σ_ŷ) as in DNPL but with no SRA or DATS, applied to FT-Transformer without other ECA components) compare to the full ECA on UCI and MOSI? This would isolate the contribution of the optimisation fix from the capacity fix.",
+    "What is the sensitivity of ECA to the hyperparameters T_min, β (DATS), γ_max, and λ_γ? Are results robust across a reasonable range, and how were these chosen for each dataset?",
+    "Theorem 2.2 requires R < σ_0 / ‖w‖_2. Is this condition satisfied in the actual experimental settings (spatial transcriptomics, UCI)? If not, does the bound still qualitatively guide the SRA design?",
+    "For the spatial transcriptomics results in Table 3, can you report a paired Wilcoxon test across the three folds (or collect more folds) to assess whether the PCC improvements are statistically significant given the standard deviations of ~0.16–0.20?",
+    "In Section E (deep architecture extension), does the analysis still predict an O(1/σ_ŷ^{3/2}) attenuation for multi-layer models, or does gradient flow through the backbone change the scaling? Can this be validated experimentally (e.g., by measuring the PCC/MSE gradient ratio in a deep FT-Transformer)?"
+  ],
+  "calibration_check": "Claims are generally well-scoped to the attention-based regression setting, but the 'first rigorous theoretical analysis' framing and broad generality statements outpace the evidence given that (a) the theory is formally proved only for single-layer models, (b) key experimental improvements are within noise at three folds/no seeds, and (c) no competing remedies are evaluated.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "The PCC plateau is a real, practically important phenomenon in digital pathology, spatial transcriptomics, and affective computing; a principled theoretical explanation with a drop-in fix has clear impact in these communities."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The gradient bottleneck analysis (Theorem 2.1 / Corollaries 2.1–2.2) and convex-hull PCC gain bound (Theorem 2.2) appear to be genuinely new results, and the theory-motivated ECA design is not a straightforward recombination of existing ideas."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The mathematical derivations appear correct and are accompanied by proofs deferred to appendices, but the formal analysis is limited to single-layer attention with a linear head, the ρ ∈ [0,1] assumption in Corollary 2.1 is not always satisfied, and the extension to deep architectures is not rigorously established in the main text."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Table 3 reports three-fold results with standard deviations that overlap the claimed improvements; Tables 1 and 2 report only point estimates without seeds, confidence intervals, or significance tests, making it impossible to assess whether small gains (e.g., Online News PCC +0.012) are reliable."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper accurately frames its contributions as specific to attention-based regression with joint MSE+PCC objectives, but overstates statistical confidence given the variance observed in Table 3, and does not acknowledge the gap between the single-layer theory and multi-layer practice."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organised with a clear logical flow from phenomenon to theory to method; notation is defined carefully, and the three ECA components are each directly tied to a diagnosed limitation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard conference structure; the related work section is unusually brief but present, and the paper appears within a reasonable ICLR page budget with material in appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Core algorithmic components are described with equations and pseudoimplied detail; dataset sources are named; however, key hyperparameters (T_min, β, γ_max, λ_γ, λ_PCC per dataset) are not systematically tabulated in the main text and seeds/runs are not reported."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "The two-paragraph related work covers the immediate vicinity (correlation losses, softmax expressivity) but omits the closely related multi-task gradient-balancing literature that is directly relevant to the identified 1/σ_ŷ gradient imbalance."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the figures are informative and tightly coupled to claims: Figure 2 illustrates the plateau phenomenon, Figure 3 validates the gradient ratio bound empirically, Figure 5 sweeps homogeneity levels on synthetic data, and Figure 6 shows per-fold training curves."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four different application domains is commendable, but only one backbone architecture is tested per domain, ablations lack variance estimates, and no competing remedies (e.g., gradient normalisation, multi-task weighting) are evaluated, limiting the ability to generalise the necessity of each ECA component."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Solid theoretical contribution and consistently positive experimental trends, but the paper requires additional baselines to establish necessity, proper statistical analysis of results, and clearer scoping of where the theory applies before it meets the ICLR acceptance bar."
+    }
+  },
+  "publishability_probability": 0.33
+}

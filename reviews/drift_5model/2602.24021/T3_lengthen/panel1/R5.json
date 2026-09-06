@@ -1,0 +1,110 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that identifies task-relevant attention heads (LAEs) via a Fisher-criterion-like separability score and applies a lightweight hierarchical meta-controller (HMC) to perform element-wise feature modulation on the selected heads of a frozen MLLM. The geometric framing is novel in the VAD context and the data-efficiency story is compelling. However, the claimed state-of-the-art margins over the closest tuning-free baseline are very small (+0.43% AUC, +0.87% AP) and are reported without statistical tests; the entire experimental validation rests on a single backbone (InternVL3); and the heavy manifold-geometry framing sits uneasily atop a mathematically trivial core operation (element-wise scaling). These gaps need to be addressed before the contribution can be assessed as a clear accept.",
+  "strengths": [
+    "The paradigm shift from passive feature reading to active geometric intervention within a frozen MLLM is a conceptually clean and well-motivated framing for tuning-free VAD.",
+    "Gradient-free RSA head selection is elegant and the stability analysis (Table 3, identical LAE set across 10 seeds, σ_AUC ≈ 0.04%) strongly supports the claim that selected heads represent intrinsic model circuits rather than data artifacts.",
+    "The ablation suite is broader than typical: component ablations (Table 2, Part A/B), data-efficiency scaling (Table 4), and hyperparameter sweeps (Table 5) all tell a coherent story.",
+    "Post-hoc explainability via re-prompting flagged segments is a practically useful and low-cost addition.",
+    "Training on only 1% of data in under 1 minute on a single GPU is a genuine practical advantage over fine-tuned competitors."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The claimed SOTA margins are very small—+0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence over HiProbeVAD—yet Table 1 reports no variance estimates, confidence intervals, or statistical significance tests for any method. At these effect sizes the improvement could easily be within noise.",
+      "suggested_fix": "Report mean ± std over multiple seeds for SteerVAD and, ideally, reproduce HiProbeVAD and VERA under the same random conditions to confirm statistical significance of improvements; even a paired test on the per-video scores would help."
+    },
+    {
+      "severity": "blocking",
+      "issue": "All experiments use a single MLLM backbone (InternVL3 ~8B). The paper claims a general paradigm for frozen MLLMs but provides no evidence the method transfers to any other architecture (e.g., LLaVA-1.5, InternVL2, Qwen-VL). Some baselines in Table 1 (LAVAD, EventVAD, VERA) use different base models, making the comparison partially confounded by backbone capacity.",
+      "suggested_fix": "Validate on at least one additional MLLM backbone of comparable scale to separate the contribution of the method from the backbone advantage."
+    },
+    {
+      "severity": "major",
+      "issue": "The core technical operation—anisotropic manifold scaling (Equation 4)—reduces to element-wise multiplication h'_i = h_i ⊙ (1 + s·g), a simple residual feature scaling. Framing this as 'geometric intervention on representation manifolds' with topological analysis in the appendix is a significant mismatch between the theoretical apparatus and the mathematical simplicity of the operation. The added theory must be connected to measurable geometric properties; otherwise it reads as decorative.",
+      "suggested_fix": "Either demonstrate empirically that the transformation measurably changes geometric manifold properties (e.g., persistent homology distance, intrinsic dimensionality, class separation in geodesic terms) or substantially tone down the manifold-geometry framing to match the actual operation."
+    },
+    {
+      "severity": "major",
+      "issue": "The RSA score (Equation 1) is the inter-to-intra scatter ratio, which is precisely Fisher's Linear Discriminant criterion applied to attention-head features. The paper presents this as a novel 'gradient-free geometric method' without acknowledging this equivalence or explaining why prior linear-discriminant head-selection baselines would not work here.",
+      "suggested_fix": "Acknowledge the equivalence to LDA/Fisher criterion in the related work and include a comparison with at least one prior head/layer saliency method from the mechanistic interpretability literature."
+    },
+    {
+      "severity": "major",
+      "issue": "The missing critical baseline is a linear probe trained directly on full MLLM features (not just LAE features). The paper shows 81.33% AUC for a linear probe on LAE features (Table 2), but does not show what a linear probe on the full MLLM output achieves. Without this, it is unclear whether the gain comes from RSA selection or from the HMC's feature modulation.",
+      "suggested_fix": "Add a 'linear probe on full MLLM hidden states' row to Table 2."
+    },
+    {
+      "severity": "minor",
+      "issue": "The anonymized citation '[Author] et al., 2025' for HiProbeVAD is the immediately preceding tuning-free MLLM baseline in Table 1 with closely related naming conventions. The paper should not appear self-referential in a blinded review; reviewers cannot verify relationship, but the gap in positioning relative to this concurrent work should be made more explicit in the prose.",
+      "suggested_fix": "Clarify in the camera-ready which dimensions of novelty differentiate SteerVAD from HiProbeVAD beyond the +0.43%/+0.87% numbers."
+    },
+    {
+      "severity": "minor",
+      "issue": "Temporal Gaussian smoothing (Equation 6) is a standard post-processing step whose contribution is not isolated in any ablation. It may inflate both the base and proposed numbers equally, but without a no-smoothing row it is impossible to tell.",
+      "suggested_fix": "Add a no-smoothing row to the ablation table."
+    }
+  ],
+  "questions_for_authors": [
+    "How does SteerVAD perform when the HMC is replaced by a linear probe applied to the concatenated full MLLM output (not just the K LAE features)? This baseline would isolate whether the gain is from head selection, feature modulation, or simply the stronger InternVL3 backbone.",
+    "The RSA score (Equation 1) is equivalent to the Fisher/LDA inter-to-intra scatter criterion. Why is this not acknowledged, and how does it compare to other head-importance metrics from the mechanistic interpretability literature (e.g., attention rollout, activation patching)?",
+    "How does SteerVAD perform on at least one other frozen MLLM backbone to demonstrate backbone-agnostic generality?",
+    "What is the HMC parameter count, and how does it change with K and r?",
+    "Have you tested on any dataset beyond UCF-Crime and XD-Violence (e.g., ShanghaiTech, Avenue, CUHK Avenue) to support broader applicability claims?",
+    "The 3D UMAP visualization (Figure 2) is shown for a single head from InternVL. How were the visualization parameters (n_neighbors, min_dist) chosen, and do they reflect a generic head or specifically one of the identified LAEs? UMAP visualizations are sensitive to these hyperparameters.",
+    "Given the +0.27% saturation from 1% to 100% data (Table 4), is the stated advantage of data efficiency the primary selling point, or do you believe the method would significantly outperform fine-tuned methods if calibrated on more data?"
+  ],
+  "calibration_check": "Claims of 'state-of-the-art' are technically restricted to the tuning-free category and are honest in that framing, but the extremely small margins (+0.43%, +0.87%) without statistical validation, and the single-backbone evaluation, make the generality claim ('powerful new direction') broader than the evidence supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Tuning-free VAD with frozen MLLMs is an active and practically important subfield, but the marginal improvements over existing tuning-free methods and single-backbone evaluation limit the demonstrated impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The end-to-end combination of Fisher-criterion head selection with a low-rank feature modulation controller is novel in the VAD context, but neither RSA (= LDA scatter ratio) nor element-wise feature scaling is methodologically new to ML."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The core anisotropic scaling is mathematically correct but trivially simple; the heavy geometric framing (manifold hypothesis, topological analysis) is never empirically connected to measurable manifold properties, creating a gap between theory and evidence."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main Table 1 has no variance estimates or significance tests; claimed SOTA margins of +0.43%/+0.87% are below typical noise floors for these benchmarks without statistical validation; only the method's own AUC distribution across seeds is reported."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper is transparent that comparisons are within the tuning-free category and honestly presents the gap to fine-tuned methods, but 'powerful new direction' and 'state-of-the-art' language slightly overstates what a sub-1% margin with single-backbone evidence supports."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable and well-organized, but frequent use of high-abstraction geometric terminology (entangled manifolds, anisotropic rectification) for what is ultimately element-wise scaling makes the method harder to parse than necessary."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Introduction, Related Work, Method, Experiments, Conclusion) with appropriate ablation and analysis sections; length appears reasonable for ICLR."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key hyperparameters (K=4, F=16, lr=1e-3, batch=64, σ_g=6, λ_reg=0.1) and hardware (single RTX A6000) are reported; the rank r of the low-rank adapter and the HMC parameter count are missing; code is promised upon publication but not available for review."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of traditional VAD and MLLM-based VAD is adequate; the mechanistic interpretability section is superficial and misses relevant head-selection and activation-engineering literature that is directly related to RSA."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions indicate that Figures 2 and 4 provide UMAP/t-SNE visualizations motivating and demonstrating the manifold rectification; Figure 3 describes a framework overview; tables are informative with clear configuration descriptions, though UMAP parameters are unspecified."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Experiments cover only two benchmarks with a single MLLM backbone; ablations are within-method only; no cross-architecture or cross-domain transfer results are provided despite broad generality claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the geometric intervention framing is interesting and ablations are more thorough than average, but the single-backbone evaluation, absence of statistical significance on the main comparison, and mismatch between the theoretical apparatus and the trivially simple core operation require substantial revision before this can be recommended for acceptance."
+    }
+  },
+  "publishability_probability": 0.22
+}

@@ -1,0 +1,139 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies the 'PCC plateau' seen when attention-based regressors are trained with a joint MSE + (1-PCC) objective, offers two analyses (a gradient-scale conflict in which the PCC gradient is attenuated by 1/σ̂_y and further shrunk by within-sample dispersion, and an upper bound on the PCC gain any convex aggregator can obtain over mean pooling), and proposes ECA (scaled residual aggregation, dispersion-aware temperature softmax, dispersion-normalized PCC loss) evaluated on synthetic data, three UCI tabular tasks, a spatial-transcriptomics dataset, and MOSI. The framing is useful and the derivations I could check appear correct, but the theory is largely a rearrangement of standard identities (MSE mean/std/correlation decomposition, softmax Jacobian, a Lipschitz-style perturbation bound) and is used to support stronger mechanistic and 'fundamental limit' claims than it establishes. Empirically the work is under-powered: no seeds or error bars on UCI and MOSI, three folds with heavily overlapping standard deviations on the pathology data, no significance testing, small effect sizes, and several obvious controls and baselines missing (a λ_PCC sweep, gradient-balancing multi-task baselines, and non-convex pooling alternatives such as unnormalized attention weights, sparsemax, or max pooling). Promising direction that needs a substantially strengthened experimental section before it clears the ICLR bar.",
+  "strengths": [
+    "Identifies and names a concrete, practically recurring training pathology (correlation stops improving while MSE keeps falling) in a setting that matters for pathology, spatial transcriptomics, and affective computing, and connects it to a clean explanation: PCC is affine-invariant while MSE is not, so MSE can be reduced through mean/scale matching alone.",
+    "The gradient analysis is internally coherent: Lemma 2.2, Theorem 2.1, and Lemma 2.3 correctly isolate a shared local factor α_si w^T(h_si - v_s) and differ only in a global batch-statistics scalar, which is an elegant way to expose the MSE/PCC coupling; the Corollary 2.1 bound of order σ_y^{-1/2} σ̂_y^{-3/2} is consistent with an exact RMS computation of the PCC global factor.",
+    "Theorem 2.2 is a genuinely interesting framing: bounding achievable PCC gain of any convex aggregator over mean pooling by the ratio of convex-hull radius to the normalized mean-pooling prediction spread, and noting the bound is invariant to the regression head's scale.",
+    "Each of the three ECA components is explicitly tied to a specific derived bottleneck rather than being an unmotivated architectural addition, and the StopGrad construction in DNPL is a thoughtful detail (it changes gradient magnitude without moving stationary points).",
+    "Reasonable breadth of settings for a method paper: a controllable synthetic sweep over four homogeneity levels, tabular benchmarks, a clinical imaging-to-expression task with a published baseline (EGN), and a multimodal benchmark with ten prior baselines; the drop-in nature of the module is demonstrated on three different host architectures.",
+    "Figure captions describe display items that actually test the theory rather than decorate it (Figure 3 checks the predicted gradient-ratio bound, Figure 4 checks that σ̂_y rises during training, Figure 5 sweeps the homogeneity parameter the theory says should matter)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central mechanistic claim is not separated from simple loss-weight tuning. The attenuation identified is a bounded scalar factor: σ̂_y rises from a small initialization toward the fixed constant σ_y, so the PCC gradient is rescaled by a bounded, essentially constant factor once training stabilizes. DNPL is exactly a multiplication of the PCC term by StopGrad(σ̂_y), i.e., an adaptive λ_PCC schedule. This makes the paper's repeated assertion that the plateau persists 'even with large λ_PCC' the crux of the contribution, yet no λ_PCC sensitivity study appears anywhere. If a tuned or scheduled λ_PCC recovers most of the DNPL gain, the optimization half of the story collapses to hyperparameter tuning.",
+      "suggested_fix": "Add a λ_PCC sweep (several orders of magnitude) on at least the synthetic, UCI, and pathology settings, plus a linear/warmup λ_PCC schedule baseline, and show DNPL outperforms the best-tuned constant and scheduled λ_PCC. Also report the empirical trajectory of σ̂_y to quantify how large the claimed attenuation factor actually is in each experiment."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Missing baselines for the capacity claim. Theorem 2.2 constrains convex aggregators, and the cheapest escapes from convexity are not tested: unnormalized attention weights (drop the softmax denominator), signed/tanh gating weights, sparsemax or entmax (Martins et al. is cited in the introduction but never compared), max pooling, or concatenation of mean and max pooled embeddings. Any of these breaks the hull constraint without SRA's extra parameters, so the paper cannot currently attribute its gains to 'controlled extrapolation' rather than 'not being a convex combination'.",
+      "suggested_fix": "Add at least unnormalized-weight attention, sparsemax/entmax, and max-pooling (or mean+max) aggregators as baselines on every benchmark, and report whether SRA still helps on top of them."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical evidence is insufficient for the size of the claimed effects. Table 1 (UCI) and Table 2 (MOSI) report single numbers with no seeds, standard deviations, or tests, while the reported deltas are small (PCC 0.408 to 0.420 on Online News; 0.920 to 0.930 on Superconductivity; +0.023 PCC on MOSI, a benchmark well known to be highly seed-sensitive). Table 3 reports three folds where the ECA and baseline intervals overlap almost entirely (0.629 ± 0.135 versus 0.716 ± 0.168 for PCC@M), yet the text converts this into a '+13.81%' improvement claim. The ablation deltas are smaller still (0.418 versus 0.420 on Online News), so component attribution is currently indistinguishable from run-to-run noise.",
+      "suggested_fix": "Report mean and standard deviation over at least 5 random seeds for every number in Tables 1-3, add paired significance tests (or bootstrap confidence intervals) for each ECA-versus-baseline and each ablation comparison, and restate percentage improvements only where they survive the test."
+    },
+    {
+      "severity": "major",
+      "issue": "No parameter- or capacity-matched control for ECA. SRA adds a sample-conditioned MLP producing γ_s from the mean embedding, and DATS adds a dispersion-dependent temperature; both add parameters and input-dependent nonlinearity to the pooling stage. The improvements could stem from this added conditioning rather than from extrapolation per se.",
+      "suggested_fix": "Add controls that keep the added parameters but remove the mechanism: a constant learned scalar γ (not sample-conditioned), γ_s clamped to 1 while the MLP still runs, and a learned-but-dispersion-independent temperature. Report parameter counts and training cost for all variants."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'fundamental capacity limit' framing overstates Theorem 2.2. The bound is stated for fixed final-layer features {h_si} and a fixed head w; in end-to-end training the backbone can reshape features so that R and σ_0/||w||_2 change, so the bound is a statement about the aggregator conditioned on given features, not a limit on the trainable model. Relatedly, the bound requires R < σ_0/||w||_2 and is vacuous otherwise, yet R and ||w||_2 are never reported for any real dataset (only σ and σ_0 are), so it is impossible to tell whether the bound is even active in the pathology or MOSI experiments — precisely the settings used to motivate the method.",
+      "suggested_fix": "Report measured R, σ_0, and ||w||_2 (and the resulting numerical bound) for each real dataset at several points in training; soften the 'fundamental' language to state the fixed-feature conditioning explicitly in the theorem statement and abstract; and either prove or empirically test whether a trained backbone can enlarge the hull ratio on its own."
+    },
+    {
+      "severity": "major",
+      "issue": "The optimization story is framed as gradient conflict between two loss terms, but the canonical baselines from that literature are neither cited nor compared: gradient-magnitude balancing (GradNorm), gradient-surgery methods (PCGrad and successors), and uncertainty-based task weighting. Given that DNPL is a per-batch gradient-magnitude rescaling, these are the direct competitors.",
+      "suggested_fix": "Cite this literature in Related Works and compare DNPL against GradNorm, PCGrad, and uncertainty weighting applied to the MSE/PCC pair on at least two benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "Related Works is thin (two short paragraphs) and omits directly adjacent lines of work: differentiable rank-correlation surrogates and soft sorting/ranking losses (the natural alternative when 'shape' or ordering is what matters), the Concordance Correlation Coefficient loss family that is standard in affective computing and MOSI-style benchmarks, and expressivity results for set-pooling architectures. Without these, the claimed first-ness and the choice of PCC-as-loss are not properly positioned.",
+      "suggested_fix": "Add a paragraph on differentiable ranking/Spearman surrogates and CCC-style losses, compare against a CCC loss on MOSI and the pathology task, and scope 'first' claims to the specific object analyzed (gradient coupling of joint MSE+PCC through a softmax aggregator)."
+    },
+    {
+      "severity": "major",
+      "issue": "The synthetic generator appears constructed to favor ECA: one key element carries signal along the same unit direction as the regression weight, and the label explicitly includes a term proportional to key strength, so sharpening attention onto that element and amplifying its residual is the oracle solution. The very large reported MSE reductions (20% to 67%) are therefore weak evidence of generality, and no synthetic regime where extrapolation should hurt (e.g., signal in the sample mean only, label determined by the average, or label depending nonlinearly on many elements) is reported.",
+      "suggested_fix": "Add synthetic regimes adversarial to the method's inductive bias (mean-determined labels, multi-element signals, label noise heteroscedastic in σ_s) and show either that ECA does not degrade or state the degradation as a limitation."
+    },
+    {
+      "severity": "minor",
+      "issue": "PCC is computed over the mini-batch, making both the loss and the reported plateau batch-size dependent (the gradient carries an explicit 1/S factor and batch composition determines a_s, b_s), yet batch size is never varied or discussed as a confound for the plateau.",
+      "suggested_fix": "Add a batch-size ablation for the plateau phenomenon and for ECA's gains; discuss the estimator bias of batch-level PCC."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper has no limitations or negative-results discussion, and calibration language is consistently strong ('first rigorous', 'fundamental', 'significant', 'substantially', 'consistently'). The ablation narrative also reads as cherry-picked: each component is credited using the single dataset where it looks best (DATS on Appliance, SRA on Online News, DNPL on Superconductivity) rather than reporting that component effects are small and inconsistent across the three tasks.",
+      "suggested_fix": "Add an explicit limitations subsection, report every ablation on every dataset with variance, and describe the cross-dataset inconsistency of component contributions honestly."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several implementation details needed for reproduction are absent from the main text: the value of λ_PCC, β, T_min, λ_γ, whether γ clipping was used per experiment, the γ-MLP width/depth, optimizer and learning-rate settings, and the training stage at which the reported homogeneity statistics (σ = 0.068, σ_0 = 0.164) were measured. Two Table 1 entries are also incomplete as extracted.",
+      "suggested_fix": "Add a complete hyperparameter table per benchmark (including which optional SRA regularizer/clip is active), state when embedding statistics are measured, and verify all table entries are populated."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: the contribution list is stated twice in near-identical form in the introduction, numerous sentences are joined with a stray 'and' splice ('Limitation 1: Conflict in Optimization Dynamics, and our analysis reveals...'), and Corollary 2.1's constant is hard to parse in the body.",
+      "suggested_fix": "Merge the duplicated contribution lists, copy-edit the ', and' splices throughout, and display Corollary 2.1's bound as a clean numbered equation with the constant spelled out."
+    }
+  ],
+  "questions_for_authors": [
+    "How does a tuned or scheduled λ_PCC compare to DNPL? Since DNPL multiplies the PCC term by StopGrad(σ̂_y) and σ̂_y converges toward the fixed constant σ_y, what remains of the effect once λ_PCC is retuned per dataset?",
+    "What are the measured values of R and ||w||_2 (and hence the numerical value of the Theorem 2.2 bound) on the 10xProteomic and MOSI experiments? Is the condition R < σ_0/||w||_2 actually satisfied there?",
+    "How does ECA compare against simply removing the softmax normalization (unnormalized attention weights), against sparsemax/entmax, and against max or mean+max pooling — all of which escape the convex hull without additional parameters?",
+    "In a capacity-matched control where the γ-MLP is present but γ_s is forced to 1 (or a single global learned γ is used instead of a sample-conditioned one), how much of the reported gain survives?",
+    "How many random seeds underlie Tables 1 and 2, and do the UCI, MOSI, and ablation deltas remain significant under a paired test across seeds? For Table 3, is the fold-wise ECA-versus-EGN difference significant given the reported spread?",
+    "Since Theorem 2.2 conditions on fixed final-layer features, what prevents an end-to-end-trained backbone from enlarging R/(σ_0/||w||_2) by itself, and do you observe that ratio changing during baseline training?",
+    "How does DNPL compare against standard multi-task gradient-balancing methods (GradNorm, PCGrad, uncertainty weighting) applied to the MSE/PCC pair?",
+    "Does ECA ever hurt? Please report results in synthetic regimes where the label is determined by the sample mean rather than by a single key element, and on any benchmark where extrapolation is not expected to help.",
+    "How sensitive are the results to batch size, given that PCC and its gradient are computed over the batch?",
+    "On MOSI, is the ALMT + L_PCC configuration tuned (λ_PCC, learning rate) or does it reuse ALMT's hyperparameters? The reported F1/MAE degradation for that row is the paper's main evidence of MSE-PCC conflict on real data."
+  ],
+  "calibration_check": "Claims are moderately overscoped: the elementary derivations are presented as 'first rigorous' and 'fundamental' limits despite conditioning on fixed features and yielding only upper bounds, and 'significant improvements' rests on single-run deltas and three-fold results with overlapping variance and no significance testing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The plateau phenomenon is real and relevant to several applied communities that score regression by correlation, and a drop-in module is attractive, but the demonstrated gains on real benchmarks are small and statistically unestablished, so practice is unlikely to change on this evidence."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Framing the MSE/PCC interaction as a gradient-scale conflict and bounding convex-aggregator PCC gain by hull radius is a fresh angle, but the ingredients (affine-invariance of PCC, the mean/std/correlation MSE decomposition, softmax Jacobian, learned temperature, residual scaling, loss reweighting) are individually standard, making the contribution more of a careful recombination than a new idea."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The stated results appear technically correct and the shared-local-factor decomposition is a clean argument, but upper bounds are used to assert that attenuation causes the plateau, the capacity theorem's fixed-feature and R < σ_0/||w||_2 conditions are not checked on real data, and the claimed mechanism is never separated from a simple loss-weight rescaling."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Two of four settings report single runs with no variance, the third has only three folds with almost fully overlapping standard deviations that are nonetheless converted into double-digit percentage gains, no significance tests appear anywhere, and ablation deltas as small as 0.002 PCC are treated as evidence of component contribution."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "There is no limitations section, 'first rigorous', 'fundamental', and 'significant' recur without qualification, percentage improvements are quoted from high-variance three-fold means, and each ablation component is credited on the one dataset where it looks best rather than reported uniformly."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall argument is easy to follow and notation is defined, but the contribution list is duplicated verbatim, prose is marred by pervasive ', and' sentence splices, and key quantities (the Corollary 2.1 constant, the exact role of the optional γ clip/regularizer) are hard to pin down from the body."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization is followed (abstract, introduction with explicit contributions, theory, method, related work, experiments, conclusion) at an appropriate length with proofs deferred to appendices, though Related Works is unusually thin and placed after the method."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, host architectures, and baseline protocols are named precisely enough to rebuild the pipeline, but λ_PCC, β, T_min, λ_γ, the γ-MLP architecture, optimizer settings, seed counts, and the measurement point for the reported homogeneity statistics are all missing from the main text."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Positioning is confined to two brief paragraphs and omits directly competing lines — differentiable rank-correlation and soft-sorting losses, CCC losses standard in affective computing, multi-task gradient-balancing methods, and non-convex/sparse pooling alternatives — which are precisely the works needed to substantiate the first-ness claims."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that directly test theoretical predictions (bound validation, σ̂_y trajectory, homogeneity sweep, per-fold curves) rather than decorate, though the key tables lack error bars and one table's entries are incomplete."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings spanning synthetic, tabular, pathology, and multimodal data give reasonable surface breadth, but within each setting the comparison is essentially one host model versus itself plus ECA, with no non-convex pooling alternatives, no gradient-balancing competitors, no capacity-matched control, and a synthetic generator aligned with the method's inductive bias."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A well-motivated problem with a coherent if elementary analysis and a plausible fix, held back from the acceptance bar by missing baselines and controls, absent seeds and significance testing on small effect sizes, and overstated 'fundamental'/'first' framing — borderline reject that a substantially expanded experimental section could rescue."
+    }
+  },
+  "publishability_probability": 0.22
+}

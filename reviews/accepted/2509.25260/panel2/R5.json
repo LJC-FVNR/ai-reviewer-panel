@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes an information-theoretic pipeline using VQ-VAE to compress transformer hidden states into discrete codes and then estimates mutual information between those codes to characterize planning horizon and branch awareness in decoder-only LMs. The motivation — avoiding confounds introduced by learned probes — is clear and well-argued. However, all substantive experiments use freshly trained GPT-3 Small (~125M) models on synthetic/controlled corpora; no experiment is conducted on any publicly available, realistically-scaled pre-trained LLM. The main NTP vs. MTP comparison produces modest, inconsistent differences, which is an anticlimactic result given the paper's framing. The work is technically sound and the writing is clear, but the experimental scope is too narrow to support the generality implied by the title and abstract.",
+  "strengths": [
+    "The critique of probing confounds and the principled motivation for using MI between discrete VQ-VAE codes is well-developed; the theoretical argument that probe accuracy violates data-processing inequality under auxiliary capacity is legitimate and not commonly articulated.",
+    "The path-finding task design — two disjoint correct paths plus a disjoint decoy path — is a clean experimental construction that allows the branch-awareness hypothesis to be tested without spurious overlap, and the resulting ratios I(ZH; Zalt) / I(ZH; Zdecoy) > 1 provide interpretable, if limited, evidence for implicit branch encoding.",
+    "The authors are admirably honest about the limits of their framework: they explicitly warn that nMI is only meaningful comparatively, not absolutely, and that the method captures aggregate phenomena rather than per-example behavior.",
+    "Multiple seeds are used throughout, and the validation of the VQ-VAE pipeline (App. A.4) and the controlled comparison of MI vs. probing-based quantities (App. D.2–D.5) show methodological care."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All main-paper experiments use a freshly trained GPT-3 Small (~125M parameters) on synthetic or limited corpora; the 0.3B ablation is relegated to the appendix. Modern ICLR readers expect claims about 'language models' to be grounded in or replicated on at least one publicly available, realistically-scaled pretrained model (e.g., GPT-2 XL, Pythia-1.4B/6.9B, or a Llama-family checkpoint). Planning behavior may be qualitatively different in models that have been exposed to diverse pretraining data and scale.",
+      "suggested_fix": "Add at least one experiment on a publicly released pretrained LM of ≥1B parameters with the horizon and branching analyses. Restricting to GPT-3 Small is acceptable as an initial proof of concept but must be accompanied by results that speak to larger, real-world models."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The central NTP vs. MTP comparison—framed as a key research question—produces inconclusive or marginally significant differences. On CFG, the difference is described as 'slight'; on PF-Long accuracy, MMTP is higher, but the paper does not disentangle whether the larger branch-awareness ratio reflects better planning or merely a more accurate model encoding more of everything. The paper's conclusion 'we find no consistent differences between NTP- and MTP-trained models' undermines the theoretical motivation for including MTP as a variable.",
+      "suggested_fix": "Either (a) conduct a more controlled experiment isolating planning behavior from accuracy confounds (e.g., compare models matched on task accuracy), or (b) reframe the MTP vs. NTP comparison as a negative result and sharpen the contribution around the methodology and task-dependent findings."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 reports only the ratio I(ZH; Zalt) / I(ZH; Zdecoy) and accuracy; the individual MI values I(ZH; Zalt) and I(ZH; Zdecoy) are absent. Without raw values, readers cannot assess whether the ratio difference between PF-Short (≈7) and PF-Long (≈1.5–1.8) reflects a large absolute drop in branch encoding, a rise in decoy encoding, or near-floor absolute values for both. The branch-awareness conclusion rests entirely on this table.",
+      "suggested_fix": "Report I(ZH; Zalt) and I(ZH; Zdecoy) individually in addition to the ratio; include statistical significance tests (e.g., bootstrap or permutation) comparing the two MI values."
+    },
+    {
+      "severity": "major",
+      "issue": "The VQ-VAE design choices (codebook size K, encoder depth, λ weights) are described only in the appendix, with no ablation in the main paper showing that the MI comparisons are stable under reasonable changes to these hyperparameters. If the nMI trends depend sensitively on K or the entropy regularizer, the planning conclusions could be artifacts of the compression.",
+      "suggested_fix": "Include a concise ablation (main paper or a clearly cross-referenced appendix table) varying at least codebook size K and the cosine-diversity weight λ_cos, reporting whether the horizon and branching conclusions are robust."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'works backwards from goal' interpretation in §3.1 (\"the model spares more pre-output computation to find the last token\") is a speculative post-hoc gloss on an nMI pattern; the MI framework does not identify directional causal structure and cannot discriminate backward planning from, e.g., goal-conditioned generation or attention to the goal token in the input.",
+      "suggested_fix": "Qualify this interpretation explicitly as one plausible explanation rather than a demonstrated strategy, or design an experiment that distinguishes backward planning from goal-token attention (e.g., masking the goal token and testing whether the nMI peak shifts)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Section 3.3 (Information in the Computational History) reports a well-known recency effect and depth effect in autoregressive transformers; the finding that final layers and recent token positions dominate the decision state is consistent with prior work (Pal et al., 2023; Sukhbaatar et al., 2019). The conditional nMI analysis adds mild additional evidence but the overall contribution of this section is incremental.",
+      "suggested_fix": "Sharpen Section 3.3 by making a more specific quantitative claim (e.g., how many early blocks remain informative above a threshold) or by connecting it more directly to an actionable design recommendation; otherwise consider condensing it to a diagnostic note."
+    }
+  ],
+  "questions_for_authors": [
+    "The main results use GPT-3 Small (~125M). Were any experiments attempted on a publicly available pretrained LM (e.g., Pythia or GPT-2 XL)? If so, why were they excluded? If not, what architectural or data constraints prevented this?",
+    "In Table 1, the MNTP accuracy on PF-Long (0.60) is notably lower than MMTP (0.85). Since branch-awareness ratios are computed only on correctly solved samples, the MNTP PF-Long ratio (1.45) is estimated from a smaller and potentially easier subset. How do you account for this selection bias when comparing ratios between MNTP and MMTP?",
+    "The VQ-VAE is trained on hidden states from the same LM used in the MI analysis. Can you report the codebook utilization (percentage of active codes) and confirm that the cosine diversity loss prevents codebook collapse across your experimental settings? A collapsed codebook would reduce the MI upper bound and could produce artificially low nMI.",
+    "The backward-from-goal claim (§3.1) assumes the nMI peak at τ=2 for PF-Short is evidence of goal-directed computation. Did you check whether this nMI peak disappears if the goal node token is masked or moved in the input? Such a manipulation would help distinguish goal-token attention from true backward planning.",
+    "What is the codebook size K used in the main experiments, and how sensitive are the horizon and branching conclusions to varying K by a factor of 2 in each direction?"
+  ],
+  "calibration_check": "The abstract and introduction frame the contribution as characterizing planning in 'language models' generally, but all key evidence comes from a single 125M-parameter model trained from scratch on synthetic tasks; the horizon/branching findings are plausibly correct within the tested scope but are overclaimed in their generality — reducing the scope in the abstract to 'small LMs on structured tasks' would bring claims into alignment with evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The topic—understanding internal planning structure in LMs—is genuinely important and timely, but the experimental results are confined to tiny models on synthetic tasks, limiting the immediate impact on researchers who work with deployed-scale LLMs."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Using VQ-VAE compression plus count-based MI to avoid probing artifacts is a sensible and arguably novel combination for this purpose, but the individual components (VQ-VAE, MI estimation, hidden-state analysis) are well-established, and the planning-horizon and branch-awareness questions have been visited in adjacent interpretability work."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The methodology is internally sound—the MI estimator, normalization, and VQ-VAE pipeline are described precisely and validated—but the scope is too narrow to support the broad claims, and the backward-planning interpretation and the MTP/NTP comparison both have confounds that are not adequately addressed."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Multiple seeds are used and standard deviations are reported, but Table 1 omits raw MI values needed to assess effect magnitude, no formal significance tests are applied to the NTP vs. MTP comparisons, and the selection bias from conditioning on correctly solved samples (especially MNTP PF-Long at 60% accuracy) is not handled."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The authors clearly acknowledge that nMI is only meaningful in relative comparisons, that the pipeline captures aggregate rather than instance-level phenomena, and that absolute MI values are uninterpretable; these are responsible caveats that prevent major overclaiming, though the title and abstract framing remain somewhat broader than the evidence warrants."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized with a logical flow from motivation through method to experiments; notation is heavy but consistent, and the three-part experimental structure (horizon, branching, diagnostic) is clearly telegraphed."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure and appears to fit within ICLR length norms; related work is integrated into the introduction and a dedicated section, and appendix organization is reasonable."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The VQ-VAE architecture, training losses, and LM training details are described (with full formulas in appendices), and datasets are cited; however, the validation experiment (App. A.4) and probing comparison (App. D.2–D.5) are referenced but not summarized, and the sensitivity of conclusions to VQ-VAE hyperparameters is not examined in the main paper."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of probing, mechanistic interpretability, and planning-adjacent LM work is thorough, but the paper does not engage with recent activation-steering or representation-engineering work that is also relevant to the question of what information LM internals encode, and the comparison to probing is somewhat strawman in places."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, the nMI heatmaps (Figure 4) and decay curves (Figure 3) are appropriate for the claims, and Figure 2's experimental layout is informative; however, caption descriptions do not indicate whether error bands are shown on Figure 3, and the combined left/right encoding of multiple experimental conditions may reduce readability."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "The paper tests only a single small model size (125M) trained from scratch, on three datasets of which one (OpenWebText) is used only for a secondary diagnostic; no pre-trained model is evaluated, no ablation on VQ-VAE design choices is in the main text, and PF tasks are limited to paths of length 4 and 6, making it difficult to assess how broadly the horizon and branching findings generalize."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The methodology is principled and the initial findings are interesting, but the absence of any pre-trained or realistically-scaled LM experiments, the inconclusive NTP vs. MTP comparison, and the missing ablations on the compression pipeline place this below the typical ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.22
+}

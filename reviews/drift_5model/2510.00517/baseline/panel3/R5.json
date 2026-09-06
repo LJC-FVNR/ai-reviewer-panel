@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents the first systematic study of Differential Attention (DA) from an adversarial robustness perspective, identifying 'negative gradient alignment' as a driver of sensitivity amplification and validating a depth-dependent crossover effect. The theoretical framework is coherent and the empirical program is multi-pronged (ASR, Lipschitz estimates, gradient alignment, multiple models/datasets). However, the work is weakened by a critical methodological confound (DA's extra Q/K projections give strictly more parameters than the ViT baseline, which is never controlled for), the absence of error bars or statistical significance reporting, incomplete connection between attention-level gradient norms and model-output vulnerability, and a conspicuous omission of any NLP experiments despite DA having been proposed for language tasks.",
+  "strengths": [
+    "First dedicated adversarial-robustness analysis of DA; fills a genuine gap since the original Differential Transformer paper does not study this.",
+    "Three complementary evaluation axes (attack success rate, local Lipschitz estimates, and negative-gradient-alignment frequency) provide converging evidence and map cleanly onto the theoretical quantities.",
+    "The depth-dependent crossover analysis (Section 4.2 / Figure 3) is the most novel and nuanced theoretical contribution, offering a non-trivial prediction that is partially confirmed empirically.",
+    "Limitations are disclosed honestly and in reasonable detail, including the local-linearization assumption and the deliberate exclusion of robustness-trained variants.",
+    "Evaluation spans four model–dataset combinations (DiffViT on CIFAR-10/100 and DiffCLIP on COCO/ImageNet) plus three attack families (PGD, AutoAttack, CW), providing breadth beyond a single controlled setting."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Parameter-count confound: DA requires two separate Q/K projection pairs (W_Q1, W_K1, W_Q2, W_K2) versus one pair for standard attention, making DiffViT strictly larger in attention-block capacity. All ASR and Lipschitz comparisons between ViT and DiffViT are therefore confounded—higher vulnerability may reflect greater model expressivity rather than the subtractive structure per se.",
+      "suggested_fix": "Add a baseline with doubled Q/K parameters but no subtraction (e.g., concatenate two attention heads and average, or use a ViT with twice the head dimension). If the subtractive structure is the sole driver, this ablation should show significantly lower ASR than DiffViT."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No error bars, seeds, or statistical significance anywhere: every ASR table/figure, Lipschitz estimate, and gradient-alignment frequency is presented as a single number. For CIFAR-scale experiments where training randomness is non-negligible and differences may be small (e.g., Fig. 2 'narrowing on large-scale' settings), readers cannot judge whether reported gaps are real.",
+      "suggested_fix": "Report mean ± std over at least 3 independent training seeds for all ViT/DiffViT results; use bootstrap confidence intervals for Lipschitz and alignment frequency estimates."
+    },
+    {
+      "severity": "major",
+      "issue": "The theory operates entirely at the attention-map level (‖∇ξA_DA‖) but empirical vulnerability is measured at the model-output level (ASR). No formal argument bridges these: downstream layers could absorb or amplify the attention-level gradient effect, so the theoretical results do not directly imply higher attack success rates without additional assumptions.",
+      "suggested_fix": "Either extend Lemma 2 / Theorem 2 to bound the model-output Lipschitz constant, or add an empirical sanity check showing that attention-level Lipschitz and output-level ASR are correlated across the same set of layers/depths."
+    },
+    {
+      "severity": "major",
+      "issue": "No NLP experiments despite DA being originally proposed for language modelling. CIFAR and MSCOCO are vision tasks; it is unclear whether the Fragile Principle manifests similarly in language or multimodal generation settings where contextual hallucination (DA's stated motivation) is most relevant.",
+      "suggested_fix": "Include at least one text-domain adversarial evaluation (e.g., a small DiffTransformer vs. Transformer on a classification or NLU task under character-level or token-level PGD attacks) or explicitly justify the omission beyond 'scope'."
+    },
+    {
+      "severity": "major",
+      "issue": "Figure 3(d) shows mean local Lipschitz estimates rising monotonically with depth for DiffViT, yet Section 4.2 argues that depth should activate noise-cancellation (α < 1) and reduce propagated perturbation energy. This empirical trend appears inconsistent with the theory and is explained only informally as 'uneven distribution across depth'.",
+      "suggested_fix": "Reconcile this inconsistency explicitly. Either show that the layer-wise cancellation factor α is indeed < 1 while the per-layer local Lipschitz is > 1 (these are not contradictory but need careful explanation), or revise the theoretical claim about what quantity is predicted to decrease."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 3's claim that 'ρ and θ can be adversarially controlled' is misleading: the adversary controls ξ (a small input perturbation), not ρ (a ratio of gradient norms) or θ (the alignment angle between internal gradients), both of which are endogenous to the model and data.",
+      "suggested_fix": "Rephrase as: 'the condition on (ρ, θ) is generically satisfied under training dynamics that encourage negative alignment,' and empirically show the distribution of (ρ, θ) over the dataset to demonstrate this."
+    },
+    {
+      "severity": "minor",
+      "issue": "Architecture details for the ViT/DiffViT baselines are underspecified: embedding dimension, number of heads, MLP ratio, patch size, and training recipe (optimizer, LR schedule, augmentation) are not stated, limiting reproducibility.",
+      "suggested_fix": "Add a full hyperparameter table in the appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "Have you verified that depth-1 ViT and DiffViT have the same total parameter count, or at minimum reported the parameter counts of all models evaluated? If DiffViT has more parameters, what is the ASR of a parameter-matched non-subtractive baseline?",
+    "Figure 3(d) shows per-layer mean Lipschitz increasing with DiffViT depth. Can you clarify how this is consistent with Theorem 4 / Corollary 1, which predict that the cumulative propagated perturbation (∥ε^(D)∥) decreases with depth when α·L_DA < 1? Are you measuring ∥ε^(D)∥ or the local L per layer?",
+    "The CLIP vs. DiffCLIP comparison uses pretrained models—were they trained with the same data, optimizer, number of steps, and convergence criterion? Could training quality differences account for any observed gap on ImageNet?",
+    "For the λ_init ablation (Table 1), the non-monotonic behavior (ASR peaks at 0.8 then drops) is intriguing. Can you provide a theoretical explanation for why over-subtraction (λ_init > 0.8) reduces fragility? Does the gradient alignment frequency also peak at 0.8?",
+    "Why is the evaluation restricted to vision tasks? If language-domain NLP experiments are out of scope, can you provide a principled argument that the gradient-alignment mechanism should behave identically in discrete token-embedding spaces?"
+  ],
+  "calibration_check": "The core theoretical claims about DA's gradient amplification under negative alignment are adequately scoped and supported, but the framing around 'fundamental trade-off' and 'safety-critical applications' overstates the evidence given that ImageNet-scale results are mixed, no NLP experiments exist, and all controlled experiments use toy-scale single-depth models without statistical significance testing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Identifying a structural vulnerability in DA is useful for practitioners, but practical impact is limited by mixed results at ImageNet scale, absence of NLP experiments, and focus on depth-1 models that are not deployed."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "First adversarial-robustness analysis of DA is a genuine contribution; however, the core gradient-amplification result (Lemma 1 / Theorem 1) follows almost directly from the law of cosines applied to gradient vectors, limiting mathematical depth."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theoretical framework is internally consistent but operates only at the attention-map level and does not propagate claims to model outputs; the parameter-count confound in the main empirical comparison is unaddressed."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, no multiple seeds, and no significance tests anywhere in the paper; for small datasets like CIFAR-10/100 where training variance is non-trivial, reported differences cannot be judged as statistically real."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are discussed honestly including the linearization and layer-isolation assumptions, but 'fundamental trade-off' and the safety-critical motivation are overclaimed relative to the evidence from CIFAR-scale toy experiments."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Writing is clear and the logical flow from theory to empirics is easy to follow; notation is consistent and the limitations section is forthright."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Abstract, Introduction, Related Work, Preliminary, Theory, Experiments, Discussion, Conclusion) with appropriate length and appendix usage."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Attack hyperparameters and DA-specific settings (λ_init) are stated, but ViT/DiffViT architecture details (depth, width, heads, patch size, training recipe) are absent from the main text, making replication difficult."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of Lipschitz-constrained attention and adversarial ViT literature is adequate, but robustness of smooth/sparse attention variants and NLP adversarial robustness are underrepresented, leaving the contribution poorly positioned against alternatives to DA."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative multi-panel comparisons across attack types, depths, and datasets; the gap between theory and Figure 3(d) (rising Lipschitz with depth) is not reconciled in the caption."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Evaluation covers only vision tasks despite DA's NLP origin, uses depth-1 models as the primary testbed, lacks error bars, and shows attenuated effects on the most practically relevant scale (ImageNet), undermining claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A borderline submission: the topic and theoretical framing are valuable, but the uncontrolled parameter-count confound, absence of statistical uncertainty, Figure 3(d) inconsistency, and NLP omission are substantive issues that prevent acceptance in current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

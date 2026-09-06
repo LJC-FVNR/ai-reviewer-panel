@@ -1,0 +1,123 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies a real and under-analyzed practitioner problem: when attention-based regressors are trained with a joint MSE + (1-PCC) objective, correlation plateaus while MSE keeps falling. It offers an elementary but coherent theoretical story (an MSE mean/std/correlation decomposition, a 1/σ_ŷ attenuation of the PCC gradient through the softmax Jacobian, and a convex-hull-radius bound on the PCC gain any convex aggregator can obtain over mean-pooling), and proposes a three-part drop-in module (SRA, DATS, DNPL) evaluated on synthetic, UCI tabular, spatial transcriptomics, and MOSI data. The framing and the convex-aggregation bound are the genuine contributions, but the empirical support is thin for the strength of the claims: no seeds or error bars on three of four settings, three-fold results whose ±0.16–0.20 standard deviations dwarf the reported gain, UCI improvements of 0.010–0.042 PCC reported as single numbers, ablations run only on the tabular benchmarks and not on the homogeneous datasets that motivate the paper, and no comparison against the obvious alternative fixes (multi-task gradient balancing, CCC loss, prediction standardization, sparse/temperature-tuned attention variants). With proper significance testing, the missing baselines, and ablations on the flagship settings, this could become a solid paper.",
+  "strengths": [
+    "The PCC plateau is a genuine, widely encountered failure mode in affective computing, spatial transcriptomics, and pathology regression, and the paper is the first I am aware of to give it a named, analyzed treatment rather than a heuristic workaround.",
+    "The theoretical narrative is internally coherent and each proposed component is tied to a specific derived limitation: DNPL to the 1/σ_ŷ factor in Theorem 2.1, DATS to the near-uniform-attention argument in Remark 2.3, SRA to the convex-hull bound in Theorem 2.2. This is much better motivated than the usual grab-bag of attention tweaks.",
+    "Theorem 2.2 (PCC gain of any convex aggregator over mean-pooling bounded by the ratio of convex-hull radius to normalized mean-pooling prediction std) is a clean and, to my knowledge, new statement, and the scale-invariance remark showing the bound does not depend on the regression head magnitude is a nice touch.",
+    "Evaluation spans four qualitatively different settings (controlled synthetic, tabular, pathology-to-transcriptomics, multimodal video sentiment), and the method is integrated into existing published pipelines (FT-Transformer, EGN, ALMT) rather than into a bespoke architecture, which is the right way to demonstrate a drop-in module.",
+    "The synthetic study with a controllable homogeneity knob (σ ∈ {0.10, 0.24, 0.42, 0.73}) and a mean-pooling reference line is well designed to test Theorem 2.2 specifically, and the reported monotone trends are the right kind of evidence for the theory.",
+    "The two homogeneity statistics reported for the real datasets (σ = 0.068 vs σ₀ = 0.164 for 10xProteomic; σ = 0.098 vs σ₀ = 0.170 for MOSI) show the authors actually checked that the theory's precondition regime plausibly applies rather than asserting it."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The headline empirical result is not shown to be statistically real. The 10xProteomic table reports EGN 0.602 ± 0.160 versus EGN+ECA 0.690 ± 0.202 on PCC@F over three folds (and similarly for PCC@S and PCC@M); with n=3 and standard deviations of this size the difference is nowhere near significant, yet it is presented as '+14.64%'. The UCI table and the MOSI table report single numbers with no seeds, no standard deviations, and no tests, and the UCI gains are as small as 0.010–0.012 PCC — within the run-to-run noise one expects from FT-Transformer on these datasets.",
+      "suggested_fix": "Report mean ± std over at least 5 random seeds for every UCI and MOSI number (and for the synthetic curves), report paired tests (or per-fold paired differences with a Wilcoxon/t-test) for the three-fold transcriptomics result, and replace relative-percentage framing with absolute deltas plus confidence intervals. If a gain does not survive this, say so."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The right competing baselines for the diagnosed problem are absent. The paper frames the plateau as MSE gradients dominating PCC gradients — a multi-task gradient-conflict problem — but never compares to standard remedies: GradNorm, PCGrad, uncertainty-based task weighting, or even a λ_PCC sweep/annealing schedule. It also omits the trivial architectural fixes that decouple magnitude from shape (batch-standardizing predictions before the MSE term, or an affine calibration head, which by Lemma 2.1 leaves PCC untouched while absorbing mean/std matching), and the concordance correlation coefficient (CCC) loss, which is the standard objective in exactly the affective-computing literature the paper cites for the magnitude-plus-shape requirement. On the aggregator side, sparsemax/entmax, learned-temperature softmax, and gated/multi-head attention pooling are missing.",
+      "suggested_fix": "Add at least one gradient-balancing baseline, one loss-side baseline (CCC and/or standardized-prediction MSE), and one sharper-attention baseline (entmax or globally learned temperature) to the synthetic and UCI experiments. Without these, it is impossible to tell whether ECA's benefit comes from the specific theory-derived mechanisms or from generic reweighting/sharpening."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that DNPL leaves 'the learning objective's stationary points unchanged' is incorrect as stated. Multiplying the PCC term by StopGrad(σ_ŷ) does preserve the stationary points of the PCC term in isolation, but the stationary points of L_total = L_MSE + λ σ_ŷ (1-ρ) differ from those of L_MSE + λ(1-ρ) whenever σ_ŷ ≠ 1, since the balance point at which the two gradients cancel moves. The resulting update is also not the gradient of any fixed scalar objective as σ_ŷ evolves, so convergence guarantees are unclear. Relatedly, Corollary 2.1 identifies an O(1/σ_ŷ^{3/2}) relative decay but DNPL multiplies by σ_ŷ^{1}, an unexplained mismatch.",
+      "suggested_fix": "Restate the claim precisely (it rescales the PCC term's relative weight, which is a deliberate change to the effective objective), and either justify the σ_ŷ^{1} correction against the 3/2 exponent or add an ablation over the correction exponent σ_ŷ^{p} for p ∈ {0, 1/2, 1, 3/2}."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'model capacity' limitation is weaker than presented because it is derived with the element embeddings {h_si} and head w held fixed. In an end-to-end trained deep model the backbone is free to expand the convex hull, so the bound in Theorem 2.2 constrains the aggregator conditional on features, not the architecture's capacity. Moreover, both R̄ and σ₀ are functions of the learned features, and the bound requires R̄ < σ₀/‖w‖₂ — a condition that is never verified empirically on any of the four datasets (only σ is reported, and σ_s ≤ R_s ≤ √n_s σ_s means R̄ can be far larger, in which case the bound is vacuous exactly for the many-element pathology and video settings the paper targets).",
+      "suggested_fix": "Measure and report R̄, σ₀, and ‖w‖₂ on the real datasets to show the bound is non-vacuous there, and soften the framing from a capacity limit of attention architectures to a conditional-on-features limit of the aggregation step. A short experiment showing the backbone does not simply expand the hull to escape the bound would strengthen the argument considerably."
+    },
+    {
+      "severity": "major",
+      "issue": "Ablations are reported only on the three UCI tabular tasks — precisely the setting the paper does not claim as challenging — while the two flagship high-homogeneity results (10xProteomic, MOSI) receive no component ablation at all. The claim that each component contributes is therefore untested where the theory says it should matter most. The UCI ablation numbers themselves are also weakly supportive and partly inconsistent with the prose: removing SRA leaves Superconductivity PCC at the baseline's 0.920, and the text attributes an Online News value of 0.418 to the w/o-SRA setting while the table appears to place 0.410 there and 0.418 in a different ablation row.",
+      "suggested_fix": "Run the full SRA/DATS/DNPL ablation (with seeds) on 10xProteomic and MOSI, add a γ_s = 1 versus learned-γ_s comparison and a sensitivity sweep over β, T_min, γ_max, and λ_γ, and reconcile the ablation numbers quoted in the text with those in Table 1."
+    },
+    {
+      "severity": "major",
+      "issue": "Claims are inflated relative to the evidence and there is no limitations discussion anywhere in the main text. The abstract asserts 'the first rigorous theoretical analysis', 'consistently breaks the PCC plateau', and 'significant improvements', and the UCI paragraph calls 0.010–0.042 PCC deltas 'strong evidence' that the method 'substantially mitigates' the plateau. 'Significant' is used in a statistical sense the paper never establishes. The theory is also elementary — Proposition 2.1 is the standard MSE mean/variance/correlation decomposition, Lemma 2.1 is textbook, and Theorem 2.1 and Lemma 2.3 are direct chain-rule computations — which is fine, but does not license the 'rigorous'/'first' framing.",
+      "suggested_fix": "Add an explicit limitations subsection (fixed-feature assumption in Theorem 2.2, batch-dependence of the PCC loss, added parameters and compute from the γ MLP, risk of DATS amplifying noise in genuinely uninformative homogeneous samples), soften the superlatives, and reserve 'significant' for tested differences."
+    },
+    {
+      "severity": "minor",
+      "issue": "Corollary 2.1 supports the narrative only in one direction: it upper-bounds the RMS gradient ratio, and a decaying upper bound does not establish that the actual ratio decays. As training approaches a good fit both g_MSE and g_PCC shrink, so the true ratio's behavior is not determined by this bound. The only empirical check (Figure 3) is on synthetic data.",
+      "suggested_fix": "Add the measured ratio alongside the bound on at least one real dataset (10xProteomic or MOSI), and state explicitly that Corollary 2.1 is a bound rather than a characterization of the trajectory."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is two short paragraphs and misses several directly adjacent lines: correlation-based losses beyond PCC (notably CCC, standard in the affective-computing setting the paper uses), the multi-task loss-balancing/gradient-surgery literature that the diagnosed conflict belongs to, sparse attention alternatives (sparsemax, entmax) which are also convex aggregators and thus in scope of Theorem 2.2, and work on attention temperature/entropy collapse which DATS closely resembles.",
+      "suggested_fix": "Expand Related Work to position ECA against these four threads and state explicitly what Theorem 2.2 does and does not cover (e.g., that sparse attention is still convex and therefore subject to the same bound — this would actually strengthen the paper's claim)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several practical details needed to reproduce or judge the method are absent from the main text: PCC@F/@S/@M are used as the primary transcriptomics metrics without definition, the PCC loss is computed per batch but batch-size sensitivity is never examined despite batch statistics entering both the loss and the theory, and the parameter/compute overhead of the γ MLP and the DATS temperature computation is not reported.",
+      "suggested_fix": "Define the transcriptomics metrics in the main text, add a batch-size sensitivity study, and report parameter count and wall-clock overhead versus the unmodified baselines."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the measured values of R̄, σ₀, and ‖w‖₂ on 10xProteomic and MOSI, and is the precondition R̄ < σ₀/‖w‖₂ of Theorem 2.2 actually satisfied there? If not, what does the theorem tell us about those datasets?",
+    "How does ECA compare against GradNorm, PCGrad, or uncertainty-based task weighting applied to the same MSE + (1-ρ) objective, and against simply standardizing predictions (or adding an affine calibration head) so that the MSE term cannot be reduced by mean/scale adjustment alone?",
+    "Since the backbone is trained end-to-end, what prevents it from enlarging the convex hull of {h_si} to escape the bound in Theorem 2.2 without SRA? Have you measured whether R̄ grows during training in the baseline?",
+    "Can you provide seed-level results (at least 5 seeds) and paired significance tests for the UCI and MOSI numbers, and per-fold paired differences for the three transcriptomics folds?",
+    "DNPL rescales by σ_ŷ^{1} while Corollary 2.1 predicts an O(σ_ŷ^{-3/2}) relative decay. Why the exponent mismatch, and how sensitive is performance to the exponent?",
+    "In what sense are the stationary points of L_total unchanged by DNPL, given that the relative weight between the MSE and PCC terms is now state-dependent?",
+    "How do SRA, DATS, and DNPL each contribute on 10xProteomic and MOSI, and how sensitive are results to β, T_min, γ_max, and λ_γ?",
+    "You validate the plateau on 8 UCI datasets in the appendix but report ECA results on only 3. What are the results on the other 5, and how were the 3 selected?",
+    "Does DATS ever hurt by sharpening attention onto noise in samples that are homogeneous because they genuinely contain no discriminative element, and did you observe instability from the low-temperature regime?"
+  ],
+  "calibration_check": "Claims are over-scoped relative to the evidence: 'first rigorous', 'consistently', and 'significant improvements' are asserted for elementary theory and for gains that are untested for significance and, in the flagship three-fold experiment, well within the reported standard deviations, and the paper contains no limitations discussion.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a real and practically annoying problem in several applied regression subfields, and a drop-in module plus a vocabulary for the phenomenon would be used by those communities, but the impact is domain-scoped rather than broad and the demonstrated effect sizes are modest."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Naming and analyzing the PCC plateau and bounding the PCC gain of any convex aggregator by the convex-hull radius are new framings, but Proposition 2.1 and Lemma 2.1 are textbook, the gradient results are direct chain-rule computations, and the three ECA components are recognizable heuristics (residual extrapolation, adaptive temperature, loss reweighting) assembled with theoretical motivation rather than genuinely new machinery."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The derivations appear correct, but the claim-evidence links are loose in several places: a decaying upper bound is treated as evidence the ratio decays, the 'capacity limit' is derived under fixed features in an end-to-end trained model, Theorem 2.2's precondition is never verified on the real datasets, no theory shows γ_s > 1 provably helps, and the stated invariance of stationary points under DNPL is incorrect."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Three of four experimental settings report single numbers with no seeds, error bars, or tests; the one setting with variance (three folds, 0.602 ± 0.160 vs 0.690 ± 0.202) shows heavily overlapping distributions yet is reported as a +14.64% gain, and UCI deltas of 0.010–0.012 PCC are called strong evidence."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'First rigorous theoretical analysis', 'consistently breaks the PCC plateau', and 'significant improvements' overstate elementary theory and untested effect sizes; relative percentages inflate small absolute gains, and there is no limitations section acknowledging the fixed-feature assumption, batch dependence, added parameters, or the risk that DATS sharpens onto noise."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The logical arc from two diagnosed limitations to three matched components is easy to follow and the notation is defined carefully, but the analysis sections are dense, several metrics (PCC@F/@S/@M) go undefined, and the ablation prose does not match the ablation table."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization (abstract, introduction, theory, method, related work, experiments, conclusion) at appropriate length, with proofs and extended validation properly deferred to appendices; the only structural weakness is the absence of a limitations subsection."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The synthetic generator, the three host models (FT-Transformer, EGN, ALMT), the public datasets, and the standard processing protocols are described well enough to rebuild the pipeline, but the ECA-specific hyperparameters (β, T_min, γ_max, λ_γ, λ_PCC), optimizer settings, seeds, and batch sizes are all deferred to an appendix and not stated where the method is defined."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Positioning is confined to two short paragraphs and omits several directly competing threads — CCC and other correlation losses, multi-task gradient balancing (which is exactly the conflict being diagnosed), sparse attention variants that fall within Theorem 2.2's scope, and the attention-temperature/entropy-collapse literature that DATS closely parallels."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The display items are purposeful and each is tied to a specific claim (Figure 2 the plateau across homogeneity levels, Figure 3 the gradient-ratio bound, Figure 4 the σ_ŷ growth mechanism, Figure 5 the homogeneity sweep against a mean-pooling reference, Figure 6 per-fold curves), though Table 1 carries no variance information and Figure 3's validation is synthetic-only."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings spanning tabular, pathology, and video is respectable breadth for the generality claimed, but the comparison set is narrow (mostly the unmodified host model), ablations cover only the tabular tasks, only 3 of the 8 UCI datasets used to demonstrate the plateau are used to evaluate the fix, and MSA is tested on MOSI alone without MOSEI or CH-SIMS."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A well-motivated diagnosis of a real phenomenon with a coherent theory-to-method mapping, held below the bar by unestablished statistical significance, missing gradient-balancing and correlation-loss baselines, ablations absent from the flagship settings, and overclaimed language — all fixable with substantial added experiments rather than a redesign."
+    }
+  },
+  "publishability_probability": 0.27
+}

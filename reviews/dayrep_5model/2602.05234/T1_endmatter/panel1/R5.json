@@ -1,0 +1,107 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CDAS, a model steering method that combines Distributed Interchange Interventions (DII) from DAS with a Jensen-Shannon divergence-based distribution-matching training objective, framing bi-directional steering as a causal feature identification problem rather than preference enforcement. The JSD objective and the adaptation of DII to steering are genuinely novel, and the safety case studies are well-chosen and practically motivated. However, the core claimed advantage—tuning-free steering via 'unit factors'—is empirically compromised: unit factors fail on the general-purpose benchmark and the method inconsistently relies on tuned factors in some evaluations but not others, without satisfactory mechanistic justification. Statistical reporting is thin, the generality of results is limited, and some experimental design choices (asymmetric tuning between CDAS and baselines in case studies) threaten fair comparison.",
+  "strengths": [
+    "Novel JSD-based distribution-matching objective for steering is technically well-motivated: enforcing distributional consistency over the full vocabulary is a principled weakening of likelihood maximization, and the connection to knowledge distillation and causal abstraction is clearly drawn.",
+    "Bi-directional steering via DII is a clean and elegant mechanism: alternating base/source roles in the DII objective directly yields both concept elicitation and suppression without architecture changes.",
+    "Safety case studies (refusal override and CoT-backdoor neutralization) are practically relevant, well-described, and evaluated with multiple metrics including faithfulness (KL divergence and benchmark retention), which is more rigorous than reporting only ASR.",
+    "Honest conclusion section: the authors explicitly enumerate limitations—stricter data requirements, factor tuning necessity, rank-1 restriction, lack of rigorous causal grounding—without overclaiming."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Inconsistent use of unit vs. tuned factors undermines the primary claimed advantage. On AXBENCH, unit-factor CDAS is substantially weaker (large gap shown in Table 1) and the paper defaults to tuned factors for competitive results. In the case studies, unit factors are reinstated to 'highlight tuning-free advantage'—but no ablation confirms that tuned CDAS in case studies would not perform better, and no principled explanation justifies why unit factors suffice for safety tasks but not general steering. This inconsistency makes it impossible to evaluate the true capability of the method.",
+      "suggested_fix": "Report both unit-factor and tuned-factor CDAS in all experiments. Provide a hypothesis—tested, not just stated—for why activation strength of safety-related concepts makes unit factors viable. If unit factors are insufficient in general, reframe the contribution accordingly and do not center 'tuning-free' as an advantage."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Asymmetric tuning budget between CDAS and RePS in case studies. In case studies, CDAS uses unit factors (no tuning) while RePS undergoes grid-search factor tuning. This is presented as fair because it 'highlights' CDAS's advantage, but it systematically handicaps RePS. A method comparison is only informative if all methods are evaluated at their best-achievable performance under the same computational budget.",
+      "suggested_fix": "Report tuned-factor RePS and tuned-factor CDAS in all case studies. A separate 'tuning-free protocol' analysis can remain as a secondary table, clearly labeled as such."
+    },
+    {
+      "severity": "major",
+      "issue": "Insufficient statistical rigor on AXBENCH. Table 1 reports point estimates with no confidence intervals, error bars, or information about variance across seeds; it is impossible to assess whether differences between methods are real or within noise. The backdoor experiment (Figure 1) uses only 3 seeds, which is marginal for a high-variance binary outcome (ASR) across 32 layer configurations.",
+      "suggested_fix": "Report mean ± standard deviation (or 95% CI) for all AXBENCH scores. Increase seeds to at least 5 for the backdoor case study, or provide variance estimates with justification for 3 seeds."
+    },
+    {
+      "severity": "major",
+      "issue": "Incomplete results for Llama-3.1-70B in Table 2. The text and table captions suggest refusal, suppression, and harmonic mean scores for all four methods and three models, but the 70B row appears to contain only a partial set of numbers (e.g., suppression score for RePS/DIM on 70B is absent or ambiguously placed in the extracted text). This makes it impossible to evaluate CDAS's claimed advantage on large models in the safety setting.",
+      "suggested_fix": "Verify and restore the complete 70B row in Table 2; ensure the camera-ready table is complete and parseable."
+    },
+    {
+      "severity": "major",
+      "issue": "The backdoor case study (Section 5.2) is conducted only on a single model (Llama-3.1-8B), and the faithfulness evaluation (Table 4) uses tinyBenchmarks with only 100 instances each—far too small for reliable benchmark accuracy estimates (±10% or more at this size). Scaling to even one additional model and using full MMLU would substantially strengthen these claims.",
+      "suggested_fix": "Run the backdoor case study on at least one additional model (e.g., a 3B-scale model). Replace or supplement tinyBenchmark evaluations with full benchmark results, or report confidence intervals that account for the small sample size."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DAS baseline in case studies is defined as 'CDAS with the training objective replaced by Lang.'—which is a nonstandard labeling that risks reader confusion, since DAS is an established prior method (Geiger et al., 2024) with a different objective. The chosen abbreviation conflates two distinct things.",
+      "suggested_fix": "Rename this baseline (e.g., 'DII+Lang.') and make explicit in the text that it is a novel ablation, not the original DAS method."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'one-to-many' DII protocol (intervening all positions of the base with representations from a single source token) is empirically motivated but theoretically underdetermined. The choice of which token position to use (from <model> tokens, selected by grid search) is an additional tuning step whose sensitivity is not analyzed.",
+      "suggested_fix": "Include an ablation over token position selection strategies, or provide variance over token position choices to show robustness."
+    }
+  ],
+  "questions_for_authors": [
+    "Why does the unit-factor setting fail on AXBENCH (Table 1 shows a large gap vs. tuned factor) but succeed in the safety case studies without tuning? Can you provide a quantitative characterization of concept activation strength (e.g., ||α_c||) that distinguishes the two regimes?",
+    "In Table 2, what are the complete suppression and harmonic mean scores for Llama-3.1-70B under RePS and DIM? The extracted text is ambiguous on this.",
+    "DAS (Geiger et al., 2024) assumes near-perfect model accuracy on a well-defined causal task. Your CDAS explicitly relaxes this assumption via the JSD objective. Have you verified that the identified subspaces have any interpretable causal meaning (e.g., via probing or causal intervention analysis), or is CDAS best understood purely as an optimization trick rather than genuine causal variable localization?",
+    "How sensitive are the AXBENCH results to the data augmentation procedure (using gpt-4o-mini to generate neutral responses and concept-eliciting instructions)? Could quality variance in augmented data explain the layer-sensitivity or model-size dependence of CDAS results?",
+    "For the refusal suppression case study, refusals are induced via addition and suppressed via ablation for DIM (following Arditi et al., 2024), while CDAS uses clamping for both. This is an asymmetry in intervention type across methods—have you verified that this does not confound the comparison?"
+  ],
+  "calibration_check": "The conclusion is appropriately hedged, acknowledging that CDAS does not always outperform strong-supervised methods and listing concrete limitations; however, the framing of 'tuning-free' as a practical advantage is overclaimed given that AXBENCH results require tuned factors to be competitive, and the selective use of unit factors only in safety case studies inflates the apparent advantage there.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The work addresses a genuine problem (stable, faithful LLM steering) and the safety applications are relevant, but inconsistent results across settings and the unit-factor weakness limit the practical impact a typical ICLR researcher would build on."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The JSD distribution-matching objective applied to steering via DII is a genuinely new combination; borrowing DII from DAS for the steering setting is a clear conceptual contribution, though neither component is itself novel."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method derivation is correct and the experimental controls are partially adequate, but the inconsistent unit/tuned-factor protocol across experiments and asymmetric tuning budgets between CDAS and baselines in case studies introduce confounds that undermine causal attribution of observed differences."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "AXBENCH Table 1 reports only point estimates with no variance; the backdoor experiment uses only 3 seeds over 32 layer configurations; the faithfulness benchmark evaluation uses 100-instance tiny benchmarks with no confidence intervals, making it impossible to distinguish real effects from noise."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The conclusion and limitations section are unusually candid for a conference submission—limitations are stated as concrete, not hedged—but the framing of 'tuning-free' as an advantage is not matched by the AXBENCH evidence, representing a calibration gap in the main body."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The paper is dense with notation and the method section requires careful re-reading; the DAS baseline relabeling in case studies is confusing; and the manuscript text has embedded table content that appears garbled, suggesting formatting issues that impede readability."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The paper follows standard conference structure (introduction, related work, method, experiments, conclusion) with reasonable length; the split between benchmark evaluation and case studies is logical and well-motivated."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Key hyperparameters (layer selections, factor grid search ranges, data augmentation templates) are referenced to appendix sections that appear to exist, but the grid search for token position in the DII protocol and the exact factor tuning procedure for CDAS are described only at a high level."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior work on steering vectors, causal abstraction, distribution matching, and safety-relevant representations is covered adequately and cited correctly; the comparison to DAS, BiPO, RePS, and LoReFT is appropriate, though the exclusion of BiPO from case studies based on AXBENCH results is borderline circular."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figure 1 shows layer-wise ASR with standard error shading across four methods, which directly supports the main claim of the backdoor case study; tables are appropriately structured to compare methods on multiple metrics, though Table 2 appears to have missing entries for the 70B model."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "AXBENCH evaluation is limited to two model sizes from a single family (Gemma-2); the backdoor case study uses a single model; all experiments are restricted to rank-1 interventions; and the failure of unit factors on general tasks without a principled characterization of when they work limits the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The JSD-DII combination is a genuine and interesting technical contribution, and the safety case studies show promising results, but the core 'tuning-free' claim is not supported by the AXBENCH evidence, statistical reporting is insufficient, and the asymmetric experimental protocol makes fair comparison difficult; substantial revisions are needed before this meets the ICLR bar."
+    }
+  },
+  "publishability_probability": 0.18
+}

@@ -1,0 +1,95 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a token-attribution method for decoder-only LLMs that multiplies a causal attention-rollout gate by a sum of Hutchinson/HVP-estimated Hessian sensitivity and KL masking impact, and introduces a curated NarrativeQA+SciQ probe with a 'Dependent Sentence Attribution' (DSA) metric. The interpretability problem is important and the three-component intuition is reasonable, but the empirical case rests on implausibly large margins (2–5x over all baselines on every dataset), a headline metric whose reported values are mathematically inconsistent with its own definition, no ablation over the core β/γ weights, and heavy reliance on appendices not present in the manuscript. These evidentiary and internal-consistency problems require a substantial redo rather than minor fixes.",
+  "strengths": [
+    "Addresses a genuinely important and active problem: faithful token-level attribution for autoregressive decoder-only LLMs, where methods designed for encoders transfer poorly.",
+    "The conceptual decomposition into causal semantic gating (attention rollout under the causal mask), second-order curvature (scalable HVP/Hutchinson estimation), and information-theoretic masking is a sensible synthesis, and the scalability engineering (low-rank rank-64, windowing, layer sampling, Gauss–Newton surrogate) is described concretely.",
+    "Evaluation spans four models of varying scale/architecture (GPT-J-6B, Phi-3-14B, Llama-3.1-70B, Qwen2.5-3B) and multiple datasets, plus a dedicated distractor-based curated probe with reported high inter-annotator agreement (F1=0.91, κ=0.89) and a decoding-hyperparameter robustness sweep."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric is internally inconsistent. It is defined as the difference between attribution mass on the SciQ segment and mass on the NarrativeQA segment 'with attributions normalized so the total mass over the paragraph sums to one', which mathematically bounds DSA in [-1, 1]. Yet Table 1 reports HETA values of 4.25–5.10 and baselines up to 3.78. Values above 1 for a normalized mass difference are impossible under the stated definition, so either the metric, the normalization, or the numbers are misreported.",
+      "suggested_fix": "State the exact DSA formula and normalization precisely, reconcile the reported scale (are these raw log-odds? summed? unnormalized?), and re-report with the actual bounded quantity plus per-instance distributions, not just means."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Headline improvements are extraordinary and unscrutinized: Soft-NC of 10.3/9.2 for HETA vs ~1–2 for every baseline (Table 3), and 2–5x DSA gaps, across every model and dataset. Such uniform, order-of-magnitude dominance over strong recent methods (ReAgent, ContextCite, SEA-CoT) is a red flag that usually indicates a metric/normalization artifact or an unfair comparison, and the paper offers no error analysis, no significance testing, and no explanation of why the gap is this large.",
+      "suggested_fix": "Provide significance tests, confidence intervals, and per-instance score distributions; verify all baselines are tuned identically; and include a sanity check (e.g., a controlled synthetic where ground-truth influence is known) to rule out metric artifacts."
+    },
+    {
+      "severity": "major",
+      "issue": "The core aggregation Attr = MT[i]·(β S_i + γ I_i) is a heuristic with no ablation over β and γ (both fixed at 0.5) and no justification for the multiplicative gate over a sum. The ablations remove whole components but never probe the weighting that the final score depends on, so the design is not isolated.",
+      "suggested_fix": "Add a sweep/ablation over β, γ (including asymmetric and zero settings), justify the multiplicative-gate-times-sum form, and report sensitivity of all metrics to these weights."
+    },
+    {
+      "severity": "major",
+      "issue": "Central claims lean on appendices that are absent from the manuscript: 'theoretical properties and error bounds' (A2), full algorithm (A3), Qwen results, cost tables (8, 9), and detailed ablations (A4). The main-text theory is only a generic second-order Taylor sketch, and the motivating inequality is garbled ('∂f/∂x_i = 0 but f(x+εe_i) = f(x)' asserts no change, contradicting the intended point). As written, the paper's soundness cannot be verified from the body.",
+      "suggested_fix": "Move at least the error-bound statement, the algorithm, and cost/quality trade-off tables into the body; fix the motivating example so the claim (finite-perturbation influence undetected by a vanishing gradient) is stated correctly."
+    },
+    {
+      "severity": "minor",
+      "issue": "Attention rollout appears as both a HETA component and a baseline, and Table 1's TDD-backward GPT-J entry (0.31, positive) breaks the otherwise-negative pattern, suggesting a sign/transcription error. Calibration language ('establishing a new standard', 'new state-of-the-art') is stronger than the evidence supports given the above.",
+      "suggested_fix": "Clarify the rollout distinction, audit Table 1/3 signs, and scope claims to the evidence."
+    }
+  ],
+  "questions_for_authors": [
+    "Given the stated normalization (paragraph mass sums to 1), how can DSA exceed 1 (HETA up to 5.10)? Please give the exact formula and reconcile the reported scale.",
+    "Why are HETA's Soft-NC/NS values (~10) an order of magnitude above every baseline (~1–2)? Were baselines tuned with equal effort, and can you show per-instance distributions rather than means?",
+    "What is the sensitivity of all metrics to β and γ, and why the multiplicative gate applied to the sum of curvature and KL terms rather than an additive or normalized combination?",
+    "Can you state the HETA error bound (A2) and the runtime/memory cost tables in the main text, and confirm the low-rank/windowed/6-layer variants preserve quality with quantitative deltas?"
+  ],
+  "calibration_check": "Claims are overscoped: 'new standard' / SOTA assertions rest on uniformly extraordinary margins and a headline metric whose reported values violate its own definition, so the evidence does not currently support the conclusions.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Faithful attribution for decoder-only LLMs is an important, active problem, but the questionable evidence limits how much the community could confidently build on the reported results."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The unified gate+Hessian+KL decomposition is a reasonable synthesis, but each ingredient (attention rollout, Hessian sensitivity, KL masking) is established, making the contribution a moderate combination rather than a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "A heuristic multiplicative combination with fixed unablated weights, a garbled motivating inequality, and theory deferred to an absent appendix leave the method's correctness largely unverified in the body."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only 3 seeds with small reported std and no significance tests, and the reported DSA magnitudes exceed the metric's own [-1,1] bound, undermining confidence that the improvements are real rather than artifactual."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "'New standard'/SOTA language and uniform 2–5x margins are asserted without the scrutiny such extraordinary gaps demand, and the headline metric's inconsistency is not addressed."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall organization and equations are followable, but notation is dense, the rollout-as-component-vs-baseline overlap is confusing, and the key motivating example is stated incorrectly."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, motivation, background, method, experiments, ablations, related work, conclusion/limitations) is present and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters, estimators (Pearlmutter HVP, Hutchinson, rank-64, windowing), models, and dataset construction are described, but the algorithm and several result/cost tables live in unprovided appendices, and the DSA definition is ambiguous enough to block exact reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Positioning against ContextCite, TDD, Peering, ReAgent and classical attribution is fair and specific, though the critique-only framing of competitors pairs uneasily with the implausibly large empirical gaps."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captioned ablation and robustness figures target the right comparisons (component ablations, Gaussian sensitivity, active/passive robustness, F1), but they inherit the same unverified-magnitude concerns and rely on absent appendix detail."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and several datasets give reasonable coverage, but the broad SOTA/generality claims outrun the evidence, especially with Qwen results and key ablations relegated to a missing appendix."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising idea undermined by a mathematically inconsistent headline metric, implausible unscrutinized margins, missing weight ablations, and body claims dependent on absent appendices—needs a substantial redo, not minor fixes."
+    }
+  },
+  "publishability_probability": 0.12
+}

@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper reframes Differential Attention (DA) through an adversarial-robustness lens, arguing that DA's subtractive structure induces 'negative gradient alignment' that amplifies gradient norms and local Lipschitz constants, and empirically probing this across ViT/DiffViT and CLIP/DiffCLIP on five datasets, including a depth-dependent robustness crossover. The perspective is novel and the empirical study is reasonably broad, but the theory reduces to elementary vector algebra whose load-bearing empirical claim (that DA structurally induces negative *gradient* alignment, as opposed to opposing attention *values*) is asserted rather than proven, and the experiments lack seeds/error bars, parameter-matched baselines, and rigorous Lipschitz estimation. Mixed ImageNet results further undercut the claimed generality.",
+  "strengths": [
+    "Genuinely novel framing: to my knowledge the first analysis of Differential Attention specifically from an adversarial-robustness/sensitivity standpoint, addressing an emerging and increasingly used mechanism.",
+    "The depth-dependent 'crossover' hypothesis (fragile at shallow depth, partially robust at greater depth for small budgets) is an interesting, testable prediction, and the CW/PGD/AutoAttack depth sweeps support it qualitatively.",
+    "Reasonably broad empirical scope (from-scratch ViT/DiffViT plus pretrained CLIP/DiffCLIP, three attack families, five datasets) and useful ablations over both the subtraction coefficient lambda_init and network depth.",
+    "Relatively honest calibration: the authors flag the mixed ImageNet patch-attack result, and explicitly state local-linearization and layer-isolation limitations rather than burying them."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The theoretical core is mathematically trivial and does not establish the paper's central claim. Lemma 1 through Theorem 3 are just algebraic expansions of ||a - lambda*b||^2 for gradient vectors a=grad(A1), b=grad(A2); that anti-aligned vectors add in norm is elementary. The non-trivial and load-bearing claim — that DA's design *structurally induces* negative alignment of the *input gradients* — is argued only informally, and it conflates opposing attention-map *values* (A1 large / A2 small in a region) with opposing *input gradients* (grad_xi A1 vs grad_xi A2), which are not the same object.",
+      "suggested_fix": "Provide a rigorous argument (or at least a controlled synthetic demonstration) connecting DA's training objective to negative *gradient* alignment, distinguishing it clearly from value-level anti-alignment; alternatively, reframe the theory honestly as a descriptive decomposition whose premise (cos theta < 0) is an empirical finding, not a structural guarantee."
+    },
+    {
+      "severity": "major",
+      "issue": "No statistical rigor anywhere: ASR, Lipschitz estimates, and negative-alignment frequencies are reported without seeds, error bars, variance, or significance tests. Several comparisons (e.g., 'significantly higher Lipschitz', ImageNet gaps 'small') therefore cannot be assessed as real effects, and words like 'significantly' are used without support.",
+      "suggested_fix": "Report multiple seeds with means and standard deviations (or CIs) for all headline metrics, and apply appropriate significance tests to the DA-vs-standard comparisons; explicitly quantify the ImageNet null/reversed results."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline fairness is not established. DA adds a second set of Q/K projections, so DiffViT likely has more capacity than the ViT baseline; the paper does not report parameter/FLOP matching or verify that clean accuracy is comparable. Higher ASR could partly reflect a different (e.g., sharper/less regularized) solution rather than the subtractive mechanism per se.",
+      "suggested_fix": "Match parameter count/compute between ViT and DiffViT (or add a capacity-matched two-branch non-subtractive control), and report clean accuracy alongside every ASR so vulnerability is compared at equal utility."
+    },
+    {
+      "severity": "major",
+      "issue": "The local Lipschitz constant is estimated by sampling xi uniformly from an L-inf ball and taking a supremum over samples. Random sampling systematically *underestimates* the true sup and yields high-variance, dimension-dependent estimates; using it as evidence that 'DA has higher Lipschitz constants' is weak, especially without variance reporting.",
+      "suggested_fix": "Use gradient-ascent / power-iteration-style maximization of the local slope (or certified Jacobian-norm bounds) rather than uniform sampling, and report distributions over inputs with error bars."
+    },
+    {
+      "severity": "minor",
+      "issue": "The depth analysis introduces an 'emergent' reduction factor alpha in (0,1] that carries the entire crossover result (Corollary 1) but is never measured, bounded, or shown to satisfy alpha*L_DA < 1 in the trained models. The bound is thus an assumption dressed as a consequence.",
+      "suggested_fix": "Empirically estimate per-layer alpha and L_DA in the trained networks and show that the predicted crossover depth D* matches the observed one, rather than only reporting a qualitative trend."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 1's interpretation ('over-cancellation' reduces ASR beyond lambda_init=0.8) is confounded: clean accuracy also drops as lambda_init grows, so ASR changes could reflect a degraded model rather than a robustness mechanism, and only one dataset/depth is shown.",
+      "suggested_fix": "Disentangle accuracy from ASR (e.g., robust-accuracy or ASR conditioned on originally-correct inputs) and replicate the lambda sweep across datasets/depths."
+    }
+  ],
+  "questions_for_authors": [
+    "Are ViT and DiffViT matched in parameters/FLOPs, and what are the clean accuracies of every model pair used in the ASR comparisons?",
+    "Can you provide a formal or synthetic-controlled argument that DA induces negative alignment of *input gradients* (not merely of attention values), and quantify how strongly?",
+    "How sensitive are the Lipschitz conclusions to the estimation method — do gradient-based or certified estimates preserve the DA-vs-standard ordering?",
+    "What are the seed-to-seed variances of ASR and negative-alignment frequency, and are the DA-vs-standard gaps statistically significant, including on ImageNet where results reverse for patches?",
+    "In the trained networks, what are the measured per-layer alpha and L_DA, and does the empirical crossover depth match the D* predicted by Corollary 1?"
+  ],
+  "calibration_check": "Claims are mostly scoped honestly (limitations and the mixed ImageNet result are acknowledged), but the framing of a 'theoretical investigation' and 'structural' induction of negative gradient alignment overstates what the trivial algebra plus unproven premise actually establish.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A timely and useful robustness perspective on an emerging mechanism, but it offers only characterization (no mitigation that changes practice) and modest practical impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "First adversarial-robustness analysis of Differential Attention is a genuinely new angle, though the underlying mathematical observation (subtraction amplifies anti-aligned gradients) is elementary."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The theorems are trivial vector-norm algebra, and the pivotal claim that DA structurally induces negative *gradient* alignment is asserted while conflating gradient anti-alignment with attention-value anti-alignment."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, variance, or significance tests are reported, and the Lipschitz constant is estimated by uniform sampling that biases the supremum downward."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations and the reversed ImageNet patch result are stated plainly, though 'significant' and 'structural' claims exceed the supporting evidence."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Standard organization and a clear central thesis, but many muddled run-on sentences and loosely stated claims (partly extraction artifacts) hinder precision."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Conventional Abstract/Intro/Related/Preliminary/Theory/Experiments/Conclusion structure at appropriate ICLR length with a limitations section."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Models, datasets, attacks, lambda_init and depths are specified, but training details (epochs, optimizer, augmentation) and Lipschitz/sampling settings are thin."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Reasonable coverage of attention robustness, Lipschitz, and interpretability with a clear novelty claim, though positioning against capacity-matched controls is absent."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions are informative and tied to specific claims (ASR by dataset, depth curves, per-layer Lipschitz and alignment), adequately supporting the narrative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Multiple models, datasets, attacks, and lambda/depth ablations, but mixed ImageNet results and unmatched baselines undercut the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A borderline-reject submission: novel and reasonably broad, but held back by shallow theory, an under-justified central claim, and missing statistical/baseline rigor."
+    }
+  },
+  "publishability_probability": 0.3
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a VQ-VAE-based information-theoretic pipeline to study planning in decoder-only LMs by compressing hidden states into discrete codes and computing mutual information between them. It investigates two planning aspects — planning horizon and branch awareness — across synthetic grammar, path-finding, and natural language datasets, and compares NTP- vs. MTP-trained models. The framework is methodologically interesting and better motivated than probing-based alternatives, but the experiments are restricted to sub-1B models (GPT-3 Small), the NTP/MTP comparison yields only weak, largely null results, and the natural language setting is only used for a secondary diagnostic, not for the main planning claims — all of which substantially limit the scope and impact of the findings as submitted.",
+  "strengths": [
+    "The VQ-VAE + count-based MI pipeline is a principled and well-motivated alternative to probing: it avoids introducing an external supervised model whose capacity can confound results, and the theoretical argument is clearly stated (probe-induced confounding, DPI violations, parameterization sensitivity).",
+    "The path-finding branch-awareness experimental design is clever: two disjoint correct paths plus one disjoint decoy path cleanly operationalize 'branch awareness' without trivial overlap, and the I(ZH;Zalt)/I(ZH;Zdecoy) > 1 finding is a concrete, non-trivial result.",
+    "The paper honestly reports no consistent NTP/MTP performance differences in the conclusion rather than overstating the effect, and uses only normalized, within-setting comparisons to avoid overinterpreting absolute MI values.",
+    "The recency-and-depth result in Section 3.3 (heatmaps of nMI across layers and prefix blocks) is a clean, replicable diagnostic that aligns with mechanistic priors and extends earlier probing-based findings in a theoretically cleaner way.",
+    "The related work coverage is broad and accurately situates the contribution against probing, mechanistic interpretability, information-bottleneck approaches, and LM planning scaffolds."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All main experiments use GPT-3 Small (≈125M parameters) with one confirmatory 0.3B run; conclusions are stated for 'language models' generally. By ICLR 2026 standards, results on sub-1B models do not support generalizations to the models practitioners reason about (7B–70B+), and it is entirely unclear whether the planning horizon and branch-awareness effects hold, vanish, or change character at modern scales.",
+      "suggested_fix": "Add experiments on at least one ≥7B parameter model (e.g., Llama-3 or Mistral family). If full training is infeasible, studying a publicly available model with frozen weights under the same framework (Sections 3.2, 3.3) would substantially strengthen the generality claim."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Natural language (OpenWebText) is used only for the Section 3.3 diagnostic (information concentration); the central planning-horizon and branch-awareness analyses are never applied to natural text. The paper therefore cannot support its abstract-level claim that 'the effective planning horizon is task-dependent' across a realistic language setting — the claim rests solely on two synthetic tasks.",
+      "suggested_fix": "Apply the horizon analysis (Section 3.1) to a natural-language completion task with measurable multi-step structure (e.g., a narrative continuation benchmark or code generation), or clearly scope the abstract/title claims to synthetic settings."
+    },
+    {
+      "severity": "major",
+      "issue": "No codebook-size (K) sensitivity analysis is reported. Because nMI is normalized by Imax ≤ log K, different K values could substantially shift absolute and relative MI values, making it unclear whether qualitative trends (e.g., the PF-Long non-decaying nMI vs. CFG decay) are stable or artifacts of the chosen K.",
+      "suggested_fix": "Include a sensitivity table or figure in the appendix showing nMI trends for at least 2–3 values of K across the key settings; verify that the ordering of task-types and the NTP/MTP comparisons is robust."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'branch awareness' interpretation of I(ZH;Zalt) > I(ZH;Zdecoy) is plausible but not uniquely supported: the pattern could arise because the prefix hidden state is a richer, more general task representation that happens to correlate with any task-relevant structure (including the alternative path) more than a random decoy, without the model explicitly 'tracking' the alternative branch. The disjoint-node design rules out direct overlap but not this confound.",
+      "suggested_fix": "Add a control comparing I(ZH;Zalt) for models that never see multi-path graphs during training (or a degraded/random model), and/or show that I(ZH;Zalt) increases with model accuracy on the alternative path specifically, not just task accuracy generally."
+    },
+    {
+      "severity": "major",
+      "issue": "The NTP vs. MTP comparison is positioned as one of the two main research questions, yet the conclusion is 'no consistent differences.' This negative result is not explored: Is MTP training too short? Are the models too small? Is there a scale at which the effect emerges? Without a more thorough characterization, the null finding is unactionable.",
+      "suggested_fix": "Either provide a mechanistic explanation for the null (e.g., an analysis showing that MTP and NTP models develop equivalent hidden-state structure on these tasks), add a wider scan of MTP prediction horizons, or frame this as a secondary finding and refocus the contribution on the methodology and task-dependent results."
+    },
+    {
+      "severity": "minor",
+      "issue": "The number of random seeds used is mentioned only briefly; confidence intervals in Table 1 appear narrow but the sample size (number of seeds) is not stated, and no explicit significance test is applied to the NTP/MTP or PF-Short/PF-Long horizon comparisons.",
+      "suggested_fix": "State the number of seeds and runs explicitly. For Table 1 ratios and the key nMI comparisons, add a bootstrapped confidence interval or permutation test confirming that differences are statistically non-trivial."
+    },
+    {
+      "severity": "minor",
+      "issue": "The VQ-VAE is an intermediate learned model, and MI is measured between its *codes*, not between the raw hidden states. If two VQ-VAEs trained on different GS families discretize differently (e.g., one collapses to fewer active codes), cross-family nMI comparisons are not directly comparable. The paper acknowledges this for absolute values but does not address comparisons across different VQ-VAE instances.",
+      "suggested_fix": "Verify that the active codebook utilization (fraction of K codes actually used) is consistent across the VQ-VAEs used in a given experiment; report these statistics in the appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "How do the key nMI trends (PF-Long non-decay, CFG rapid decay, branch ratio > 1) change when K is varied by a factor of 2–4? Is the qualitative ordering of tasks stable?",
+    "Can the planning-horizon or branch-awareness experiments be run on a ≥7B frozen pretrained model (even just in inference, without training MNTP/MMTP variants)? What would a single such experiment reveal?",
+    "For the branch-awareness ratio, does I(ZH;Zalt)/I(ZH;Zdecoy) correlate positively with the accuracy on the alternative path specifically (not just overall task accuracy), which would more directly support the branch-tracking interpretation?",
+    "In the NTP/MTP comparison, is the MTP model actually producing qualitatively different internal representations (e.g., does it encode more future tokens in upper layers), or are the hidden-state statistics nearly identical? A layer-wise analysis of this question might explain the null finding.",
+    "For the OpenWebText diagnostic (Section 3.3), why is the NTP/MTP comparison omitted? If MTP slightly extends the horizon in CFG (Section 3.1), does the same trend appear in the layer/block heatmaps for natural text?",
+    "What is the reconstruction quality (e.g., cosine similarity or normalized MSE between GS and reconstructed bGS) for each VQ-VAE family, and how does it correlate with the MI estimates? Better reconstruction should mean more faithful MI."
+  ],
+  "calibration_check": "The paper is appropriately cautious about absolute MI values and normalizes comparisons within settings, but the abstract and title-level claims about 'LMs' planning are broader than what experiments on GPT-3 Small can support; the title claim of characterizing 'horizon and branch awareness' in LMs would require validation at modern scale.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The VQ-VAE+MI framework is a reusable methodological contribution and the task-dependent planning horizon finding is informative, but restricting results to sub-1B models and finding no consistent NTP/MTP effect limits impact on practitioners and model designers."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining VQ-VAE discretization with count-based MI estimation to study LM internals is a genuinely new approach to interpretability that cleanly avoids probe-capacity confounds; the branch-awareness experimental design is also novel, though MI-for-interpretability and VQ-VAEs are individually established."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "MI is measured between VQ-VAE codes rather than the true hidden-state distribution, and no codebook-size sensitivity analysis validates that the observed trends are stable; the causal interpretation of 'branch awareness' is plausible but not uniquely established by the current evidence."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Mean ± std are reported in Table 1 and multiple seeds are mentioned, but the number of seeds is never stated, no significance tests accompany the key NTP/MTP or task-to-task comparisons, and finite-sample bias correction is delegated to an appendix without a main-text quantification of its effect."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper honestly reports no consistent NTP/MTP differences in the conclusion, explicitly restricts interpretations to relative nMI comparisons, and lists three reasons why absolute MI values are uninformative; the abstract could be more explicit that 'LM planning' is studied only at sub-1B scale."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The mathematical framework is laid out systematically and notation is consistent throughout; some derivations (VQ-VAE training objective details, MI estimator variance bounds) are appropriately delegated to the appendix, though this creates several forward references that interrupt reading flow."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard ICLR structure (Introduction, Method, Experiments, Conclusion) with related work integrated into the introduction, consistent with ICLR norms; length and section balance appear appropriate."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Architecture family (GPT-3 Small with RoPE) and datasets are described, and VQ-VAE training details appear in appendices, but codebook size K is not stated in the main text, the number of seeds is not specified, and training hyperparameters for the LMs themselves are absent."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of probing, mechanistic interpretability, information-bottleneck approaches, and LM planning scaffolds is broad and accurately positioned; one anonymized self-citation ([Author] & Qu, 2025) is expected under double-blind rules; comparison to the most directly related MI-based interpretability work (Voita & Titov, 2020) is adequate but could be more quantitative."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figures 3 and 4 directly test the main claims (nMI vs. τ for task comparison, layer/block heatmaps) and Figure 2 clearly illustrates experimental setups; Table 1 encodes the key branch-awareness result, though the caption text as extracted suggests possible column formatting issues around accuracy values."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only GPT-3 Small (≈125M) and a single 0.3B confirmatory run are tested; natural language data is used only for the Section 3.3 diagnostic; branch awareness is measured exclusively on path-finding; no experiment uses a model larger than 0.3B, severely constraining the generality of all planning claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The framework is interesting and the path-finding results are non-trivial, but GPT-3 Small experiments in 2026, null NTP/MTP results, and absence of natural-language planning horizon/branch-awareness tests place this at the borderline-reject range; substantial additional experiments at modern scale are required."
+    }
+  },
+  "publishability_probability": 0.15
+}

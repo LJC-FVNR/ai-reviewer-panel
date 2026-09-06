@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper studies in-context learning of random Markov chains by Mamba and shows both empirically and via a constructive theorem that a single-layer MambaZero (a stripped-down Mamba retaining only the convolution) can exactly represent the Bayes/minimax-optimal Laplacian (add-β) smoothing estimator for first-order chains, complemented by a lower bound showing hidden dimension must scale as 2^k for kth-order chains. An ablation identifies the temporal convolution — not gating or nonlinearities — as the pivotal component, and switching-Markov and WikiText-103 experiments extend the story beyond i.i.d. Markov data. The contribution is clean and the theory–experiment alignment is unusually tight for this style of work, though the scope is fairly narrow (mostly first-order theory, small-scale LM experiments) and some claims about generality outrun the evidence.",
+  "strengths": [
+    "Clean constructive theorem (Thm. 1) whose parameter choices match empirically observed structure (a_t≈1, b(ij)c_t≈0 when i≠x_t, w≥k+1), which is more than a mere existence result.",
+    "The complementary lower bound (Thm. 2) — d·p ≥ 2^k(1−3ε) log(1/ε) — nicely sharpens the Mamba-vs-transformer contrast and covers arbitrary depth.",
+    "The convolution ablation (MambaZero, Mamba without convolution, and window-size vs Markov-order experiment in Fig. 3) is a clear, decisive empirical result and is the paper's most memorable finding.",
+    "Well-chosen testbed: random Markov data is a controlled setting where the Bayes-optimal predictor is known in closed form, so 'matches the optimal estimator' is a precise, checkable claim rather than a benchmark number.",
+    "Switching-Markov experiment gives a concrete non-Markovian probe that actually exercises the selectivity mechanism (a_t) that was dormant in the pure-Markov regime, which is a thoughtful control."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The generality claim beyond first-order Markov is weaker than the framing suggests. Thm. 1 covers only first-order chains; higher orders are argued only via Fig. 1b and the informal window-size argument, and Thm. 2 is a lower bound (not a construction) for higher k. The abstract/intro phrasing 'learns the optimal in-context Laplacian smoothing estimator ... for all Markov orders' relies almost entirely on the empirical curves.",
+      "suggested_fix": "Either extend the constructive proof to k≥2 (even sketched, with an explicit dimension of order 2^k), or explicitly restrict the theoretical claim to k=1 and re-word abstract/contribution bullets. Add a table of L1 deviation vs. k with confidence intervals to substantiate the 'all Markov orders' claim."
+    },
+    {
+      "severity": "major",
+      "issue": "The Mamba-vs-transformer comparison is used to motivate the paper but is underspecified. The claim '1-layer Mamba tracks the optimal estimator more sharply than a 2-layer transformer' rests on Fig. 1 for a single test sequence and few seeds; hyperparameter/tuning fairness (depth, width, LR, embedding dim, positional encodings, training budget) is not shown to be matched.",
+      "suggested_fix": "Provide a matched-compute / matched-parameter table across k∈{1..4}, with multiple seeds and error bars on L1 distance to the Bayes estimator, and explicitly report the transformer configurations tuned. If the paper does not want to be comparative, tone down these claims in the introduction."
+    },
+    {
+      "severity": "major",
+      "issue": "The MambaZero construction is presented as capturing what real Mamba learns, but the evidence that trained Mamba's learned parameters actually satisfy the specific structural properties used in the proof (a_t≈1, b(ij)·c_t≈0 for i≠x_t, β1 emerging from the offset terms) rests on Figs. 4–5 in the appendix, which are only summarized. Without quantitative agreement (e.g., distribution over seeds/positions), the 'aligns with what the model learns' claim is more suggestive than established.",
+      "suggested_fix": "Add quantitative tests: histogram/statistics of a_t over training runs and positions; measured ⟨b(ij), c_t⟩ vs. i=x_t vs. i≠x_t distributions; and a scatter of learned logits vs. Laplacian logits across many test sequences and seeds. Ideally, show the alignment strengthens as training proceeds."
+    },
+    {
+      "severity": "minor",
+      "issue": "The WikiText-103 experiment (Table 1) shows small perplexity gaps (27.55 vs 30.68 for Mamba, 28.67 vs 29.28 for transformer) at very small model sizes (~14M params), no seeds/error bars are reported, and the appendix already notes that the convolution effect shrinks with depth. This weakens the 'generality on complex language modeling' claim.",
+      "suggested_fix": "Report multi-seed means±std, ideally add a mid-scale model or two, and re-phrase the LM section as suggestive rather than confirmatory of generality; foreground the appendix result that the convolution effect diminishes with depth."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Laplacian-smoothing / add-β story hinges on the data being generated by a Dirichlet(β·1) prior; the paper trains models with the matching β but does not clearly show robustness when the prior/β used in evaluation differs from the training-time β, or when data is generated with a non-Dirichlet prior. Absent that, 'optimal estimator' is optimal only under a known prior.",
+      "suggested_fix": "Add an experiment where β at train and eval differ, and a case with a non-Dirichlet prior over kernels, and report L1 to the corresponding Bayes optimum. This would sharpen the 'ICL' interpretation."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity: the Mamba equations block (Section 2.2) is dense and, in the extracted form, hard to follow — variable roles (e.g. x̃_t, b_t, c_t, e, N, w) are introduced together. Readers not already fluent in Mamba-2 will struggle.",
+      "suggested_fix": "Split the update equations into (i) input-selectivity block, (ii) recurrent state, (iii) output projection, with a small worked example for S=2 and w=2 that mirrors the proof construction."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you extend the constructive proof of Thm. 1 to k≥2 with an explicit 2^k-dimensional construction, or characterize precisely what obstructs the extension?",
+    "How sensitive is the empirical result to β mismatch between data generation and the (implicit) prior the model has internalized? What happens under a non-Dirichlet kernel prior?",
+    "For Mamba-vs-transformer curves in Fig. 1 and Fig. 10a: were transformer depth, width, and training budget tuned per Markov order, and do the results hold under matched-parameter or matched-compute constraints averaged over seeds?",
+    "In the switching-Markov experiment, how robust is the a_t≈0 at switch tokens across seeds, and does the model recover the correct estimator immediately after a switch or only after some warm-up length?",
+    "Is Thm. 2 tight for depth ≥2? Do you have any construction (even for k=2) matching the 2^k lower bound, and does the argument survive if 'point-wise' guarantee is relaxed to average KL under P?",
+    "Can you clarify whether the b(ij)·c_t≈0 (for i≠x_t) property emerges reliably across seeds and training lengths, or whether it is a soft empirical trend?"
+  ],
+  "calibration_check": "Claims about first-order chains and the pivotal role of convolution are appropriately scoped, but the 'for all Markov orders' and 'complex language modeling' framings are somewhat over-generalized relative to the actual theoretical coverage (k=1) and the small-scale LM results.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Meaningful step in understanding Mamba's ICL: a clean 'Mamba implements a known optimal estimator' story that gives the SSM community a concrete mechanistic anchor, though the setting (random Markov chains) is narrower than transformer ICL work."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "First application of the Markov-ICL framework to Mamba, with an original constructive proof tied to learned parameter structure and a matching 2^k lower bound; the framework itself is inherited from Edelman et al. 2024 but the mechanism-level result is new."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "Theorem statements are precise, assumptions clearly listed, and the proof strategy is grounded in empirically verified structural properties; the main soundness gap is that mechanism-alignment claims lean on qualitative appendix figures."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Error bars over 5 seeds are shown in the main figure, but most comparative claims (Mamba vs. transformer, WikiText-103 perplexity, per-order L1 gaps) lack multi-seed variance and significance tests."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Higher-order and learning-dynamics limitations are explicitly acknowledged, but abstract/intro phrasing generalizes the first-order theorem to 'all Markov orders' and to 'complex language modeling' more strongly than the evidence supports."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Structure and narrative arc are strong, but the Mamba equations block and the proof sketch are dense; a first-time reader would benefit from a worked binary example threaded through the construction."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference layout (intro, related work, setup, empirical observation, theory, beyond-Markov, conclusion) executed well within a normal ICLR length; appendix carries the heavier proofs and ablations."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Architecture, data-generation process, loss, optimizer, and construction dimensions are precisely specified with pointers to appendix experimental details; the missing links are an artifact of anonymization and not a scientific gap."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Situates the paper appropriately against Markov-ICL work for transformers (Edelman et al., Nichani et al., Rajaraman et al.) and against Mamba-vs-transformer ICL comparisons; some blanked '[Author] et al.' citations make it hard to fully assess anonymized self-citations but positioning is coherent."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative, claim-supporting displays (predicted probabilities vs. optimal in Fig. 1, convolution ablation in Fig. 3a, window-vs-order in Fig. 3b, switching selectivity in Fig. 13); scoring from captions per the review instructions."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Theoretical result is essentially first-order; higher-order Markov and WikiText-103 experiments are suggestive rather than decisive; no comparison across model scales or on stronger LM benchmarks."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: a clean, well-executed mechanistic result on a controlled setting with matching theory and experiment, but with meaningful gaps in generality, comparative fairness, and quantitative alignment evidence."
+    }
+  },
+  "publishability_probability": 0.58
+}

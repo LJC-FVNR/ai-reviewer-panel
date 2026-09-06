@@ -1,0 +1,121 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token-attribution method for decoder-only LMs that combines target-conditioned attention rollout, Hessian-vector-product-based curvature sensitivity, and KL-divergence under masking. The motivating argument for including curvature (vanishing gradients in saturated regimes) is sensible and the multi-model evaluation is broad. However, the empirical case is undermined by (a) implausibly large gaps against baselines (e.g., Soft-NC of 10.3 vs 1.42–2.05 on LongRA) that are never explained or stress-tested; (b) circular evaluation, since the authors both curate the dataset and design the DSA metric they win on; and (c) individual components that are well-known, so the novelty rests on the combination and its scaling tricks — neither of which is isolated by a strong ablation. Substantial additional work is needed before this is publishable.",
+  "strengths": [
+    "Well-motivated problem: attribution for autoregressive decoder-only LMs is genuinely under-served, and the paper articulates why encoder-era methods don't transfer.",
+    "The Section 3 argument that vanishing first-order gradients can miss finite-perturbation influence is a legitimate justification for a second-order term, and the softplus example is clean.",
+    "Broad model coverage in evaluation (GPT-J 6B, Phi-3-Medium-14B, LLaMA-3.1 70B, Qwen2.5-3B) and multiple benchmarks (LongRA, TellMeWhy, WikiBio) plus a curated set.",
+    "Practical scaling considerations are addressed: Hutchinson HVPs via Pearlmutter's trick, optional Gauss–Newton/Fisher surrogate, low-rank + windowed variants, and last-6-layers-only for 70B.",
+    "Robustness experiments (decoding-hyperparameter sensitivity, Gaussian perturbation stability, active/passive syntactic invariance) go beyond the usual faithfulness-only reporting.",
+    "Ablations decompose the three components (Transition-only, Hessian-only, KL-only, no gating, uniform gating), which is the right structure even if execution details are thin."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The magnitude of HETA's advantage on Soft-NC/Soft-NS is implausibly large without explanation. On LongRA/GPT-J HETA reports Soft-NC = 10.3 vs ReAgent 1.55 and the rest ≤ 2.2 — roughly a 5–7× jump. Soft-NC/NS as defined in Zhao & Aletras (2023) / Zhao & Shan (2024) are bounded/normalized shift measures that do not typically produce such spreads. Either the metric has been renormalized differently for HETA than for baselines, or baselines were not tuned/implemented comparably. Without a same-code reimplementation audit, these numbers cannot be trusted.",
+      "suggested_fix": "Publish the exact Soft-NC/Soft-NS implementation and per-instance distributions (not just means); rerun all baselines from a single reference implementation (e.g., inverse-standardize against a common perturbation budget); and report per-example paired differences with bootstrap CIs and Wilcoxon signed-rank tests."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Circular evaluation on the curated set. The authors (i) construct the dataset (NarrativeQA + SciQ concatenation), (ii) obtain the 'gold' spans from GPT-4o and GPT-5 (LLM-as-annotator), and (iii) invent the DSA metric they then top. Any method whose inductive bias resembles GPT-4o/GPT-5's span-picking will look best. Reported inter-annotator agreement is between two similar frontier LLMs, not humans.",
+      "suggested_fix": "Add human annotations on at least a stratified subsample; report DSA on human-only labels; and include a control metric that does not depend on span identity (e.g., counterfactual answer-flip rate after removing top-K attributed tokens)."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is thin at the component level. Attention-value rollout (Abnar & Zuidema 2020; Kobayashi et al. 2020), Hessian sensitivity via Pearlmutter HVPs with Hutchinson trace estimators, and KL-under-masking are each standard. The contribution is the specific weighted composition plus the causal gating restricted to paths ending at T — but this is not stress-tested against a strong 'sum of two of the three' baseline, nor against a learned combiner.",
+      "suggested_fix": "Explicitly compare against (i) target-conditioned rollout alone, (ii) masking-KL alone, and (iii) all pairwise combinations, on the same evaluation, and show that all three are needed and that the fixed β = γ = 0.5 choice generalizes (sweep β, γ and report robustness)."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is weak. Only 3 seeds are reported; there are no confidence intervals or significance tests on the main tables; std < 0.2 is asserted but not accompanied by a paired test. Given the magnitudes claimed, a paired test would be trivial to include and essential.",
+      "suggested_fix": "Report per-example paired differences with bootstrap 95% CIs and Wilcoxon signed-rank / permutation p-values for each row of Tables 1 and 3."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that HETA is 'effectively invariant' to decoding hyperparameters (Table 2) is oddly framed. HETA's score is computed on log P(x_T | x_<T) at the argmax target token, so temperature/top-p/top-k should barely affect it by construction, whereas methods like ContextCite that use sampled ablations will vary. This is a definitional artefact, not evidence of a superior method, and the paper interprets it as the latter.",
+      "suggested_fix": "Re-scope the discussion: acknowledge that HETA is computed on the deterministic conditional, and evaluate all methods under the same deterministic protocol so the comparison is on attribution content, not on which method is coupled to sampling."
+    },
+    {
+      "severity": "major",
+      "issue": "The scalability story is optimistic but under-audited. For LLaMA-3.1 70B, second-order terms are computed 'only in the last six layers' with 'preserves attribution quality in practice,' but this is asserted without a full-layer control. This choice could be the reason HETA looks stable on 70B, but it is also a large uncontrolled variable.",
+      "suggested_fix": "Provide a small-model ablation comparing full-Hessian, last-6-layers, and low-rank+windowed variants on identical inputs, with the resulting attribution rank correlation reported."
+    },
+    {
+      "severity": "minor",
+      "issue": "The equation for M_T[i] as written is hard to parse (subscripts and normalization are ambiguous), and equation 3 uses ‖·‖_1 of a Hessian-vector product in a way that is not standard sensitivity; the connection between this quantity and second-order influence on log P deserves more explicit derivation.",
+      "suggested_fix": "Rewrite the semantic-flow equation with unambiguous indexing and give a 2–3 line derivation showing what S(T)_i estimates (trace of |diag block|, Frobenius, etc.) and why it approximates the desired curvature functional."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work omits several closely related recent lines: contrastive/counterfactual attribution for LMs, causal mediation analysis for transformers, and gradient×input variants tailored to LMs. Positioning against ContextCite/TDD/PML/ReAgent is fair but incomplete.",
+      "suggested_fix": "Add explicit comparisons or at least a positioning paragraph vs. causal mediation (e.g., activation patching) and contrastive gradient/erasure attribution."
+    },
+    {
+      "severity": "minor",
+      "issue": "Text has garbled tokens in several places (e.g., 'Ben tez', 'curvatureinformation', missing spaces around equations). Some of this is extraction artefact, but the paper still reads as under-polished (equation typesetting, table alignment).",
+      "suggested_fix": "Copy-edit; ensure equations render; align Table 3 columns; fix reference formatting."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the exact definition and normalization of Soft-NC/Soft-NS used here? Are HETA and baselines evaluated on identical target tokens, perturbation budgets, and normalization? Can you provide per-example paired scores?",
+    "Why are β and γ fixed at 0.5 for all models and all datasets? What does the joint sensitivity surface look like, and does the optimal (β, γ) depend on model size?",
+    "How is the causal-path attention rollout Φ^{(l,h)}(i→T) actually computed — does it use the standard multiplicative rollout of Abnar & Zuidema restricted to columns ending at T, or a different aggregation? Please state the algorithm.",
+    "For LLaMA-3.1 70B, how much does restricting the Hessian to the last 6 layers change attribution vs. a full-layer computation on a smaller model where both are feasible?",
+    "The curated dataset uses GPT-4o and GPT-5 as annotators. Have you validated their spans against human labels on a subsample, and does DSA still favor HETA under human labels?",
+    "Since HETA is computed on log P(x_T | x_<T), it is naturally invariant to sampling-time hyperparameters. Do the baselines that fluctuate under Table 2's grid also become stable when evaluated on the deterministic conditional?",
+    "How many Hutchinson samples m are used, and what is the empirical variance of S(T)_i as a function of m?"
+  ],
+  "calibration_check": "Claims are systematically over-scoped: 'new state-of-the-art,' 'consistently outperforms,' and 'establishing a new standard' are asserted from evaluations where the authors control the dataset, the metric, and (via redefinition) the interpretation of Soft-NC's magnitude — while genuine limitations (fixed β=γ, layer subsetting on 70B, no significance tests, LLM-generated 'gold' labels) are acknowledged only briefly or in appendices.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LMs is a topic ICLR cares about, but if the headline gains are partly artefacts of evaluation choices, the durable contribution is modest."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Each of the three components (target-conditioned rollout, HVP-based curvature, KL-under-mask) is prior art; the contribution is their weighted combination, which is not isolated by ablations against the strongest pair."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Method is stated but with ambiguous equations, the causal-rollout algorithm is under-specified, and the interpretation of the second-order sensitivity term relative to log P curvature is not derived cleanly."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only 3 seeds, no CIs, no paired significance tests, and the reported effect sizes (5–7× over baselines on Soft-NC) are large enough that the absence of paired tests is itself a red flag."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper claims a new SOTA and near-total decoding invariance without acknowledging that its scoring function is decoupled from sampling by construction, and without stress-testing the enormous headline gaps."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Motivation and high-level pipeline are clear, but key equations are ambiguous, notation is inconsistent, and several tables are hard to align/read."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard ICLR structure is followed (Intro, Motivation, Background, Method, Experiments, Ablations, Related Work, Conclusion) at reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters (β, γ, m implied, windowing, low-rank rank) and hardware are named, but the exact Soft-NC/NS pipeline, rollout implementation, and DSA normalization would need appendix-level detail to reproduce faithfully."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers ContextCite, TDD, PML, ReAgent, attention rollout, IG, LIME/SHAP, but misses causal mediation / activation patching and contrastive attribution lines that are directly adjacent."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe standard ablation bars and importance heatmaps; they support the claims at face value but do not include the diagnostic plots (per-example paired diffs, β/γ surfaces) most needed to validate the main claims."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models across scales and three benchmarks + one curated dataset is reasonable breadth, but the curated set is 2K instances with LLM-only annotations, and no non-English or code/QA-diverse settings are shown."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Borderline reject: promising direction and reasonable motivation, but the headline evidence has methodological and evaluation-design problems large enough to require substantial rework before acceptance."
+    }
+  },
+  "publishability_probability": 0.2
+}

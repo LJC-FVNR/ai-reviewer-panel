@@ -1,0 +1,105 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper adapts crosscoders (from cross-layer analysis) to cross-snapshot training-dynamics analysis of Pythia-160M and 6.9B, and uses them to (i) taxonomize initialization vs emergent features, (ii) attribute downstream task metrics (SVA, IOI, induction) to individual features via integrated-gradient attribution, and (iii) argue for a statistical→feature-learning phase transition supported by n-gram KL convergence and total feature dimensionality dynamics. It is a coherent, multi-angle interpretability contribution with a clear methodological novelty (using cross-snapshot crosscoder decoder norms as a proxy for feature strength across training) and non-trivial empirical observations (universal directional turning point around step ~1,000, complexity–emergence-time correlation, phase-transition signature). The main weaknesses are narrow empirical scope (Pythia only, single middle layer, small/relatively easy downstream tasks) and thin statistical treatment for several of the more evocative claims.",
+  "strengths": [
+    "Genuinely novel adaptation: cross-snapshot crosscoders as a unified feature basis across pre-training checkpoints, with a principled argument for why decoder-norm ∥W_dec,i^θ∥ tracks feature presence over training.",
+    "Multi-angle analysis that reinforces itself: feature emergence curves, geometric turning point via cross-snapshot direction projections, and feature-complexity vs emergence-time correlation collectively tell a consistent story rather than resting on one metric.",
+    "Attribution-based circuit tracing on SVA/IOI/induction meaningfully connects microscopic features to macroscopic metrics; ablation experiments (remove top-k, keep only top-k) provide necessity/sufficiency evidence rather than pure correlation.",
+    "The statistical-to-feature-learning transition is supported with two independent signals (uni/bi-gram KL convergence approaching entropy floor + total feature dimensionality dip-then-rise), which is stronger than most single-signal phase-transition claims.",
+    "Well-scoped comparison against per-snapshot SAEs (Fig. 3) shows the crosscoder does not lose reconstruction/L0 quality despite the alignment burden — a critical control that pre-empts an obvious reviewer objection.",
+    "Limitations section is candid about Pythia-only scope, task simplicity, and discrete-snapshot cost."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Empirical scope is narrow relative to the paper's framing about LLM pre-training in general. Only Pythia-160M and 6.9B are used, only one middle layer per model (L6 and L16), and no other architecture, tokenizer, or data-mix variation. Cross-snapshot claims like 'directional turning point around step 1,000' or 'statistical-to-feature-learning transition' cannot yet be attributed to LLM pre-training rather than to Pythia/SlimPajama specifics.",
+      "suggested_fix": "Repeat the core cross-snapshot crosscoder pipeline on at least one non-Pythia checkpoint family (e.g., OLMo, Amber, or Pythia trained on a different mix) and one additional layer per model; even a partial replication (e.g., decoder-norm evolution + n-gram KL) would substantially strengthen the generality claim. Alternatively, re-scope the abstract/conclusion to Pythia specifically."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical treatment of several headline claims is thin. The complexity-vs-emergence-time correlation is reported as Pearson r=0.309 on 100 LLM-scored features (a proxy prone to LLM-scorer bias); the 'universal directional turning point' is shown as a mean without dispersion in the caption; feature-lifetime and emergence-steepness distributions are described qualitatively. There are no seed-level replications of crosscoder training reported.",
+      "suggested_fix": "Report confidence intervals / bootstrap CIs on r, and check robustness of the complexity score by using a second scorer model or by human spot-checking a subsample. Add dispersion (e.g., IQR bands) around the mean projection curve. Train ≥2 crosscoder seeds per snapshot family and show that decoder-norm trajectories and the directional turning point are seed-stable — this is the crux of the paper's evolutionary claims."
+    },
+    {
+      "severity": "major",
+      "issue": "Downstream-task evidence for the microscopic↔macroscopic bridge (Section 5) is confined to short, well-known toy tasks (SVA, induction, IOI) that already have small, well-understood circuits. This risks the interpretation that the method works precisely where the circuits are small and known, and undersells 'connecting features to downstream performance' as claimed in the contributions.",
+      "suggested_fix": "Add at least one broader benchmark signal — e.g., attribute LM-loss or a compositional task (arithmetic, entity tracking, or a subset of BBH/MMLU tokens) to crosscoder features, even if the identified features are less clean. Alternatively, soften the contribution statement to 'we validate the method on classical circuit-tracing tasks.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "The proxy claim 'decoder norm ∥W_dec,i^θ∥ reflects feature presence' is central but is only validated via a linear-probe sanity check deferred to Appendix C, and the reconstruction error term ε^θ(x) in Eq. 3 is not audited (i.e., how much of the metric attribution is being absorbed into the error term rather than into features).",
+      "suggested_fix": "In the main text, quantify what fraction of the target metric’s gradient is captured by the feature-decomposition part vs the error term ε^θ across snapshots. If early-snapshot attributions live disproportionately in ε^θ, that is itself an important caveat for the 'no features exist early' narrative."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'no features exist early / model only learns uni-bigrams' claim risks being partially tautological: if the crosscoder is trained jointly on all snapshots with a shared sparse code, early snapshots may lack sparse features because the training signal is dominated by later, richer snapshots — not necessarily because the underlying network has no structured representations at step 100.",
+      "suggested_fix": "Cross-check with a per-snapshot SAE on early checkpoints only (already trained in Fig. 3 comparison): do those early-only SAEs also find no non-trivial features beyond uni/bigram-like ones? If yes, the claim is much stronger; if no, temper the phase-transition framing."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning against concurrent training-dynamics-of-features work (developmental interpretability, LLC/SLT-based phase transition detection, prior 'birth of features' analyses) is present but brief; the delta of this work vs. those is not sharply stated.",
+      "suggested_fix": "Add 2–3 sentences explicitly contrasting: (a) the cross-snapshot crosscoder unified feature basis vs. per-checkpoint SAEs stitched via matching, and (b) the empirically observed dip-then-rise in total feature dimensionality vs. SLT-style predicted phase transitions."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable are the reported decoder-norm evolution trajectories and the 'directional turning point ≈ step 1,000' across different crosscoder training seeds and different λ_sparsity settings? Is the turning-point location a property of the model or of the crosscoder?",
+    "For attribution results (Fig. 7), what fraction of the metric’s gradient flows through the feature-decomposition term versus the reconstruction error ε^θ(x), broken down by snapshot? This is essential to know whether early-snapshot attributions are meaningful.",
+    "Have you compared 'features found by cross-snapshot crosscoder at final snapshot' against 'features found by a standard SAE on the final snapshot' beyond aggregate L0/EV — do the same concrete features (previous-token, induction, plural-marker) appear, and with matching top activations?",
+    "The complexity–emergence-time correlation uses Claude Sonnet 4 as scorer. Is the correlation preserved under a different scorer (e.g., a stronger or weaker model), and how much variance does scorer choice add?",
+    "Do you observe the same statistical-to-feature-learning transition when you train the crosscoder only on late checkpoints (say, step ≥ 1000), which would decouple 'the model has no features early' from 'the crosscoder was not incentivized to allocate features to early snapshots'?",
+    "For the SVA circuit, can you rule out that the identified feature set is essentially a re-discovery of previously mapped SVA circuits in small transformers, and if so, what is the added value beyond confirming the method works?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped — the limitations section correctly flags Pythia-only scope and task simplicity — but the abstract/contributions still generalize to 'LLM pre-training' where the evidence is really 'Pythia pre-training at one middle layer'; the phase-transition framing in particular is stronger than a single-model-family study warrants.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Cross-snapshot crosscoders plus circuit-tracing across checkpoints are a genuinely useful addition to mechanistic-interpretability tooling; the interp community is likely to adopt and extend the approach."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The methodological ingredients (crosscoders, attribution patching, SAE analysis) are pre-existing; the novelty lies in the composition and in framing decoder norms as an evolution proxy — a solid but not radical contribution."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is sound and the core observations are supported by multiple independent measurements, but some load-bearing claims (e.g., decoder norm as feature presence proxy, no-features-early) rest on choices that are only partially audited in the main text."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Limited quantification of variance: no seeds reported for crosscoder training, no dispersion around the mean projection curve, small-sample (n=100) LLM-scored correlation reported without CI; adequate for a workshop, thin for ICLR."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations section is candid about scope, task simplicity, and discrete-snapshot cost; the main overreach is generalizing Pythia-based findings to 'LLM pre-training' in the abstract and contributions."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall readable and logically organized, but the extraction shows several muddled sentences and figure references (Fig. 2 vs Fig. 3, out-of-order placement), and the crosscoder equations use overloaded notation (aθ vs â^θ) that will trip readers."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure — Introduction, Related Work, Method, Analyses (§4), Circuits (§5), Phase transition (§6), Limitations, Conclusion — with ICLR-appropriate length and appendices for deferred material."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Uses public Pythia checkpoints and SlimPajama, describes crosscoder architecture, loss, snapshot sampling, dictionary sizes, and evaluation tasks in enough detail for a competent reader to reimplement; missing pieces are seeds and precise λ_sparsity values but these can plausibly be inferred."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Broad and accurate coverage across SAE/crosscoder, learning dynamics (NTK/IB/SLT), and circuit tracing; the delta vs concurrent developmental-interpretability and SLT-based phase-transition work could be more sharply articulated."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting figures (Pareto frontiers, per-feature norm trajectories, direction-projection heatmap, KL and dimensionality curves), though the numbering/ordering in the extracted text is confused and several figures (esp. Fig. 4/5) would need dispersion overlays to be maximally convincing."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two Pythia sizes, single mid-layer each, one dataset (SlimPajama), three toy downstream tasks; the claimed generality about LLM pre-training is not matched by the empirical breadth."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: methodologically interesting and empirically coherent contribution to mechanistic interpretability, with real weaknesses in breadth and statistical rigor that a competent revision could address."
+    }
+  },
+  "publishability_probability": 0.55
+}

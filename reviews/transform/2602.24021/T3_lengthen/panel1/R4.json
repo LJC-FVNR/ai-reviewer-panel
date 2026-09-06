@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes SteerVAD, a tuning-free (frozen-backbone) video anomaly detection framework that identifies discriminative attention heads via a between-class/within-class scatter ratio (RSA) and modulates them with a gated element-wise scaling function (HMC), calibrated on 1% of the labels. The idea of geometric intervention on identified 'latent anomaly experts' is presented cleanly and the ablations and stability analysis are competent, but the empirical gains over the closest tuning-free baseline are small (≈+0.4% AUC on UCF-Crime, ≈+0.9% AP on XD-Violence) without significance tests, the 'manifold rectification' framing overstates what is essentially learned feature gating, and generality is limited to a single MLLM backbone.",
+  "strengths": [
+    "Clean two-stage design (head selection via RSA, then a small controller that produces global suspicion and per-head modulation vectors) that is easy to describe and reproduce.",
+    "Data efficiency is well-supported: seed stability shows the same four heads (L18H4, L23H24, L21H21, L22H7) are selected across 10 runs with σ≈0.04% AUC, and scaling from 1% to 100% of labels only yields +0.27% AUC (Tables 3 and 4).",
+    "Ablations isolate the contributions of the global scrutiny gate, local gating module, additive vs anisotropic steering, and RSA vs positional/random head selection, with a linear-probe lower bound reported.",
+    "Hyperparameter sensitivity (K, F) is reported and the chosen configuration is explicitly justified as a compute/accuracy trade-off.",
+    "The problem framing — that tuning-free MLLM VAD methods treat internal representations as immutable, and that a small controller could adapt them — is well motivated and consistent with mechanistic-interpretability literature."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Empirical gains over the closest tuning-free baselines are small and reported without any statistical significance analysis. In Table 1 the improvement over HiProbeVAD is +0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence; no seed variance is given for competing methods or for SteerVAD itself in the main comparison table (the σ≈0.04% figure only concerns LAE-selection stability, not overall AUC across model training seeds). Claims of a 'new state-of-the-art' rest on differences that are plausibly within noise.",
+      "suggested_fix": "Report mean ± std over multiple training seeds for SteerVAD's AUC/AP in Table 1, run paired significance tests (e.g., DeLong for AUC, bootstrap for AP) against HiProbeVAD, VERA, and EventVAD, and either soften the SOTA claim or demonstrate that the differences are statistically significant."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'manifold rectification' framing is stronger than the mechanism warrants. Equation (4), h'_i = h_i ⊙ (1 + s_global · g_i), is an element-wise gated scaling — a diagonal linear transform per head. Calling this an 'anisotropic scaling of a representation manifold' is a rhetorical relabeling; there is no topological analysis, no evidence that the induced map preserves or reshapes any specific manifold structure (Appendix A is referenced but not shown in the reviewed text), and no comparison to standard feature-gating baselines (e.g., FiLM, per-head learned affine, adapters) that would implement the same idea without the manifold language.",
+      "suggested_fix": "Either (a) provide the promised topological analysis and show empirically what geometric property (curvature, intrinsic dimensionality, class-conditional Fisher ratio) actually changes after rectification beyond the trivial scatter ratio, or (b) reframe the method plainly as head-selective learned gating on frozen features and compare directly to FiLM/adapter/BitFit-style baselines applied to the same LAEs."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is under-supported for the claim of a 'powerful new direction for VAD'. Only one MLLM backbone (InternVL3) is evaluated; the ablations don't probe whether the same 4 heads matter under a different backbone (LLaVA-1.5, Qwen-VL, etc.), and there is no cross-dataset transfer experiment (e.g., calibrate on UCF-Crime, evaluate zero-shot on XD-Violence).",
+      "suggested_fix": "Add at least one alternative MLLM backbone to demonstrate the RSA→HMC pipeline is not backbone-specific, and report a cross-dataset generalization study to distinguish 'the mechanism generalizes' from 'the calibration overfits to each dataset's 1% split'."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'tuning-free' framing risks miscalibration. The backbone MLLM is frozen, but the HMC (an MLP + K low-rank adapters) and a logistic-regression scorer are trained supervisedly on labeled anomaly data for 1000 epochs; this is parameter-efficient supervised learning, not tuning-free in the sense used by zero-shot LAVAD or EventVAD (which do not train on VAD labels at all). Grouping SteerVAD with true zero-shot methods in Table 1 mixes categories.",
+      "suggested_fix": "Introduce a clearer taxonomy (e.g., 'zero-shot', 'few-label calibration', 'full fine-tuning') and place SteerVAD honestly in the middle tier; report the trainable-parameter count and label count explicitly alongside HiProbeVAD and VERA, which appear to belong to the same category."
+    },
+    {
+      "severity": "minor",
+      "issue": "The RSA score in Eq. (1) uses class centroids and intra-class variances estimated from ~16 videos in the 1% calibration set. Even if selection is stable across seeds on the 1% subset, the paper does not show that these are the same heads chosen at 100% calibration; Table 4 reports AUC saturation but does not report whether the identified head set at 100% equals the head set at 1%.",
+      "suggested_fix": "Report the Jaccard/overlap of LAE sets identified at 1%, 10%, 25%, 50%, and 100% calibration budgets to substantiate the claim that the 'geometric signatures of these experts are sufficiently distinct to be robustly captured even with minimal supervision'."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning against activation steering / representation engineering (ITI, RepE, activation patching, task vectors) is thin. The paper claims to be 'the first to bridge this gap' for spatio-temporal reasoning, but activation-steering with learned per-head interventions is an active area and the delta to prior head-selection methods (e.g., ITI-style probe accuracy for head selection, followed by activation shift) is not explicitly disentangled.",
+      "suggested_fix": "Add a dedicated paragraph comparing RSA head-selection to probe-accuracy head-selection used in ITI and RepE, and compare 'shift' (additive) vs 'scale' (multiplicative gated) steering directly, ideally with the same LAEs, so the specific contribution over the general steering literature is clear."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: Figure 1's extracted text shows heavy repetition (many duplicated phrases like 'Compute Resources', 'Foundation', 'Models') suggesting layout problems in the figure that hurt clarity, the HiProbeVAD citation reads '[Author] et al., 2025' (anonymization leaked into a citation, not just the authors' names), and the abstract/introduction contain run-on sentences and comma splices that obscure the contribution.",
+      "suggested_fix": "Clean up Figure 1 (deduplicate labels, redraw the schematic), fix the leaked '[Author]' citation, and tighten the abstract and intro; a copy-edit pass would materially help readability."
+    }
+  ],
+  "questions_for_authors": [
+    "Are the 87.15% / 83.02% headline numbers averages across training seeds? What is the seed-to-seed std of the final AUC/AP (not just the LAE-selection stability)?",
+    "How do the identified LAEs compare to heads selected by probe accuracy (ITI-style) or by CAV-style linear separators on the same 1% subset?",
+    "If you replace Eq. (4) with FiLM (h'_i = γ(c)·h_i + β(c)) or with a plain per-head adapter of matched parameter count, how much of the improvement over the linear-probing 81.33% baseline survives?",
+    "Does RSA select the same four heads (L18H4, L23H24, L21H21, L22H7) when calibrated on XD-Violence rather than UCF-Crime? If not, what is the overlap, and does an LAE set calibrated on one dataset transfer zero-shot to the other?",
+    "Table 1 lists SteerVAD as 'ViT+LLM ~8B' — what is the trainable parameter count of the HMC + scorer, and how does it compare to HiProbeVAD and VERA under a controlled trainable-parameter budget?",
+    "Post-hoc explainability is claimed by re-submitting flagged frames to the MLLM; is there any evaluation (human study, entailment against ground-truth captions) that the produced explanations are faithful, or is this an unassessed side-feature?"
+  ],
+  "calibration_check": "The paper's within-category SOTA claim is defensible but overstated given the sub-1% gaps and lack of significance testing, and the 'active geometric intervention on latent manifolds' framing outruns the actual mechanism, which is a small gated per-head scaling — the abstract and conclusion should be dialed back to match the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Tuning-free VAD with a small labeled calibration set is a useful practical direction, but the absolute improvement (<1% over the nearest tuning-free baseline) means the immediate impact on the subfield is modest even if the framing is appealing."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The RSA scatter-ratio head selector plus a gated global/local modulation head is a reasonable, non-obvious combination, but each component is close to established practice (linear-discriminant scoring, FiLM/adapter-style gating, activation steering) and the 'manifold' framing is largely rhetorical."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Ablations are set up sensibly and stability across seeds is checked, but the central claim of manifold rectification is not tied to any measured geometric property beyond the scatter ratio it optimizes, and the comparison to prior tuning-free methods lacks significance analysis."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "The main comparison table reports point estimates only; no error bars or significance tests are given for SteerVAD vs HiProbeVAD/VERA/EventVAD, and the reported σ≈0.04% concerns LAE-selection identity, not the final AUC across training seeds."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper is explicit about using 1% labels and does not hide the gap to fine-tuned Holmes-VAD, but calling the method 'tuning-free' while training an HMC + logistic scorer on labels, and describing gated scaling as 'manifold rectification', both overstate what the method actually does."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level architecture is understandable, but the prose has many run-on sentences and comma splices, key definitions (representation manifold, LAE, anisotropic scaling) are used loosely, and Figure 1's caption text is degraded/duplicated."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed (Abstract, Intro, Related Work, Method, Experiments, Conclusion), with problem formulation, ablations, stability, and hyperparameter analysis in the expected places."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone, frame sampling, K, F, optimizer, learning rate, batch size, epochs, regularization weight, and smoothing σ are specified, and datasets/splits are standard; but the composition of the 1% calibration subset, HMC rank r, hidden width, and exact scorer/GSG dimensionalities are underspecified."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of VAD (supervised/weakly/unsupervised/MLLM-based) is adequate, but positioning against the closest technical neighbors — activation steering, representation engineering, and probe-based head selection — is thin, and one cited method reads as '[Author] et al., 2025' due to anonymization leakage."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Judging from captions alone, Figures 2–4 target the right things (manifold visualization, framework schematic, pre/post t-SNE), but Figure 1's extracted content is heavily duplicated suggesting a cluttered schematic, and t-SNE 'clusters became separable after training' is a weak visual claim without quantitative silhouette/Fisher-ratio numbers."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only one MLLM backbone (InternVL3) and two VAD datasets are used, and no cross-dataset or cross-backbone transfer is reported, so the claim that this is 'a powerful new direction for VAD' rests on a narrow evidence base."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, clearly framed borderline submission whose contributions are real but modest — small gains without significance testing, single-backbone evidence, and overstated theoretical framing keep it below the ICLR acceptance bar without substantial revisions."
+    }
+  },
+  "publishability_probability": 0.28
+}

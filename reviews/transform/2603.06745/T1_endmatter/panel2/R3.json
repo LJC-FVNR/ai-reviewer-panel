@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation steering method that dynamically modulates steering strength by progressively reducing the number of steered layers whenever a plausibility check (steered vs. raw top-1 probability) fails, guided by a one-time attention-sensitivity layer ranking. The problem (oversteering in activation steering) is real and the empirical package is reasonably broad—multiple benchmarks, model scales, ablations, efficiency and generation-quality analyses. However, the core mechanism is largely a recombination of existing contrastive/plausibility-guided decoding with KV-cache steering, the gains are modest and occasionally non-dominant, and the central 'significant improvement' claims lack any error bars, seeds, or significance testing.",
+  "strengths": [
+    "Tackles a well-motivated and practically important failure mode (oversteering) with a training-free, dataset-free, inference-time mechanism that is compatible with FlashAttention and adds only modest overhead (~16% throughput reduction, negligible memory).",
+    "Good experimental breadth: three benchmark types (IFEval, LIFBench, GSM8K-Format), generalization across 1B–14B Llama/Qwen models, and an efficiency analysis; the plausibility gate is also shown to be modular (improves PASTA/SpotLight when bolted on).",
+    "Ablations isolate the main design choices reasonably well: fixed- vs. adaptive-strength, reversed ranking, random layers, and random-token steering, supporting the claim that the sensitivity-based layer ranking matters.",
+    "Attention to the generation-quality/task-fidelity trade-off (LLM-judge plus appendix human eval) rather than optimizing instruction adherence in isolation."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is weak. Main results (Tables 1, 2, 4) are reported as single point estimates with no error bars, seeds, confidence intervals, or significance tests, yet the abstract and body repeatedly assert 'significant' improvements. Only the random-layer/random-token variants carry ± values. Greedy decoding removes decoding variance but not variance across prompt subsets, judge sampling, or benchmark composition.",
+      "suggested_fix": "Report variance across bootstrapped test subsets and multiple LLM-judge runs, and provide significance tests (e.g., paired bootstrap) for the headline 4–6.5% gains, especially where DIRECTER does not clearly dominate (e.g., Qwen-7B: 74.4 vs SpotLight† 74.9)."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental. The plausibility-acceptance rule (accept steered top-1 only if it was plausible under the raw distribution) is closely derived from contrastive/plausibility-guided decoding (Li et al. 2022; Chuang et al. 2023, both cited). The paper's delta is applying this to modulate steering-layer count plus a KV-key-scaling intervention; the conceptual advance over the cited decoding literature is not sharply delineated.",
+      "suggested_fix": "Add a direct conceptual and empirical comparison to contrastive/plausibility decoding baselines and clearly articulate what is new beyond porting the plausibility constraint to steering-strength control."
+    },
+    {
+      "severity": "major",
+      "issue": "Several load-bearing justifications are deferred to appendices not available for review: why modulate the layer set L rather than the scaling factor α (App. C.4), the disturbance-metric derivation and its efficient simplification (App. C), and the key-vs-value scaling choice (App. C.5). The body asserts these choices are validated but the reader cannot assess them.",
+      "suggested_fix": "Bring the core justification for the L-vs-α choice and the sensitivity-metric derivation into the main text, at least in summary form with the key supporting numbers."
+    },
+    {
+      "severity": "minor",
+      "issue": "The α=100 (up to 10^5) key-scaling factor is unusual and only heuristically motivated (softmax renormalization). Robustness is claimed but the mechanism by which such extreme scaling remains stable is under-explained.",
+      "suggested_fix": "Provide intuition/analysis for why extreme key scaling is renormalized to a well-behaved intervention, and report the effective attention-mass shift induced."
+    },
+    {
+      "severity": "minor",
+      "issue": "Text-quality and task-fidelity evaluation relies primarily on gpt-4o-mini as judge, which has known biases; the corroborating human study is in an unavailable appendix.",
+      "suggested_fix": "Summarize the human-evaluation protocol, sample size, and agreement statistics in the main text."
+    }
+  ],
+  "questions_for_authors": [
+    "Are the 4–6.5% gains statistically significant? Please provide variance estimates and paired significance tests, particularly for cases where DIRECTER is not the top method.",
+    "How does DIRECTER compare directly to plausibility/contrastive decoding methods (Li et al. 2022; Chuang et al. 2023) used as standalone baselines, not merely as a filter added to PASTA/SpotLight?",
+    "What is the sensitivity of results to the GSM8K-Format benchmark design, given it is newly introduced by the authors and central to the 'no task-accuracy trade-off' claim?",
+    "How often does the plausibility loop terminate with the raw distribution (no accepted steered token), and does the reported gain persist if that fallback is disabled?",
+    "Can you quantify how the sensitivity ranking differs from a simpler heuristic (e.g., middle-layer preference) beyond the random/reversed ablations?"
+  ],
+  "calibration_check": "The method-level claims are mostly scoped, but the repeated use of 'significantly' without any statistical testing, and the 'highest task fidelity / general mechanism' framing, slightly overstate what single-run point estimates support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a real and recognized problem (oversteering) with a practical, low-overhead, training-free method that others could adopt, though the impact is incremental rather than field-shifting."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The dynamic layer-count modulation is a sensible twist, but the plausibility-acceptance core is adapted from cited contrastive/plausibility decoding work, making the contribution a recombination of known ideas."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is internally coherent and ablations isolate key components, but several correctness-relevant justifications are deferred to unavailable appendices and some claims exceed the shown evidence."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Headline gains are reported as single point estimates with no seeds, error bars, or significance tests despite repeated 'significant' claims; only two ablation variants include variance."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations (no theoretical grounding, separable-task assumption) are stated honestly, but 'significant' and 'general mechanism' claims are not statistically substantiated."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method, algorithm, and RQ-structured experiments are followable and the intuition is clear, though notation-heavy preliminaries and reliance on appendices reduce self-containment."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows standard conference structure (abstract, intro, related work, method, experiments, conclusion, limitations) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Algorithm, key hyperparameters (α=100, β=0.5), models, and benchmarks are specified, but critical design justifications and the new GSM8K-Format construction details live in appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior steering methods (PASTA, SpotLight) are fairly characterized, but the boundary between DIRECTER and the contrastive/plausibility-decoding lineage it builds on is under-delineated."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting displays (overview, ablations, robustness, efficiency), adequately conveying the comparisons made."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Reasonable coverage across benchmarks and 1B–14B models supports the generality claim, but occasional non-dominant results and reliance on a self-constructed benchmark temper it."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, practically useful paper on a relevant problem that is held back by incremental novelty, modest and statistically unvalidated gains, and heavy dependence on appendices for core justifications—borderline reject pending added rigor."
+    }
+  },
+  "publishability_probability": 0.38
+}

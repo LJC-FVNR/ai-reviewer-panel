@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents the first adversarial robustness analysis of Differential Attention (DA), identifying a 'Fragile Principle' in which DA's subtractive structure amplifies perturbation sensitivity via negative gradient alignment. The theoretical framework (Lemmas 1–2, Theorems 1–4, Corollary 1) is clean and internally consistent, and the empirical evaluation across ViT/DiffViT and CLIP/DiffCLIP on multiple datasets coherently supports the main claims. However, three substantive gaps limit the current submission: (1) the theory establishes that IF negative gradient alignment occurs THEN sensitivity is amplified, but does not formally prove that DA training structurally induces such alignment; (2) the depth-dependent analysis introduces an emergent factor α that cannot be bounded from first principles, making Corollary 1 empirically observational rather than predictive; and (3) all empirical validation is confined to vision models, while DA was originally proposed and evaluated as a language modeling mechanism, leaving the generality of the 'Fragile Principle' to NLP unvalidated.",
+  "strengths": [
+    "First systematic adversarial analysis of Differential Attention — the research question is timely given DA's rapid adoption and use in safety-critical motivations cited by the original paper.",
+    "The theoretical framework is clean and self-consistent: Lemma 1 through Theorem 3 correctly characterize the gradient norm under negative alignment, and the Lipschitz bound (Lemma 2) directly connects the theoretical mechanism to certifiable robustness.",
+    "Multi-faceted empirical evaluation: three attack types (PGD, CW, AutoAttack), adversarial patches in addition to adversarial examples, two distinct model families (trained-from-scratch ViT and pretrained CLIP), and multiple datasets provide meaningful triangulation.",
+    "The depth-dependent crossover (Corollary 1) is a theoretically interesting prediction that is empirically validated — small-budget fragility at shallow depth giving way to robustness at greater depth is a non-obvious and useful structural insight.",
+    "Honest limitations section: the authors explicitly flag local linearization, layer isolation, the absence of natural adversarial evaluation, and the unexplored training dynamics of λ, which is more transparent than typical submissions."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central theoretical claim is that DA 'structurally encourages' negative gradient alignment. However, Theorems 1–3 are purely conditional: they characterize sensitivity given that alignment is negative, not that alignment will be negative. The informal argument (subtraction requires opposing branch intensities, which induces opposing gradients) appears in the prose but is never formalized. Without a formal proposition showing that DA's training objective or architecture biases the distribution of cos θ toward negative values, the theory half-proves the claim and relies on empirical Figure 5 to close the logical gap — this is a significant theory–evidence mismatch.",
+      "suggested_fix": "Either (a) prove a proposition showing that DA's loss landscape or inductive bias concentrates cos θ < 0 during or after training, possibly under mild distributional assumptions, or (b) explicitly reframe the theoretical contribution as 'conditional sensitivity analysis' — i.e., when negative alignment occurs (as empirically measured), the following amplification bounds hold — and let Figure 5 stand as the demonstration that this condition is frequently met."
+    },
+    {
+      "severity": "blocking",
+      "issue": "All empirical validation is restricted to vision models (ViT, DiffViT, CLIP, DiffCLIP) on image classification and retrieval tasks. DA was introduced in and primarily motivated for language modeling (summarization, QA). The Fragile Principle may manifest differently — or not at all — in autoregressive language transformers, where the attention topology, training signal, and perturbation space differ substantially. Presenting the result as a general property of DA without any NLP evidence overstates generality.",
+      "suggested_fix": "Add at least one NLP experiment: e.g., evaluate adversarial robustness of a small Differential Transformer vs. standard transformer on a text classification or token prediction task using character- or token-level perturbations. If computational constraints make this infeasible, prominently scope the abstract and contributions to 'vision models' and explicitly call out the NLP gap as a limitation."
+    },
+    {
+      "severity": "major",
+      "issue": "No error bars, confidence intervals, or seed counts are reported for the main ViT/DiffViT results (Tables and Figures 2–5). For a paper whose central empirical claim is a systematic structural property, not reporting variance across initialization seeds or evaluation runs makes it impossible to assess whether observed ASR and Lipschitz differences are statistically reliable, particularly in cases where the caption itself notes effects are 'nuanced' or 'small' (e.g., ImageNet patch results).",
+      "suggested_fix": "Report mean ± standard deviation (or 95% CI) across at least three seeds for all ViT/DiffViT training experiments. For CLIP/DiffCLIP evaluation on fixed pretrained models, report variance across multiple evaluation runs or sampling seeds for the Lipschitz estimation procedure."
+    },
+    {
+      "severity": "major",
+      "issue": "The depth-dependent analysis (Section 4.2) introduces α ∈ (0,1] as a noise-cancellation reduction factor but explicitly states it 'cannot be reduced to a deterministic function of λ' and is 'emergent.' As a result, Corollary 1's crossover depth D* cannot be computed or bounded a priori — the corollary is structurally unfalsifiable because any observed crossover (or lack thereof) is consistent with some choice of α. The theory is observationally equivalent to 'there might be a crossover.'",
+      "suggested_fix": "Either derive a data-dependent estimator for α from measurable quantities (e.g., the singular value spectrum of the perturbation propagation matrix) so that D* is at least empirically predictable, or clearly restate Theorem 4 and Corollary 1 as existence results ('there exist parameter regimes where a crossover occurs') rather than structural predictions. Empirically reporting estimated α values for each depth/dataset would substantially strengthen the story."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 1 shows non-monotonic behavior: ASR peaks at λinit = 0.8 then drops for λinit ∈ {0.85, 0.90, 0.95}. This is attributed to 'over-cancellation' but this regime is not analyzed theoretically. Under the paper's framework, larger λ should increase gradient amplification (from Theorem 1, the (1 + λρ) factor increases with λ), which contradicts the observed drop. This unexplained inversion weakens the internal consistency of the theory and experiment.",
+      "suggested_fix": "Provide at least an informal theoretical account of why larger λ reduces ASR. One plausible explanation is that large λ over-subtracts and drives the attention output toward zero, collapsing the model's discriminative capability and incidentally reducing adversarial leverage — investigate and discuss this explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The ViT/DiffViT model architectures used for controlled experiments are described as 'lightweight transformers' but the exact architecture (number of heads, embedding dimension, MLP ratio, patch size) is not specified in the main paper or clearly pointed to in any appendix section referenced in the text. This limits reproducibility of the controlled experiments.",
+      "suggested_fix": "Add a table of model hyperparameters (embedding dim, number of heads, MLP ratio, patch size, total parameters) for all ViT/DiffViT configurations used."
+    }
+  ],
+  "questions_for_authors": [
+    "Theorem 1 shows that under perfect negative alignment (cos θ = -1), the gradient norm scales as (1 + λρ)‖∇A1‖. Empirically, what fraction of tokens/layers actually achieve cos θ < -0.5 (strong negative alignment) versus a mild negative alignment near zero? The sensitivity amplification factor is very different in these regimes, and this distinction would clarify how much practical fragility is attributable to the theoretical maximum versus typical operating conditions.",
+    "The λinit ablation (Table 1) shows a non-monotonic relationship between subtraction strength and ASR — the maximum occurs at λ = 0.8 (the default), not at the largest λ values. Under Theorem 1, larger λ should increase gradient amplification when ρ is fixed. Do the authors have an explanation for why ASR decreases at λ ≥ 0.85? Does ρ (the gradient norm ratio) or clean accuracy simultaneously change in a way that explains the reversal?",
+    "The pretrained DiffCLIP model evaluated here — is it trained with the same contrastive objective as CLIP, with identical data and hyperparameters except for the attention module? If there are other differences (training data, augmentation, number of epochs), how do the authors ensure that observed robustness differences are attributable to DA specifically and not to training differences?",
+    "For the depth experiments, the paper evaluates models with D ∈ {1, 2, 4, 8, 12} layers. Are these models trained independently from scratch at each depth, or are they prefixes of a single deeper model? The convergence behavior and λ values at each depth may differ significantly, affecting the interpretation of the depth-dependent crossover.",
+    "The paper briefly mentions adversarial training results in Appendix D.2. Does adversarially training a DiffViT close the ASR gap relative to an adversarially trained ViT, or does structural fragility persist even after adversarial training? This would clarify whether the Fragile Principle is a training-correctable artifact or a fundamental architectural property."
+  ],
+  "calibration_check": "Claims are broadly appropriate to the evidence for vision models, but the abstract and introduction present the Fragile Principle as a general property of DA without qualification to vision, while all experiments are vision-only; this overstates generality and should be scoped explicitly to the evaluated domains.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Identifying adversarial fragility in a recently proposed and increasingly adopted attention mechanism is timely and actionable, but the finding is specific to one mechanism and its practical impact depends on whether the effect is large in deployed settings."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The first adversarial robustness analysis of Differential Attention is a genuine contribution, and the depth-dependent crossover analysis (Corollary 1) is a non-obvious theoretical insight; however, the individual technical tools (gradient norm decomposition, local Lipschitz bounding) are standard."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Theorems 1–3 are correct and follow from standard gradient analysis, but the core causal chain has a gap: DA's tendency to induce negative alignment is empirically observed rather than formally derived, and the α parameter in the depth analysis is emergent and non-derivable, making Corollary 1 structurally empirical rather than predictive."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No error bars, standard deviations, or seed counts are reported for any of the ViT/DiffViT trained-model experiments; the significance of the observed ASR and Lipschitz differences relative to training variance is therefore unknown."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The limitations section is unusually forthright about local linearization, layer isolation, and the absence of natural adversarial evaluation; the main calibration failure is framing results from vision-only experiments as a general Fragile Principle of DA."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-written with a logical flow from theory to experiments; notation is consistent and the scope-of-evaluation paragraph in Section 5 is helpful, though the depth-analysis section (4.2) is somewhat dense and the informal argument for why DA induces negative alignment is harder to parse than the formal theorems."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows standard conference structure (Introduction, Related Work, Preliminary, Theory, Experiments, Discussion, Conclusion) at an appropriate ICLR length with appendices for proofs and additional experiments."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Attack hyperparameters and datasets are specified clearly, λinit is reported, and proof appendices are promised; but the exact ViT/DiffViT architectures are underspecified, no seeds are reported, and the Lipschitz sampling procedure lacks full detail."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "The coverage of attention robustness, Lipschitz analysis, and structural fragility is adequate and well-positioned; the paper correctly situates itself as mechanism-analysis rather than defense; a notable gap is the absence of discussion of other multi-branch or subtractive attention variants that might exhibit analogous phenomena."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Based on captions, the figures are well-chosen: Figure 2 covers ASR across models/datasets/attack types, Figure 3 isolates depth effects, Figure 4 shows Lipschitz estimates, and Figure 5 directly measures negative gradient alignment frequency; the coverage is comprehensive and each figure addresses a distinct theoretical claim."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "The evaluation is vision-only despite DA being introduced for language modeling; within vision the coverage is reasonable (two model families, four datasets, three attack types), but the complete absence of NLP validation substantially limits the claimed generality of the Fragile Principle."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising and well-motivated mechanism-analysis paper with a clean theoretical core, but the theory–evidence gap on negative alignment induction, the missing NLP validation, and the absence of statistical significance reporting collectively place it at the borderline-reject threshold; revisions addressing these points would make it a clear accept."
+    }
+  },
+  "publishability_probability": 0.22
+}

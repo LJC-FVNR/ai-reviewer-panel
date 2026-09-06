@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes adapting cross-layer crosscoders to track sparse feature evolution across training checkpoints of LLMs, applying the technique to Pythia-160M and Pythia-6.9B. The core idea is well-motivated and the paper presents genuinely interesting findings: an emergence hierarchy (previous-token → induction → context-sensitive features), decoder norms as feature-presence proxies, and evidence for a statistical-to-feature-learning phase transition. However, the experimental scope is severely limited to a single model family, statistical rigor is inconsistent (few error bars, weak correlations presented as strong evidence), and the LLM-based complexity scoring is potentially circular in an interpretability paper. The work is promising and topical but needs broader evaluation and stronger evidentiary support before acceptance.",
+  "strengths": [
+    "Genuinely novel adaptation of crosscoders to the training-dynamics problem: using shared decoder norms as per-snapshot feature presence proxies is a clean, well-motivated idea with clear theoretical grounding in the crosscoder optimization objective.",
+    "The two-phase (statistical → feature-learning) hypothesis is supported by three independent signals — KL divergence convergence, feature dimensionality dynamics, and feature emergence timing — giving the central claim triangulated support.",
+    "The feature emergence hierarchy (previous-token features first, then induction, then context-sensitive) aligns with the causal dependency structure established in prior mechanistic interpretability work, providing a satisfying mechanistic narrative.",
+    "Use of the openly available Pythia suite with 154 accessible training checkpoints makes the experimental setup well-suited to the research question and facilitates reproducibility.",
+    "The ablation experiments in Section 5 (remove top-k features vs. keep only top-k features) provide complementary, principled evidence that identified features are both necessary and sufficient for downstream task performance."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All experiments use only two models from the same training suite (Pythia-160M and Pythia-6.9B, same architecture, same data, same training procedure). Conclusions about universal pre-training dynamics — phase transitions, emergence hierarchy, directional turning points — cannot be credibly generalised from a single model family. Critically, Pythia is not a frontier-scale or standard-data model, so the claimed relevance to 'frontier LLM pre-training' in the introduction is unsupported.",
+      "suggested_fix": "Validate at least one central finding (e.g., the statistical-to-feature-learning transition or the emergence hierarchy) on a model with different architecture or data mixture — GPT-NeoX, OLMo, or any model with accessible checkpoints outside the Pythia lineage. Even a small-scale validation on a 160M-parameter model trained with different data would significantly strengthen the generality claim."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is insufficient throughout. (1) The complexity-vs-emergence correlation (Pearson r = 0.309, explaining ~10% of variance) is described in the text as showing a 'moderate positive correlation' without acknowledging how weak this effect is. (2) Most plots show single-run trajectories with no error bars or variance estimates across seeds or crosscoder random initializations. (3) Complexity scoring is done on only 100 randomly sampled features — far too few to reliably characterise the full distribution of ~98,000 features. (4) No statistical significance testing is reported for the phase-transition claims.",
+      "suggested_fix": "Report variance across at least 3 crosscoder seeds for key metrics. Increase the complexity-scored sample size. Qualify the r = 0.309 result with an explicit effect-size interpretation. Add bootstrap confidence intervals to the KL divergence and dimensionality curves."
+    },
+    {
+      "severity": "major",
+      "issue": "Feature complexity is assessed using an LLM (Claude Sonnet 4) — yet the paper is studying how LLMs learn representations. This introduces a potential circularity: the LLM judge may be pattern-matching against its own internal feature structure when assigning complexity scores, and there is no human-annotation validation to calibrate the judge's accuracy or inter-rater reliability. The rubric and prompt are deferred to the appendix, making the main-text claim difficult to evaluate.",
+      "suggested_fix": "Provide human-annotator agreement scores for a subset of rated features, or demonstrate that the LLM-assigned scores correlate with independently measurable proxies of complexity (e.g., minimum circuit depth required to compute the feature, number of prerequisite features in the circuit)."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper exclusively analyzes a single middle layer (Layer 6 for Pythia-160M, Layer 16 for Pythia-6.9B), with no ablation or justification for this choice. Feature emergence dynamics are known to differ substantially across layers in transformer models, so findings from one layer may not represent the model's overall learning trajectory.",
+      "suggested_fix": "Include at least a brief comparison of feature emergence dynamics across early, middle, and late layers to justify the representativeness of the chosen layer, or acknowledge explicitly that all findings are layer-specific."
+    },
+    {
+      "severity": "minor",
+      "issue": "The figure numbering in the manuscript is out of order: the sequence is Figure 1 → Figure 3 → Figure 2 → Figure 5 → Figure 6 → Figure 7 → Figure 8, with Figure 4 appearing separately. This is likely a typesetting artifact but significantly impairs readability.",
+      "suggested_fix": "Renumber or reorder figures to follow their first citation in the text."
+    },
+    {
+      "severity": "minor",
+      "issue": "The distinction from the most closely related concurrent works (Mishra-Sharma et al., 2024; Minder et al., 2025, which also apply crosscoders to compare model snapshots — pre-trained vs. RLHF-tuned) is not clearly drawn in the related work section. A reader could reasonably ask why the pre-training dynamic setting is technically distinct from the fine-tuning comparison setting.",
+      "suggested_fix": "Add 2–3 sentences explicitly comparing the technical and scientific differences: the number of snapshots, the nature of the transitions being tracked, and the scientific questions being answered."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim 'to the best of our knowledge, this work is the first to adapt crosscoders to study training dynamics' is presented as a strong novelty claim but is technically an application novelty, not a methodological one. The crosscoder architecture is unchanged; the contribution is primarily in the experimental setup and analysis. This framing slightly overclaims the technical contribution.",
+      "suggested_fix": "Reframe Contribution 1 as 'first systematic empirical study of...' rather than implying architectural or methodological novelty."
+    }
+  ],
+  "questions_for_authors": [
+    "Why were middle layers specifically chosen for crosscoder training? Figure 4 and all downstream analyses depend on this choice — can you show that the two-phase transition and emergence hierarchy are consistent across early and late layers, or is the middle-layer choice a potential confounder?",
+    "The LLM-based complexity scoring (Claude Sonnet 4) is central to the complexity-vs-emergence finding. What is the inter-rater reliability of this scoring rubric when applied by human annotators, and how does the LLM score distribution compare to human judgments on even a small held-out set?",
+    "The 32-snapshot stratified sample is motivated by cost constraints, but the uneven density (20 snapshots before step 10,000, 12 for the remaining ~133,000 steps) likely biases the temporal characterisation of feature emergence. Have you checked whether the observed 'step 1,000 turning point' is robust to different snapshot sampling schemes?",
+    "The dimensionality metric (Eq. 6) is adapted from a toy-model setting (Elhage et al., 2022) where ground-truth features are known. What validation do you have that this metric is meaningful when applied to crosscoder features, which may themselves be incomplete or misaligned? Appendix C is cited but not described in the main text.",
+    "For the subject-verb agreement circuit in Section 5, the paper notes that Features 68813, 50159, and 69636 'alternately dominate the metric,' which suggests model evolution proceeds through component iteration rather than stable accumulation. Is this pattern consistent across SVA, IOI, and induction tasks, or specific to SVA?"
+  ],
+  "calibration_check": "The two-phase transition hypothesis is the most broadly claimed result and is supported by three converging signals, which is honest; however, the complexity-emergence correlation (r = 0.309) and the single-family, single-layer experimental scope are not adequately acknowledged as limitations of the generality claims made in the introduction and conclusion.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The research question — how do internal representations evolve during pre-training — is important and timely for the mechanistic interpretability community, but the restriction to one model family and simple downstream tasks limits the practical impact for the broader field."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Applying crosscoders to training snapshots rather than layers is a genuine, well-motivated extension, and the two-phase statistical-to-feature-learning framing is a useful new conceptual contribution, though the technical novelty is incremental relative to the existing crosscoder and SAE literature."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The crosscoder formulation is correct and the attribution patching methodology is principled, but the unjustified middle-layer restriction, the absence of multi-seed variance, and the reliance on an LLM judge for a key empirical finding weaken the overall rigor."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "The Pearson r = 0.309 is reported with a p-value (good) but its weakness (~10% variance explained) is not acknowledged; most trajectory plots lack error bars; complexity scoring covers only 100 of ~98,000 features; and no significance tests accompany the phase-transition claims."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section is candid about generalizability and snapshot granularity, but the main text and abstract overclaim universality of the phase transition given the single-family, single-layer evidence base."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The writing is generally clear and the method is logically presented, but out-of-order figure numbering, dense equation notation without sufficient inline explanation, and several forward references to appendices impede readability."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows a standard ICLR structure (introduction, related work, method, experiments, limitations, conclusion) at an appropriate length, though the separation of Section 4 (feature analysis) and Section 5 (downstream connection) from Section 6 (phase transition) creates some narrative fragmentation."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Using open-source Pythia models and SlimPajama is commendable, and the crosscoder architecture is specified; however, key hyperparameters (λ_sparsity, activation function choice rationale, training epochs) and crosscoder training costs are deferred to appendices, and the snapshot selection procedure reduces observational granularity in ways that are hard to reproduce exactly."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The paper covers the relevant SAE, crosscoder, and training-dynamics literature fairly, but the relationship to the most closely related concurrent works (Mishra-Sharma et al.; Minder et al.) and to the Heap et al. (2025) finding on initialization features is not adequately distinguished."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, figures appear well-chosen and directly support the claims (decoder norm heatmaps, emergence-time distributions, projection matrices, attribution trajectories); however, the out-of-order numbering and the reliance on 50 randomly sampled features in Figure 4 without size context limit their evidential value."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "All experiments are confined to two models from the same Pythia family analyzed at a single middle layer, with only three relatively simple downstream tasks (SVA, IOI, induction); the paper's central claims about general LLM pre-training dynamics are therefore substantially under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting and topical paper with a clean central idea and converging evidence for a two-phase transition, but insufficient experimental breadth, uneven statistical rigor, and a single-family evaluation that cannot support the paper's general claims about LLM pre-training dynamics."
+    }
+  },
+  "publishability_probability": 0.18
+}

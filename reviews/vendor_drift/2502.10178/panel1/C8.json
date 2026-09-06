@@ -1,0 +1,111 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper studies Mamba (specifically Mamba-2) through the random-Markov in-context-learning framework and reports that even a single-layer model matches the Bayes/minimax-optimal add-β (Laplacian smoothing) estimator across Markov orders, with an ablation identifying the short causal convolution — rather than gating or nonlinearity — as the critical component. It backs this with a constructive representation theorem for a stripped-down 'MambaZero' model on first-order chains, a precision-aware lower bound showing any recurrent model needs hidden dimension scaling as 2^k for order-k sources, and extensions to a switching-Markov process and WikiText-103. The work is clean, internally coherent, and the theory is unusually well aligned with the empirically observed parameter structure (a_t ≈ 1, b(ij)ᵀc ≈ 0, window w ≥ k+1), which makes it more than a post-hoc existence construction. The main limits are the narrow scope of the theory (first order, simplified architecture with L1 normalization and no gating/ReLU), the modest scale of the empirical evidence, and single-number language-modeling results without seeds.",
+  "strengths": [
+    "Crisp, falsifiable central claim (single-layer Mamba realizes the add-β estimator) that is tested against a precisely defined optimal baseline rather than a vague notion of 'ICL performance'.",
+    "The constructive proof of Theorem 1 is tied to measured properties of the trained model (a_t ≈ 1, b(ij)ᵀc_t ≈ 0 for i ≠ x_t, the count-independent vectors summing to β1), so the mechanism story is empirically grounded rather than a mere existence argument.",
+    "Theorem 2 is a genuinely useful complement: a depth-independent, bit-precision-aware lower bound of d·p ≥ 2^k(1−3ε)log(1/ε) for any recurrent state model, which frames the architectural cost of higher-order Markov ICL.",
+    "The convolution ablation is well-designed and non-obvious: full Mamba minus convolution fails while convolution-only MambaZero succeeds, and the w ≥ k+1 result in Fig. 3b gives a quantitative, testable relation between window size and Markov order with a clean confusable-sequence explanation.",
+    "The authors state scope honestly in several places (representation not learning dynamics; higher-order results are empirical only; convolution's importance decreases with depth in Table 5).",
+    "Fig. 1b reports standard deviations across 5 runs, and the switching-Markov experiment gives a targeted test of the selectivity mechanism (a_t → 0 at switch tokens) that the Markov setting alone cannot probe."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Theorem 1 covers only first-order chains and only MambaZero, which removes ReLU, gating, and the softmax (replaced by L1 normalization). The paper's headline claim is about Mamba learning the optimal estimator 'for all Markov orders', but the theory supports only k=1 for a simplified surrogate; the k>1 claim rests entirely on Fig. 1b curves.",
+      "suggested_fix": "Either extend the construction to order k (even a dimension-2^k construction matching the lower bound would close the loop with Thm. 2), or restate the contribution claims in the abstract/intro/conclusion so that 'for all Markov orders' is explicitly flagged as empirical."
+    },
+    {
+      "severity": "major",
+      "issue": "The language-modeling evidence (Table 1) is a single perplexity number per configuration on one dataset at one scale (~14.5M params), with no seeds or variance. A 27.55 vs 30.68 gap is used to support 'the fundamental role of convolution even on complex language-modeling tasks', while Table 5 reportedly shows the effect shrinking with depth and Table 4 shows gating matters comparably (17%) — which partly undercuts the 'convolution more than gating' framing carried over from the Markov setting.",
+      "suggested_fix": "Report multiple seeds with variance on WikiText-103, add at least one more corpus or scale, and reconcile the gating result: the claim 'convolution matters more than gating' appears to hold on Markov data but not clearly on natural language, and the paper should say so explicitly in Sec. 5.2 rather than in an appendix pointer."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is uneven. Fig. 1b has 5-run error bars, but the convolution ablation (Fig. 3a), the window-size sweep (Fig. 3b), the mechanism plots (Figs. 4, 5), and Table 1 are described without seed counts, error bars, or significance testing. Since the central architectural claim rests on Fig. 3a, its variance matters.",
+      "suggested_fix": "Report seeds and variability for every training-curve and ablation figure, and state how many runs underlie the parameter-structure observations (a_t ≈ 1, b(ij)ᵀc ≈ 0) and how tight those approximations are numerically."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Mamba vs. Transformer comparison mixes a lower bound for recurrent models (Thm. 2) with an upper-bound construction for transformers (Rajaraman et al.), which is not an apples-to-apples separation, yet the conclusion asserts 'unlike transformers, even a single-layer Mamba efficiently learns' the estimator. The word 'efficiently' is never operationalized (sample complexity? parameters? steps?).",
+      "suggested_fix": "Soften the conclusion sentence, and add one clause in Sec. 4.3 noting that the exponential-vs-linear contrast compares a lower bound against a known construction, so it does not by itself establish a separation."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that 'convolution is the key' is drawn from removing convolution entirely. It is not isolated from the simpler confound that a width-1 receptive field cannot see the (x_{t-1}, x_t) pair at all, which the w ≥ k+1 analysis itself implies. Whether convolution is special, or merely the cheapest available mechanism for a one-step lookback, is not tested.",
+      "suggested_fix": "Add a control that supplies the same local context by another route (e.g., a fixed shift/identity-delay operator, or position-shifted embeddings) with convolution removed; if such a model also learns the task, the finding should be reframed as 'local token-pair access is key, and convolution is how Mamba supplies it'."
+    },
+    {
+      "severity": "minor",
+      "issue": "Scale and state-space breadth are narrow: figures center on binary alphabets with a pointer to 'larger state spaces' in Fig. 10a, and the theory fixes N=S, d=2S, e=1. How the construction and the learned solution degrade as S grows is not characterized empirically.",
+      "suggested_fix": "Include an explicit sweep over S (e.g., S = 2, 4, 8, 16) showing L1 deviation from add-β versus hidden dimension, to test whether the d = 2S requirement of Thm. 1 is tight in practice."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2's assumption of an almost-sure point-wise ℓ∞ guarantee (Eq. 6) is strong; a model that is optimal in expectation or on typical sequences would evade the bound. The paper does not discuss how restrictive this is.",
+      "suggested_fix": "Add a remark on whether the bound survives an in-expectation or high-probability relaxation, and note the consequence if it does not."
+    }
+  ],
+  "questions_for_authors": [
+    "Can the MambaZero construction be extended to order k with hidden dimension O(2^k), so that Theorem 1 and Theorem 2 meet? If not, what is the obstruction?",
+    "In Fig. 3a, does 'Mamba without convolution' still fail if the model is given the token pair by another means (a fixed one-step delay line, or concatenated shifted embeddings)? This would separate 'convolution' from 'local context access'.",
+    "How many seeds underlie Fig. 3a, Fig. 3b, and Table 1, and what is the run-to-run spread? For Table 1 in particular, is the 3.1-perplexity Mamba gap large relative to seed variance at 14.5M parameters?",
+    "How exactly is a_t ≈ 1 realized at convergence — via a → 0 or Δ_t → 0 — and does the answer change with Markov order or state-space size?",
+    "In the switching-Markov experiment, how sharply does a_t drop at switch tokens, and does the model's post-switch prediction actually match the count-reset add-β oracle quantitatively (not just qualitatively track it)?",
+    "Does Theorem 2's conclusion survive relaxing Eq. (6) from an almost-sure point-wise guarantee to an expected or high-probability accuracy requirement?",
+    "Does the single-layer result hold for Mamba-1 as well as Mamba-2, given that the paper claims to 'capture the behavior of all selective SSMs'?"
+  ],
+  "calibration_check": "Claims are mostly well scoped — the paper explicitly separates representation from learning dynamics and admits the higher-order result is empirical — but the abstract/intro/conclusion phrasing ('for all Markov orders', 'unlike transformers... efficiently learns', 'generality of our findings' from one LM corpus) runs somewhat ahead of what the first-order theorem and single-dataset perplexity table establish.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A clear, mechanistically grounded account of why a one-layer selective SSM can do count-based in-context estimation is of real interest to the mechanistic-interpretability and SSM-theory communities, but the practical consequence beyond 'keep the short convolution' is limited, especially since the paper itself reports the convolution effect fading with depth."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Markov-ICL framework and the Laplacian-smoothing target are inherited from prior transformer work, so the novelty lies in the Mamba-specific construction, the convolution/window-size finding, and the recurrent-model lower bound — a genuine but bounded step rather than a new framework."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The construction is coherent and, unusually, validated against the model's actual learned parameters, but the theory applies to a simplified surrogate (no gating, no ReLU, L1 instead of softmax) at first order only, and the causal claim about convolution is not isolated from the trivial confound that a length-1 window cannot see the previous token."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Only Fig. 1b reports 5-run standard deviations; the load-bearing ablation (Fig. 3a), the window sweep, the mechanism plots, and the WikiText-103 table are single-number or seedless, with no significance testing anywhere."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper repeatedly and commendably flags scope (representation not dynamics, higher-order as empirical, convolution's diminishing role with depth), but 'for all Markov orders', the undefined 'efficiently', and 'generality' from one corpus are modestly overclaimed relative to the evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The logical arc from empirical observation to simplified model to construction to lower bound is easy to follow, the notation is defined up front, and the proof sketch in Sec. 4.2.1 states the two key empirical facts before using them; the main opacity is that several central details (proofs, hyperparameters, the confusable-sequence argument) are pushed to appendices."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard and well-executed conference structure — problem setup with an explicit optimal-estimator section, empirical phenomenon, theory, beyond-Markov generalization, conclusion — at appropriate length with a clear contributions list."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "The data-generating process is specified algorithmically, the Mamba and MambaZero recurrences are written out in full with all learnable parameters named, the loss and optimizer are given, and Theorem 1 fixes exact dimensions (N=S, d=2S, e=1, w=2); the deduction is limited only by hyperparameters (learning rate, batch size, T, training steps) being deferred to an appendix."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against the transformer Markov-ICL line, the two-layer induction-head results, the conflicting Mamba-vs-transformer ICL evidence, and Rajaraman et al.'s transformer construction is accurate and fair, and the paper is explicit that it is not an architectural comparison study."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The captions describe display items that carry real argumentative weight — Fig. 1b's L1 deviation versus Markov order with error bars, Fig. 3b's window-size/order relation, and Figs. 4–5's learned-parameter structure that the proof depends on — rather than decorative plots, though Table 1 conveys only four unreplicated numbers."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Evidence is concentrated on small (largely binary) state spaces, single-layer models, one SSM variant, and a single language-modeling corpus at one scale, which is thin support for claims framed around 'all selective SSMs' and 'complex language-modeling tasks'."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A well-executed, honest, theoretically grounded study of a timely architecture whose central mechanism claim is convincingly demonstrated in its chosen sandbox, held back from clear accept by first-order-only theory, an under-controlled convolution claim, and thin statistical reporting outside Fig. 1b."
+    }
+  },
+  "publishability_probability": 0.58
+}

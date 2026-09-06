@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes 'internal bias' — a model's implicit preliminary guess formed before formal reasoning — as a root cause of overthinking in o1/R1-style reasoning models, and supports this thesis with correlation analyses, two counterfactual interventions (question removal and bias injection), attention analysis, and mitigation trials. The core phenomenon is real, timely, and well-motivated, and the multi-pronged experimental design is commendable. However, serious weaknesses in statistical rigor (no confidence intervals or significance tests, AIME experiments using only 30 problems), inadequate control for question difficulty in the main correlation evidence, and confounds in the counterfactual interventions prevent the causal claim from being as strong as presented. The scope is also explicitly restricted to tasks with discrete outputs, limiting generality claims.",
+  "strengths": [
+    "The phenomenon is genuine and timely: overthinking in reasoning models is a well-recognized practical cost, and identifying an underlying mechanism (implicit prior versus explicit reasoning conflict) is a valuable research direction that could influence training and inference design.",
+    "The multi-pronged evidence strategy — correlation study, two distinct counterfactual interventions, attention analysis, and mitigation evaluation — is well conceived and provides converging, mutually reinforcing support for the core hypothesis.",
+    "The question-removal counterfactual (Section 5.1) is creative: it surgically severs the model's access to the input mid-generation and measures the causal effect on redundant length, achieving 31–54% reduction while maintaining or improving accuracy on complex tasks.",
+    "The attention analysis in Section 6 is mechanistically informative: quantifying the differential attention to the question segment at 'reflection' versus 'answer' tokens, and confirming it is localized to middle-to-later layers (where active reasoning occurs), provides a plausible mechanistic account.",
+    "The parroting analysis (Section 4.3) linking extreme bias deviation to repetitive-output failures is an interesting downstream consequence not previously characterized in the literature."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No confidence intervals, standard deviations, or statistical significance tests appear anywhere in the paper. AIME 2024/2025 experiments use only 30 questions each; differences of a few percentage points in accuracy and a few hundred tokens in length at this sample size are not interpretable without uncertainty estimates. The core Table 1 correlation evidence and Table 2 causal claims are similarly unsupported statistically.",
+      "suggested_fix": "Report 95% CIs or standard errors for all accuracy and length metrics, derived from multiple seeds or bootstrap resampling. For AIME (N=30), apply exact binomial CIs for accuracy and note the limited power explicitly. For CharCount and KnowLogic, the large-sample regime should make significance testing straightforward."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The difficulty confound is inadequately controlled. The paper argues that 'first reasoning length' (length to the first intermediate answer) controls for question complexity, and observes it is roughly constant across deviation-degree bins. However, first reasoning length is a poor proxy for difficulty; it conflates question complexity with the model's initial confidence. A more principled control would hold question difficulty fixed (e.g., by stratifying on final accuracy or using a known difficulty rating) and vary the induced bias independently. Without this, the observed correlation between deviation degree and total reasoning length could simply reflect that hard questions produce both uncertain guesses and long reasoning.",
+      "suggested_fix": "Stratify experiments by question difficulty (e.g., hold accuracy on reasoning-only trials fixed across deviation bins, or use dataset-provided difficulty labels) and show the bias–overthinking correlation persists within each difficulty stratum."
+    },
+    {
+      "severity": "major",
+      "issue": "The question-removal intervention (Section 5.1) has a confound: removing the question mid-generation does not only eliminate the channel through which internal bias could be reactivated — it also prevents the model from legitimately re-consulting the task specification. Any intervention that forces the model to commit to its current reasoning trajectory would reduce reflection, regardless of bias. The paper does not rule out this 'forced commitment' explanation.",
+      "suggested_fix": "Include a control condition in which the question is replaced by a semantically neutral filler (e.g., the same number of padding tokens) rather than removed entirely, or replace it with an unrelated distractor question. If bias reactivation is the mechanism, a distractor should produce similar over-reflection to the original question; if forced commitment is the mechanism, any replacement should reduce length equally."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (Section 5.2) fine-tunes on 50 rephrased declarative statements per sample and then tests on the exact same sample. This is sample-specific training that resembles targeted memorization more than manipulation of the model's internal bias distribution. It is unclear whether the effect generalizes even to rephrased versions of the same question, let alone to held-out questions.",
+      "suggested_fix": "Reserve a held-out test split that was not used in the fine-tuning declarative statements. Show that the induced bias transfer generalizes to these unseen samples. Otherwise, the sample-wise injection cannot distinguish between 'we changed the model's internal bias' and 'we taught the model the answer to this specific question.'"
+    },
+    {
+      "severity": "major",
+      "issue": "All causal experiments are conducted on a single model (R1-Distill-Qwen-14B). The correlation evidence spans three models, but the most important claims — causal reduction in overthinking, bias injection effects, and mitigation comparisons — rely entirely on the 14B distilled model. The 671B DeepSeek-R1 and QwQ-32B results are only used in the observational Section 4.",
+      "suggested_fix": "Replicate at minimum the question-removal intervention (Table 2) on QwQ-32B and/or DeepSeek-R1 to demonstrate that the causal mechanism is not an artifact of the distillation process. This is especially important given that distilled models may have different reasoning dynamics than natively trained ones."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'direct answer' elicitation methodology uses a template containing an explicit no-reasoning instruction ('Let me answer him without thinking more.') followed by </think>. This template itself could induce a distribution shift in the model's output (i.e., the model's behavior under this prompt may differ from its implicit prior during normal generation), making the measured 'direct answer' an imperfect proxy for internal bias.",
+      "suggested_fix": "Validate the proxy by checking whether the direct-answer distribution correlates with representations extracted from the model's hidden states at the start of normal reasoning (e.g., via the probing study already described in Appendix J.1). If the two agree, the proxy is credible; report this cross-validation in the main paper."
+    },
+    {
+      "severity": "minor",
+      "issue": "The mitigation comparison in Table 4 trains FCS and SEAL/PROBE on CharCount data and evaluates on CharCount, giving these methods a data-domain advantage that could inflate their performance relative to the question-removal baseline. The FCSSFT result on AIME 2024 (50% accuracy, down from 63.3% baseline) is an important negative, but it is introduced without adequate discussion of why performance collapses.",
+      "suggested_fix": "Train and evaluate mitigation methods on a held-out split of CharCount, or add an in-domain control for the question-removal baseline, so the comparisons are on equal footing. Discuss the AIME accuracy collapse explicitly."
+    }
+  ],
+  "questions_for_authors": [
+    "In Section 5.1, what happens if the input question is replaced by a semantically unrelated question (a distractor) rather than removed? If the reduction in reasoning length is similar, the mechanism is 'removal of any distractor' rather than 'elimination of bias reactivation'.",
+    "For the bias injection experiment, do the effects persist on a held-out set of samples not used in constructing the 50 declarative statements? If not, how do the authors distinguish sample-specific memorization from genuine bias manipulation?",
+    "The 'first reasoning length' is claimed to control for question complexity, but it seems possible that questions that are both hard (long first reasoning) and well-known to the model (low-deviation bias) coexist in the low-deviation bin while hard-and-unfamiliar questions appear in the high-deviation bin. How do the authors rule out familiarity/knowledge coverage as a confound, independent of difficulty?",
+    "The probing study in Appendix J.1 is described as verifying that hidden states from the question segment encode internal bias. What classifier accuracy or correlation coefficient was achieved? Is this evidence that attention to the question reactivates the bias at runtime, or merely that the question segment happens to encode information about the answer?",
+    "Table 4 shows that FCSSFT reduces accuracy on AIME from 63.3% to 50.0%. Is this reduction statistically significant at N=30? And does the higher R value (34.9% versus the baseline 43.1%) actually indicate that internal bias influence is weaker, or does the shorter overall chain length simply make the ratio appear smaller?"
+  ],
+  "calibration_check": "The paper mostly hedges appropriately by framing internal bias as 'one important reason' for overthinking and acknowledging that limitations restrict claims to discrete-output tasks; however, several statements in the abstract and introduction (e.g., 'causal relationship... rigorously' established, reductions of '31% to 53%' without uncertainty) overstate the strength of evidence from experiments lacking confidence intervals and using very small AIME sample sizes.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Identifying a root cause of overthinking in o1/R1-style models is directly actionable for the community building or fine-tuning such systems, and the attention-based mechanistic account opens a concrete direction for efficient inference research."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Framing an implicit preliminary guess as 'internal bias,' operationalizing it via no-reasoning direct answers, and linking it causally to overthinking via counterfactual interventions is a fresh and specific contribution beyond prior work on unfaithfulness or CoT length reduction."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The observational and interventional designs are conceptually sound, but difficulty confound control is inadequate, the question-removal intervention has an alternative explanation, and the bias injection methodology conflates bias manipulation with sample-specific memorization."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No confidence intervals, standard errors, or significance tests appear anywhere; AIME experiments use only 30 examples; effects reported to decimal precision without any uncertainty quantification, making nearly all numerical claims uninterpretable."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The scope is explicitly limited to discrete-output tasks and limitations are discussed, but the abstract and introduction use stronger causal language than the evidence strictly warrants, and the mitigation section does not fully discuss why FCSSFT collapses on AIME."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable with a clear narrative arc, but the bias injection methodology (sample-wise fine-tuning with 50 declarative statements per sample) is underdescribed in the main text, and the attention normalization formula in Section 6.2 contains apparent typographic errors."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed with well-delineated sections; the paper is within a reasonable length; related work is placed appropriately and covers the main lines of prior work."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, tasks, and high-level procedures are specified; key details (templates, training hyperparameters, keyword lists) are promised in appendices; the bias injection and mitigation experiments depend on implementation details not visible in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of overthinking mitigation and unfaithfulness literature is reasonable and connections to prior work are well articulated; multiple anonymized [Author] citations prevent full evaluation of positioning, and the Ameisen et al. (2025) mechanistic parallel deserves more explicit comparison."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, Figure 2 (deviation-degree bins vs. length and reflection keywords) and Figure 4 (group-level attention scores at reflection vs. other steps) appear well designed to directly support the central claims; Figure 3 (strawberry attention heatmap) provides an instructive qualitative illustration."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Causal experiments are restricted to one model (14B distilled) and discrete-output tasks; AIME has N=30 problems, providing negligible power; the paper explicitly excludes open-ended tasks, which constitute the majority of real-world use cases for reasoning models."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting hypothesis with suggestive multi-pronged evidence, but the complete absence of uncertainty quantification, inadequate difficulty control, single-model causal experiments, and small AIME sample sizes collectively place this below the ICLR acceptance bar in current form."
+    }
+  },
+  "publishability_probability": 0.28
+}

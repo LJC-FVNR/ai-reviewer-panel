@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper characterizes the adversarial vulnerability of Differential Attention (DA) through a combination of gradient-norm analysis, local Lipschitz estimation, and empirical evaluation on ViT/DiffViT and CLIP/DiffCLIP. The central framing—negative gradient alignment as a structural fragility—is a clean and novel analytical lens for DA, and the depth-dependent crossover result is genuinely interesting. However, the theoretical results are largely algebraic consequences of the cosine formula (the 'negative alignment encourages fragility' claim reduces to the law of cosines), the key qualitative claim that DA *structurally encourages* cos θ < 0 is argued motivationally rather than formally, experimental results show clear weakening on ImageNet, and the empirical study lacks error bars, multiple seeds, and capacity-controlled baselines throughout. Most critically, DA was proposed for language models yet the paper evaluates exclusively on vision, leaving the core application domain unstudied.",
+  "strengths": [
+    "Genuine first-mover advantage: to the best of available knowledge, no prior work analyzes DA through an adversarial robustness lens, and the 'negative gradient alignment' framing is conceptually clean.",
+    "Multi-axis empirical evaluation (ASR under PGD/CW/AutoAttack, local Lipschitz estimates, and gradient alignment frequency) provides converging evidence for the Fragile Principle across three independent measurements.",
+    "The depth-dependent crossover analysis (Section 4.2 / Figure 3) is the most technically interesting contribution: the competing effects of per-layer fragility and cumulative noise cancellation yield a non-trivial, empirically observable crossover, and this nuance is correctly reflected in the discussion.",
+    "Scope of datasets and model families (CIFAR-10/100, Tiny ImageNet, COCO, ImageNet; both trained-from-scratch and pretrained CLIP variants) is reasonable for a mechanism-level study.",
+    "Limitations are disclosed honestly: local linearization, layer isolation, and the deliberate exclusion of natural/semantic perturbations are stated explicitly and justified."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The entire empirical study covers only vision models (ViT/DiffViT, CLIP/DiffCLIP). Differential Attention was introduced in the Differential Transformer for language modelling (Ye et al., 2025), and nearly all practical deployments and follow-up work cited in the introduction target NLP. Claiming a 'fundamental trade-off' of DA without a single NLP experiment leaves the most relevant application domain unexamined. Results on tiny CIFAR classifiers may not transfer to long-sequence language models where DA is actually used.",
+      "suggested_fix": "Add at least one controlled experiment on a language modelling or text classification task (e.g., a small GPT-style or BERT-style Differential Transformer on SST-2/IMDB or a sequence generation task) to show the fragility principle generalises beyond vision."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No error bars, confidence intervals, or multi-seed reporting appear anywhere in the main paper or visible appendix excerpts. For a paper whose central empirical contribution is demonstrating ASR and Lipschitz differences between two model families, the absence of variance estimates makes it impossible to assess whether observed differences are statistically meaningful, especially on ImageNet where the gap is described as small or reversed under patch attacks.",
+      "suggested_fix": "Report mean ± standard deviation over at least 3–5 independent training seeds for ViT/DiffViT. For CLIP/DiffCLIP (which are pretrained and cannot be re-trained cheaply), report bootstrap confidence intervals over the attack trials."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical claim that DA *structurally encourages* cos θ < 0 (the Fragile Principle's central premise) is argued by design motivation—the subtraction 'functionally requires' opposing gradients—but is never formally derived. Theorems 1–3 only show that IF cos θ < 0 THEN fragility is amplified; they do not prove that training on DA reliably drives θ into the negative regime. The empirical evidence in Section 5.4 (Figure 5) is the actual support for this claim, making it an empirical observation dressed as a theoretical principle.",
+      "suggested_fix": "Either (a) prove formally that DA's training objective induces a statistical bias toward cos θ < 0 (even under simplified assumptions), or (b) reframe the contribution honestly: Theorems 1–3 are conditional fragility bounds; Section 5.4 provides empirical evidence that the condition holds in practice. The current framing overpromises theoretical grounding."
+    },
+    {
+      "severity": "major",
+      "issue": "The depth analysis introduces α—the per-layer cancellation factor—as an 'emergent' quantity that 'cannot be reduced to a deterministic function of λ', yet the entire Theorem 4 / Corollary 1 crossover argument hinges on α < 1. The paper neither estimates α empirically nor characterises it analytically, and Figure 3(d) shows mean per-layer Lipschitz INCREASING with depth in DiffViT, which is at minimum confusing and at worst contrary to the noise-cancellation narrative. The relationship between the per-layer Lipschitz trend and the claimed cumulative attenuation is never reconciled.",
+      "suggested_fix": "Empirically estimate α(d) across depths by measuring the ratio of per-layer perturbation magnitudes (‖δ(d)‖/‖δ(d-1)‖) and report it alongside the Lipschitz estimates. This would either validate the α < 1 assumption or expose the discrepancy."
+    },
+    {
+      "severity": "major",
+      "issue": "The ViT vs. DiffViT comparison is potentially confounded by parameter count. DiffViT uses two independent Q,K projections per head versus one in ViT, giving DiffViT more parameters. If DiffViT's higher clean accuracy (e.g., 87% in Table 1) comes partly from greater capacity rather than the DA mechanism, the Lipschitz and ASR differences may reflect capacity differences rather than the subtraction structure.",
+      "suggested_fix": "Include a capacity-controlled baseline: either match total parameter counts across ViT and DiffViT, or add a ViT with an additional Q,K projection that does not subtract (i.e., uses A1 + A2 or A1 alone from the same doubled projection). This would isolate the effect of subtraction from the effect of additional parameters."
+    },
+    {
+      "severity": "minor",
+      "issue": "The ImageNet results for DiffCLIP under patch attacks (Figure 2(d)) show CLIP marginally outperforming DiffCLIP—a direction opposite to the paper's central claim. The discussion ascribes this to 'dataset scale and diversity' modulating fragility, but no controlled explanation is given. This is an important anomaly that deserves more than a single sentence.",
+      "suggested_fix": "Investigate whether the COCO-vs-ImageNet difference is attributable to class granularity, text-prompt difficulty, or the training distribution of DiffCLIP. At minimum, add a paragraph analysing this discrepancy rather than labelling it 'nuanced'."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 1's λ_init ablation is evaluated only on CIFAR-10 at a single attack budget. Whether the non-monotone ASR peak at λ_init=0.8 holds on other datasets, at other budgets, or after extensive training is unknown.",
+      "suggested_fix": "Replicate the λ_init sweep on CIFAR-100 and at ε=4/255; report clean accuracy alongside ASR to confirm no accuracy–robustness confound."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide a formal derivation (or bound) showing that DA's training loss produces a statistical bias toward cos θ < 0, rather than relying on the design-motivation argument? Absent this, Theorems 1–3 are conditional fragility bounds whose precondition is only empirically established.",
+    "DiffViT uses roughly twice as many Q/K parameters as ViT. Have you evaluated a 'doubled-projection ViT' (non-subtractive) to rule out capacity as the driver of observed fragility differences?",
+    "Figure 3(d) shows mean local Lipschitz increasing with DiffViT depth. How is this reconciled with the noise-cancellation argument that should reduce cumulative sensitivity? Is it possible that the per-layer Lipschitz increases but perturbation energy is nevertheless attenuated due to the sign structure of the subtraction?",
+    "Have you measured the fragility effects in a language model setting? Even a small experiment (e.g., DistilBERT-scale Differential Transformer on a text classification task) would significantly strengthen the claim of a 'fundamental trade-off' in DA.",
+    "For the CLIP/DiffCLIP experiments, how sensitive are the ASR results to the choice of text prompt template? CLIP's zero-shot accuracy depends heavily on prompt engineering, and perturbations that reduce cosine similarity to one prompt template might not generalise to others.",
+    "What is the distribution of λ values learned during training (not just λ_init)? If λ converges near 0 or 1 for many heads, the theoretical fragility analysis may apply only weakly to the trained model."
+  ],
+  "calibration_check": "The abstract's claim of a 'fundamental trade-off' is overstated relative to the evidence: the fragility effect is clear on small CIFAR benchmarks and COCO but noticeably weakens or reverses on ImageNet, and the study is entirely confined to vision despite DA's primary use case being language modelling.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Analysing a new and actively-adopted attention mechanism for adversarial vulnerability is a timely and useful contribution, but the practical impact is limited by the exclusive focus on vision while DA is primarily used in NLP, and by equivocal large-scale results."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "To the reviewer's knowledge the adversarial robustness of DA has not been studied before; the 'negative gradient alignment' framing is a conceptually clean and original analytical device, even if the mathematics reduces to the law of cosines."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The formal theorems are algebraically correct but shallow; the critical claim that DA structurally drives cos θ < 0 is asserted from design intuition rather than proven; and the depth analysis introduces an uncharacterised parameter α that is load-bearing in the main corollary."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, confidence intervals, or multi-seed results appear anywhere in the paper; for an empirical study where key differences (especially on ImageNet) are described as small or marginal, this omission is a serious deficiency."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section is candid about local linearisation and layer isolation, and the authors correctly note the ImageNet anomaly, but calling the result a 'fundamental trade-off' overreaches the evidence, particularly the NLP gap."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organised, the notation is consistent, and the prose is readable; the Fragile Principle is introduced cleanly and the depth analysis is structured logically."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed correctly; the paper is at an appropriate ICLR length with contributions, related work, theory, and experiments clearly separated."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, attack parameters, and λ_init are stated; however, exact model architectures (number of heads, hidden dimension, MLP ratio), training hyperparameters, number of seeds, and sample sizes for Lipschitz estimation are insufficiently specified for independent reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attention robustness, Lipschitz analysis, and interpretability is adequate; the paper correctly situates itself as the first robustness study of DA, but the absence of a comparison to concurrent or recent work on attention mechanism analysis limits positioning depth."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, the figures cover the right comparisons (ASR vs depth/budget, Lipschitz by layer, gradient alignment frequency), though the lack of error bars in all quantitative plots is a presentation weakness that the captions themselves cannot compensate for."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Five datasets and two model families offer reasonable breadth for vision, but the exclusive focus on vision models, absence of language experiments, limited ablation of λ training dynamics, and no capacity-matched baseline leave the generality of the Fragile Principle inadequately supported."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper asks a genuinely interesting question and provides partial evidence for its answer, but the combination of missing statistical rigor, the NLP gap, the informal grounding of the core claim, and weakening large-scale results places it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.22
+}

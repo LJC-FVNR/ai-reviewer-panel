@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes SteerVAD, a tuning-free VAD approach that uses a Fisher-style discriminant score to identify a small set of attention heads inside a frozen MLLM (InternVL3) and a lightweight gated adapter to element-wise modulate their outputs. The core idea (activation steering / representation editing applied to VAD) is a sensible engineering direction and results marginally exceed prior tuning-free baselines on UCF-Crime (+0.43 AUC over HiProbeVAD) and XD-Violence (+0.87 AP), but the improvements are small, the 'manifold rectification' framing significantly overstates what is mechanically a gated channel-wise rescaling, and generality is only tested on one backbone with two datasets. With additional MLLM backbones, statistical significance testing on the main comparison, and toned-down framing/claims, this could clear the bar; as submitted it sits below it.",
+  "strengths": [
+    "Clear problem motivation: tuning-free MLLM-based VAD is timely and practically important, and the diagnosis of representational bias / contextual entanglement is well-articulated.",
+    "The RSA head-selection step is simple, gradient-free, and empirically stable: the 10-seed calibration analysis (identical heads L18H4/L23H24/L21H21/L22H7, σ≈0.04% AUC) is a genuinely nice robustness result at the 1% data regime.",
+    "Ablations meaningfully isolate contributions: linear probe (81.33) → static scaling (84.21) → additive (85.02) → w/o GSG (85.94) → full (87.15), and the K/F sweep provides a defensible choice of hyperparameters.",
+    "Data efficiency claim is well supported: Table 4 shows saturation from 1% to 100%, giving a real practical advantage over fine-tuning baselines with 2–7B trainable parameters.",
+    "Method is lightweight and clearly compatible with a frozen backbone, making the paradigm attractive for downstream adopters."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Overreach in framing: the 'anisotropic manifold scaling' operation is h'_i = h_i * (1 + s_global * g_i), i.e. gated per-channel affine modulation. Calling this manifold 'steering/rectification' and invoking the manifold hypothesis oversells the mechanism, since no manifold-aware geometry (tangent spaces, geodesics, curvature) is used or measured.",
+      "suggested_fix": "Reframe as gated feature modulation / activation steering on discriminative heads, keep the manifold intuition as motivation only, and either drop or empirically justify (e.g., with a curvature or local-linearity diagnostic) the 'manifold rectification' terminology."
+    },
+    {
+      "severity": "major",
+      "issue": "Main-table gains over the closest tuning-free baseline are small (+0.43 AUC on UCF-Crime, +0.87 AP on XD-Violence) and are reported without seeds, error bars, or significance tests. Stability analysis in Table 3 is only on LAE selection under different calibration subsets, not on the reported headline numbers vs baselines.",
+      "suggested_fix": "Report main results as mean ± std over ≥5 seeds for HMC/scorer training and, ideally, for the baseline numbers you reproduce; include a paired significance test (e.g., bootstrapped AUC/AP CIs) against HiProbeVAD and VERA."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality of the paradigm is asserted but tested on a single MLLM backbone (InternVL3) and two datasets. Claims like 'powerful new direction' and MLLM-agnostic phrasing are not supported.",
+      "suggested_fix": "Add at least one additional MLLM backbone (e.g., LLaVA-1.5, Qwen2-VL, or a smaller InternVL variant) and one further benchmark (e.g., ShanghaiTech, UBnormal, or MSAD), or explicitly restrict claims to the tested backbone/datasets."
+    },
+    {
+      "severity": "major",
+      "issue": "Positioning as 'tuning-free' is imprecise: the MLLM is frozen, but the HMC (GSG + K low-rank adapters) and logistic scorer are trained on 1% labeled data with BCE + sparsity loss for 1000 epochs. This is closer to a lightweight adapter/probe regime than to a truly tuning-free (zero-/few-shot) method, yet the paper is compared side-by-side with LAVAD/EventVAD in a category labeled 'Tuning-Free'.",
+      "suggested_fix": "Introduce a clearer category (e.g., 'lightweight-calibration / adapter-based on frozen MLLM') and add a fair head-to-head against VERA/HiProbeVAD under matched training data and trainable-parameter budgets."
+    },
+    {
+      "severity": "minor",
+      "issue": "Appendix-only content carries substantial load: 'rigorous topological analysis' (Appendix A), full component details (Appendix B), and further t-SNE (Appendix G) are all referenced but not in-text. Given the manifold-heavy framing, the body should at minimum sketch what Appendix A establishes and why the element-wise op qualifies as a geometric transformation.",
+      "suggested_fix": "Move a compact statement of the geometric interpretation (dimensions the LGM is meant to stretch/compress, and evidence they correspond to bias axes) into Section 3.4."
+    },
+    {
+      "severity": "minor",
+      "issue": "Trainable-parameter count for HMC and scorer is not reported, so readers cannot compare 'calibration cost' with baselines' fine-tuning cost.",
+      "suggested_fix": "Report the trainable parameter count and FLOPs of HMC+scorer, alongside training time in Table 4."
+    },
+    {
+      "severity": "minor",
+      "issue": "The GSG L2 sparsity penalty is only justified qualitatively; there is no ablation of λ_reg.",
+      "suggested_fix": "Add a small sweep of λ_reg and show its effect on FPR / precision at fixed thresholds."
+    },
+    {
+      "severity": "minor",
+      "issue": "Metric asymmetry: UCF-Crime is scored with AUC and XD-Violence with AP only; this is standard in VAD but hides whether AP (UCF) or AUC (XD) tell a different story about calibration.",
+      "suggested_fix": "Also report AP on UCF-Crime and AUC on XD-Violence in an appendix table."
+    }
+  ],
+  "questions_for_authors": [
+    "Do the identified LAEs (L18H4, L23H24, L21H21, L22H7) transfer across datasets — i.e., are the heads selected on UCF-Crime the same as those selected on XD-Violence, and how much does mixing/domain-shifting the calibration set change selection?",
+    "Under matched training data (1%) and matched trainable-parameter budgets, how does SteerVAD compare to a simple learned linear probe on all heads, or on the same top-K heads, without the HMC?",
+    "Can you provide 95% CIs (bootstrapped over test videos) for the main-table AUC/AP so readers can judge whether +0.43 AUC and +0.87 AP are statistically distinguishable from HiProbeVAD/VERA?",
+    "How does the method behave with a different MLLM backbone (e.g., LLaVA-1.5 or Qwen2-VL) — does RSA still find a small stable set of heads, and does HMC still yield gains?",
+    "The stability analysis reports identical head selection across all 10 seeds. Given that the 1% subset is sampled randomly, does the calibration subset itself differ across seeds, or is only the initialization of HMC reseeded? Please clarify what varies.",
+    "What is the trainable parameter count of HMC+scorer, and how sensitive is performance to the LGM rank r?",
+    "The 'manifold rectification' formulation is element-wise multiplicative gating. What direct evidence do you have that the stretched/compressed axes correspond to interpretable bias directions rather than being an implicit reweighting of a linear classifier?"
+  ],
+  "calibration_check": "Claims are moderately overreached: 'competitive/SOTA' is fair for tuning-free VAD but the paradigm-level claims ('powerful new direction', 'first', broad MLLM applicability) exceed the single-backbone, two-dataset, sub-1-point evidence and the mechanistically simple gated-scaling operation.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Addresses a timely tuning-free VAD problem, but the absolute gains over the nearest tuning-free baseline are small (<1 AUC/AP), and the method still trails fine-tuned MLLM VAD by ~2–7 points."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Head selection via a Fisher-style ratio plus context-conditioned gated per-channel scaling is a reasonable but incremental adaptation of representation-engineering/activation-steering ideas from LLM interpretability to VAD."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The pipeline is internally sound and ablations do isolate GSG vs LGM vs static/additive variants, but the 'manifold' framing is not backed by any manifold-level diagnostic and the causal link from 'anisotropic scaling' to 'manifold rectification' is not established beyond t-SNE."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main comparison table has no seeds, error bars, or significance tests despite margins under 1 point; the only variance analysis (Table 3) covers LAE selection stability, not headline AUC/AP against baselines."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Repeatedly labels ~0.4-point gains as 'SOTA/competitive' and 'powerful new direction'; the 'tuning-free' label glosses over the fact that HMC + scorer are supervised-trained on 1% data with BCE + regularization."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative is followable and the method equations are explicit, but the paper leans heavily on grandiose geometric language for what is mechanically a gated affine modulation, and pushes several load-bearing details to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (Intro/Related/Method/Experiments/Conclusion/Limitations) with a well-scoped Limitations section, and length is reasonable."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Backbone (InternVL3), segment/frame sampling (48/16), K=4, optimizer, LR, batch size, epochs, λ_reg, σ_g, and hardware are specified; parameter counts, LGM rank r, and appendix-only details are missing, and reference to a code release is fine for anonymized submission."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Traditional, fine-tuned, and tuning-free VAD are all covered, and the model-editing / mechanistic-interpretability lineage is noted, though the delta vs prior activation-steering work in NLP could be more precisely delineated."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative artifacts (paradigm comparison, framework diagram, UMAP manifolds, before/after t-SNE) that are appropriate to the claims, though the UMAP/t-SNE evidence for 'manifold rectification' is qualitative."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only one MLLM backbone (InternVL3) and two VAD benchmarks are evaluated, which undercuts the paper's paradigm-level and MLLM-agnostic claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: technically reasonable and empirically edging past tuning-free baselines, but marginal gains without significance testing, single-backbone evaluation, and overwrought framing keep it below the ICLR acceptance bar as written."
+    }
+  },
+  "publishability_probability": 0.28
+}

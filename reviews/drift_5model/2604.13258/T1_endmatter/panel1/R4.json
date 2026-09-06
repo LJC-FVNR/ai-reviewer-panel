@@ -1,0 +1,120 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token-attribution framework for decoder-only LLMs that combines target-conditioned attention rollout, Hessian-based curvature sensitivity via HVPs, and KL-based masking impact. The direction is well-motivated and the paper covers multiple models and a new curated evaluation. However, the reported gains are implausibly large relative to standard Soft-NC/Soft-NS ranges, methodological details of key metrics are ambiguous, several claims are over-scoped, and the technical novelty is largely a combination of well-known ingredients — the work needs substantial clarification and stronger controls before it meets the ICLR bar.",
+  "strengths": [
+    "Addresses a real gap: encoder-oriented attribution methods transfer poorly to autoregressive decoding, and combining causal gating with second-order and information-theoretic terms is a sensible design.",
+    "Evaluation spans four decoder-only models (GPT-J, Phi-3, LLaMA-3.1-70B, Qwen2.5-3B) and three benchmarks plus a new curated corpus, with a comparatively broad baseline suite (ContextCite, IG, PML, TDD, Attention Rollout, fAML, Progressive Inference, SEA-CoT, ReAgent).",
+    "Includes an ablation across the three components, a decoding-hyperparameter stress test, and an active/passive syntactic robustness probe — the kinds of controls ICLR reviewers expect.",
+    "Practical engineering considerations (Hutchinson HVPs with Pearlmutter's trick, optional Gauss–Newton surrogate, low-rank + windowing variant, last-6-layer computation for 70B) are addressed, which matters for a method centered on Hessians."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Reported Soft-NC/Soft-NS magnitudes for HETA (e.g., 10.3 / 2.31 on LongRA with GPT-J, 9.2 / 2.04 on TellMeWhy) are wildly inconsistent with the same metrics on all baselines (typically 0.1–2). Soft-NC/NS from Zhao & Aletras are normalized quantities; either the authors redefined the metric without saying so, or the comparison is not apples-to-apples. This single fact drives the SOTA claim and must be resolved.",
+      "suggested_fix": "State the exact metric formulation and normalization used, verify that all methods are scored on the same distributional shift and perturbation budget, and re-run baselines under the identical protocol. Report both the raw and normalized numbers, and include a sanity check reproducing baseline numbers from prior papers."
+    },
+    {
+      "severity": "major",
+      "issue": "The claimed novelty is largely a weighted combination of prior primitives: target-conditioned attention rollout (Abnar & Zuidema), Hessian-vector-product sensitivity (Alvarez-Melis, Dhamdhere, etc.), and KL-under-masking (a standard occlusion/LIME-style signal). The paper does not clearly articulate what is *new* beyond ensembling.",
+      "suggested_fix": "Sharpen the conceptual contribution: prove or empirically demonstrate a property no single component gives (e.g., causal-gate + curvature yields identifiability guarantees, or the combination is provably faithful in a defined sense). Add head-to-head ablations against each primitive individually with the same normalization/gating so 'combination' is isolated from 'gating tricks'."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric is introduced by the authors and is structurally biased: it rewards concentrating mass on the SciQ segment relative to the NarrativeQA segment, but this is exactly what a strong causal-gate + information-gain scheme is designed to do. The gold labels are also produced by GPT-4o/GPT-5 (model-annotated). Together this makes DSA a partially self-fulfilling metric.",
+      "suggested_fix": "Include human-annotated labels on a subset, report agreement between HETA and humans separately from agreement with GPT annotations, and add a control where the position of the answer-bearing segment is randomized to rule out positional bias. Also compare DSA against independent alignment metrics like AOPC or comprehensiveness/sufficiency from ERASER."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin for the magnitude of the claimed gains: 3 seeds, std reported as <0.06 or <0.2 in aggregate rather than per-cell, no significance tests, no confidence intervals, no per-dataset variance. Ablation numbers 'averaged across 1000 randomly sampled instances per dataset' come without variance.",
+      "suggested_fix": "Report per-cell mean ± std, use ≥5 seeds where feasible, add paired significance tests (bootstrap/paired t) vs the strongest baseline for each model×dataset, and show variance in ablation plots."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian sensitivity term S(T)_i uses Hutchinson HVPs with a Rademacher probe restricted to token i's block; but this estimates ||H_ii r||, i.e., a norm-of-block-Hessian-vector product, not any standard curvature scalar (e.g., diag(H_ii), tr(H_ii^2)). The estimator's bias, variance, and what it converges to are not analyzed, and the choice of the L1 norm inside the estimator is not motivated.",
+      "suggested_fix": "State precisely what functional of the Hessian S(T)_i estimates, provide bias/variance analysis (or point to the appendix section rigorously), justify the L1 norm choice, and show empirically how m (probe count) trades off against attribution stability."
+    },
+    {
+      "severity": "major",
+      "issue": "Overclaiming: 'establishing a new standard for interpretability' and 'state-of-the-art' are strong, and the paper does not adequately delineate scope. Faithfulness for attribution is contested (mechanistic vs. behavioral notions); the paper does not engage with mechanistic-interpretability or causal-mediation-analysis critiques that would push back on any attribution method.",
+      "suggested_fix": "Soften abstract/conclusion claims, add a limitations subsection discussing what HETA cannot verify (e.g., internal computation vs input attribution), and cite/compare with causal mediation (ROME/patching-style) approaches or explain why they are out of scope."
+    },
+    {
+      "severity": "minor",
+      "issue": "Weights β=γ=0.5 are asserted without a sensitivity sweep; the reader cannot tell whether performance depends critically on tuning or holds across a reasonable range.",
+      "suggested_fix": "Add a small grid over (β, γ) — e.g., a 5×5 heatmap of a headline metric — and report worst-case performance."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation quality is poor: many missing spaces, run-together words, table columns compressed into unreadable rows (especially Tables 1 and 3), and inconsistent numeric formatting. This substantially hampers assessment.",
+      "suggested_fix": "Copyedit thoroughly; ensure tables reproduce cleanly in the ICLR template; add captions that fully define what higher/lower means."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work omits several relevant threads: causal mediation / activation patching (Meng et al., Wang et al.), gradient-based attribution designed for LMs (e.g., contrastive gradient methods), and recent circuit-level interpretability.",
+      "suggested_fix": "Add a paragraph positioning HETA against causal mediation and patching-based interpretability, clarifying that HETA is an input-attribution method rather than an internal-mechanism method."
+    }
+  ],
+  "questions_for_authors": [
+    "Please give the exact formula and normalization used for Soft-NC and Soft-NS in Table 3; are your reported baseline values consistent with those in Zhao & Shan (2024)? If not, why?",
+    "What functional of the Hessian does S(T)_i in Eq. (3) estimate, and what is its bias and variance as a function of the number of Hutchinson probes m?",
+    "How sensitive are results to β and γ? Do the ranks in Tables 1–3 change if (β, γ) is chosen adversarially against HETA?",
+    "How does HETA compare when the DSA test is inverted (answer in the *first* segment) — does the method still concentrate mass correctly, or is there a positional bias?",
+    "Are baseline hyperparameters (e.g., IG steps and baseline, ContextCite ablation count, ReAgent settings) tuned per model? If so, how, and if not, why is the comparison fair given HETA is tuned per model (e.g., last-6-layers for 70B)?",
+    "For the curated dataset annotations, what is inter-annotator agreement with *humans* on a held-out subset, not just between GPT-4o and GPT-5?",
+    "Why is the causal-mask–respecting attention rollout formulated as a norm-weighted L1 aggregation over heads/layers rather than more standard rollout formulations? What sensitivity does this design choice induce?",
+    "Can you provide runtime/memory numbers per model×method (especially LLaMA-3.1-70B) so readers can weigh the accuracy vs cost tradeoff explicitly?"
+  ],
+  "calibration_check": "Claims of 'state-of-the-art' and 'new standard' are not well-scoped to the evidence — the magnitude of reported improvements is anomalous relative to standard metric ranges and the strongest claims should be substantially softened until baseline parity is verified.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LLMs is an important problem, but the paper does not convincingly show that HETA changes practice given plausibility concerns about the reported gains and heavy compute cost."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Core contribution is a weighted combination of well-known primitives (target-conditioned rollout, HVP-based curvature, KL under masking); the specific fusion is new but no genuinely new estimator or theory is established."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The estimator's target functional is not clearly stated, several design choices are unjustified, and the massive gap over baselines is not stress-tested for metric parity, raising correctness/fairness concerns."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds; std reported in aggregate rather than per-cell; no significance tests; ablation variance is missing — insufficient given the scale of claimed effects."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Claims of a 'new standard' and consistent SOTA are not adequately scoped, and limitations of attribution as a paradigm are largely deferred to an appendix pointer."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "Notation is uneven, key equations underspecified (e.g., what S(T)_i measures), and prose has substantial typographic/formatting issues that obscure central claims."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Follows a standard conference structure with abstract, intro, motivation, background, method, experiments, ablation, related work, and conclusion; length appears appropriate for ICLR."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Key hyperparameters (β, γ, rank, window, batch size, hardware) are stated, but critical details of the Hessian estimator, baseline tuning, and evaluation metric normalization are underspecified."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers major attribution and interpretability threads and recent generative-LM attribution methods, but omits meaningful engagement with causal mediation / activation patching and does not adequately position HETA against them."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative display items (pipeline overview, ablation bars, robustness curves, qualitative attributions), though claim-figure linkage is only moderately tight and some tables are hard to parse."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and four datasets are respectable, but the generality claim is undermined by potentially non-parity baselines, a self-designed alignment metric, and unclear tuning conventions across scales."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Borderline reject in ICLR terms: the direction and effort are credible, but the current evidence — headlined by anomalously large metric gains and thin statistical reporting — is not yet convincing enough for acceptance."
+    }
+  },
+  "publishability_probability": 0.18
+}

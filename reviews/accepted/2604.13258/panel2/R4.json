@@ -1,0 +1,117 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a token attribution framework for decoder-only LLMs combining an attention-rollout causal gate, Hessian-based curvature sensitivity via HVPs, and KL divergence under token masking. The motivation (first-order gradients missing higher-order effects in autoregressive generation) is reasonable, and the paper reports large gains over a broad baseline suite across four models. However, the claimed margins are suspiciously large, the method's 'causal' gate is precisely the attention-rollout construct the paper elsewhere criticizes as non-causal, and the primary alignment metric (DSA) and its ground-truth annotations are both authored by the proponents (with LLM-generated labels), raising strong evaluation-design concerns. Combined with limited statistical rigor (3 seeds, no significance tests, only a stated std bound), the paper is a promising direction that needs a substantially strengthened evaluation.",
+  "strengths": [
+    "Addresses a genuine gap: most attribution methods target encoder models, and decoder-only autoregressive attribution is under-explored.",
+    "Principled motivation via the second-order Taylor expansion for why first-order attributions can miss finite-perturbation effects in saturated/nonlinear regimes.",
+    "Practical scaling story: Hessian is estimated via Pearlmutter HVPs with Hutchinson probes, with a low-rank + windowed variant and layer-sampling for 70B-scale models.",
+    "Broad experimental sweep across four decoder-only models (GPT-J 6B, Phi-3-Medium 14B, LLaMA-3.1 70B, Qwen2.5-3B) and three established benchmarks (LongRA, TellMeWhy, WikiBio).",
+    "Ablations isolate each of the three components (Transition, Hessian, KL) and test 'no gating' vs. 'uniform gating', which is the right ablation set for the claimed decomposition.",
+    "Robustness analyses go beyond the norm for attribution papers: Gaussian-noise sensitivity, active/passive syntactic invariance, and a decoding-hyperparameter sweep (temperature, top-p, top-k, repetition penalty)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Internal contradiction between the causal-attribution claim and the mechanism used for the gate. Section 2 argues that attention rollout is 'not a reliable indicator of causal influence' and cites Jain & Wallace and Abnar & Zuidema as evidence, yet Eq. (5) uses exactly a target-conditioned attention rollout Φ(l,h)(i→T) as the causal gate that multiplies the entire attribution. The paper cannot both dismiss attention rollout as non-causal and rely on it as its 'causal' component without reconciliation.",
+      "suggested_fix": "Either (a) provide a formal or empirical argument that target-conditioned, mask-respecting rollout is causal in a sense the earlier critique does not undercut (e.g., via intervention-style tests where rollout mass predicts causal effect under masking), or (b) reframe the gate as a semantic/structural prior rather than a causal object and soften causal claims throughout."
+    },
+    {
+      "severity": "major",
+      "issue": "DSA metric is authored by the proponents and evaluated against LLM-generated annotations. The 'high-precision' labels used to score alignment are the intersection of GPT-4o and GPT-5-Thinking annotations; F1 (Alignment) in Fig. 3 is measured against those same LLM annotations. This is not an independent ground truth, and HETA's largest reported gains occur on the metric the authors defined on data they curated with annotations from LLMs whose own attention/hidden-state patterns may be similar to the models attributed.",
+      "suggested_fix": "Add a human-annotated subset (even a few hundred instances) for DSA and F1 evaluation; report agreement between LLM labels and human labels; verify that HETA's ranking over baselines is preserved when only human labels are used. Ideally add an intervention-based faithfulness metric (e.g., counterfactual token removal impact on target log-prob) that is not tied to any curated label."
+    },
+    {
+      "severity": "major",
+      "issue": "Reported gains are implausibly large and inadequately scrutinized. On LongRA/GPT-J, HETA reports Soft-NC of 10.3 while multiple strong baselines (ContextCite, IG, PML, ReAgent) sit at 1–3.6; HETA reports DSA of 4.80 vs. 3.60 for ReAgent and negative values for gradient/attention baselines. Soft-NC/Soft-NS are typically small-range comprehensiveness/sufficiency metrics, so values like 10.3 need scale explanation. Additionally, the paper reports only 'std < ±0.06' or '< 0.2' with 3 seeds and no statistical significance tests, so the reader cannot verify these gaps are real.",
+      "suggested_fix": "Report the exact scale/definition of Soft-NC and Soft-NS as used (with any scaling factors), give full per-run numbers and confidence intervals, run paired significance tests (e.g., paired bootstrap over instances) against the top 2–3 baselines, and — critically — rerun at least one strong baseline (ReAgent, ContextCite) yourselves with matched masking and target-token conditioning to rule out an implementation gap driving the 2–3× margin."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian-based sensitivity, as stated, is not obviously a well-defined attribution. Eq. (3) estimates ||Π_i H_T (Π_i r_k)||_1 averaged over Rademacher probes — this is a stochastic estimate of a block-diagonal Hessian-norm proxy, not the second-order term of the Taylor expansion the motivation section invokes. It does not directly measure the change in log-probability under a finite perturbation of token i, and its scale is not obviously commensurable with the KL term it is added to (via β, γ).",
+      "suggested_fix": "Either (a) derive the estimator explicitly from the Taylor expansion the motivation uses (so the reader sees which quantity is being estimated), or (b) benchmark the low-rank / block / L1 approximation against exact block-Hessian effects on a small model, showing the approximation is faithful. Also justify the additive combination with β=γ=0.5 given the very different natural scales of curvature and KL, and report sensitivity to β, γ."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin for the claims made. The paper claims 'new state-of-the-art' and stability '<1% variation' across a decoding-hyperparameter grid, but with 3 seeds, no significance tests, and no confidence intervals on Table 2's percentages. Table 2 in particular is used to justify one of the paper's most striking claims (HETA is roughly an order of magnitude more stable than every baseline), yet a grid-max relative change over 3 seeds is itself a noisy statistic without variance bounds.",
+      "suggested_fix": "Add per-cell 95% CIs (bootstrap over the grid × seeds), increase seeds to at least 5, and report paired tests against the closest baseline (ReAgent). For Table 2 specifically, show the underlying distribution of relative changes, not only the max."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps beyond the anonymized links. The number of Hutchinson probes m is described as 'we report m' but not stated in the main text; the exact rollout aggregation across layers/heads (product vs. sum, residual handling) is under-specified; the token-masking scheme for the KL term (mask token, replace with PAD/UNK/mean-embedding, or drop) is not defined; and the choice of β=0.5, γ=0.5 is asserted without a sweep in the main paper.",
+      "suggested_fix": "Add a compact 'implementation details' subsection specifying m, masking scheme, rollout aggregation formula (with residual handling), and a β,γ sweep table."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning is largely accurate but selective. The paper compares primarily against attribution methods that were already known to be weak on decoder-only generation; more recent gradient-based and perturbation-based methods for generative LMs (e.g., Sequential Integrated Gradients variants, causal-mediation-based attributions, patchscopes / activation patching methods) are not addressed, even though those are the most natural competitors for a 'causal, decoder-only' attribution claim.",
+      "suggested_fix": "Add a short paragraph on activation-patching / causal-mediation methods and at least discuss (if not compare against) why HETA is not competing on the same axis."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some presentation issues: equations render awkwardly (Eq. (5) is ambiguous — is Attr(x_i → x_T) = M_T[i] · (β S_T[i] + γ I) or M_T[i] · β S_T[i] + γ I?), and 'Peering into the Mind of LMs' is criticized in almost identical prose in Motivation and Related Works. Some benchmark table rows in Table 3 (e.g., TDD-backward on LongRA WikiBio) show negative Soft-NC values that are not discussed.",
+      "suggested_fix": "Fix Eq. (5) grouping, deduplicate prose, and add a one-line discussion of what negative Soft-NC/Soft-NS indicate operationally."
+    }
+  ],
+  "questions_for_authors": [
+    "Given that Eq. (5) multiplies (β S + γ I) by the rollout gate M_T[i], setting M_T[i]=0 forces the attribution to zero regardless of curvature or KL. How is this reconciled with your critique of attention-based methods missing indirect causal paths — precisely the paths a rollout gate can zero out?",
+    "What are Soft-NC and Soft-NS on the exact scale used in Table 3 (e.g., is there a multiplicative constant vs. Zhao & Aletras 2023)? A Soft-NC of 10.3 vs. 1–3 for baselines is unusual and warrants clarification.",
+    "How were baselines tuned? In particular, was ReAgent run with the same masking scheme and target-token conditioning as HETA? A 2–3× gap over ReAgent is large and could be affected by implementation choices.",
+    "For the DSA metric and F1(Alignment): what is the human–LLM label agreement on a sampled subset, and does HETA's ranking over baselines survive if you replace GPT-generated labels with a small human-labeled subset?",
+    "How does the low-rank + windowed HVP estimator (rank 64) compare to an exact block Hessian on a small toy model? What error do you tolerate, and does the ranking over baselines change if m or rank is halved?",
+    "Why β=γ=0.5? Please report an ablation over β and γ, and clarify how you normalize S_T[i] and I(x_i → x_T) so their scales are comparable.",
+    "For LLaMA-3.1-70B you compute second-order terms only in the last six layers. What justifies this choice, and does the ranking over baselines change if you extend it to more layers on a subset of instances?",
+    "In Table 2, the 'max relative change %' for HETA is <1% for all metrics and models while every baseline exceeds 2% — including robust ablation-based methods like ContextCite. What mechanism drives an order-of-magnitude improvement in decoding-hyperparameter stability, and can you show the full distribution of relative changes rather than just the max?"
+  ],
+  "calibration_check": "Claims are overscoped: the paper repeatedly asserts 'causally faithful', 'setting a new state-of-the-art', and '<1% variation' where the underlying evidence rests on a rollout-based gate (previously criticized as non-causal), an authored metric with LLM-generated labels, and 3-seed runs without significance tests — the ideas are promising but the language outruns the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only generative LMs is a real and under-served problem, but this paper does not clearly move the field's mechanistic understanding forward beyond producing better scores on curated metrics."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The three components (attention rollout, HVP-based curvature, KL under masking) each have precedent; the specific target-conditioned, multiplicative combination is new but reads as a reasonable synthesis rather than a fundamentally new idea."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "There is an internal contradiction between the causal critique of attention rollout and its use as the paper's causal gate, and the Hessian estimator is a norm proxy that does not cleanly correspond to the Taylor-expansion motivation invoked."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, no paired significance tests, and only bounded std reported; the very large reported margins over baselines are not stress-tested against the possibility of baseline implementation gaps."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Claims of 'causally faithful', 'new state-of-the-art', and near-invariance to decoding are made confidently on the strength of an author-defined metric with LLM-generated labels and thin variance analysis."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level story is easy to follow, but Eq. (5)'s grouping is ambiguous, key hyperparameters (m, masking scheme) are under-specified, and some prose is duplicated across Motivation and Related Works."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is present (abstract, intro, motivation, background, method, experiments, ablations, related work, conclusion/limitations) at an appropriate length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Model choices, β/γ, rank, window, seeds and hardware are given, but the number of Hutchinson probes, the exact rollout aggregation, and the KL-masking replacement are not fully specified in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Attribution baselines are covered in reasonable breadth, but causal-mediation and activation-patching methods for generative LMs — arguably the most relevant modern competitors for a causal decoder-only attribution — are largely absent."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, Figures 2 and 3 provide the right kind of ablation and robustness panels (component contributions, sensitivity, active/passive robustness, F1 alignment), which support the claims if the underlying data are correct."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four decoder-only models across two orders of magnitude in size, three benchmarks plus a curated dataset, and nine baselines constitute reasonable breadth, though evaluation depth (independent ground truth, significance testing) is where breadth fails to translate into support for the generality claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising, well-motivated direction with a broad empirical sweep, undermined by an internal causal contradiction, an author-defined and LLM-labeled primary metric, implausibly large gaps that are not statistically stress-tested, and a Hessian estimator whose formal link to the Taylor-expansion motivation is not established."
+    }
+  },
+  "publishability_probability": 0.22
+}

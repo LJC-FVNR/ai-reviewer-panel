@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a decoder-only attribution method that combines three signals: a target-conditioned attention–value rollout gate, a Hessian–vector-product curvature term over token-embedding blocks, and a KL-divergence-under-masking term. The motivation is reasonable and the coverage of models (four scales up to 70B) and datasets is respectable, but the paper has substantive weaknesses: several reported gaps over baselines are extraordinarily large (e.g., ~5× on Soft-NC), the primary alignment metric (DSA) is introduced by the authors and used to score their own method, key methodological details of the Hessian estimator are underspecified, and the ablations do not vary the fusion weights β,γ or verify that the components combine (rather than that any one component alone would be enough). The direction is promising but the evidence as presented is not yet convincing enough to accept.",
+  "strengths": [
+    "Well-motivated problem: existing attribution methods for decoder-only autoregressive LMs are known to be brittle, and the paper articulates why (attention ≠ causality; first-order gradients vanish in flat regions) with a concrete second-order Taylor argument.",
+    "Principled decomposition: causal gating via attention rollout, curvature via Hessian–vector products with Pearlmutter/Hutchinson tricks, and KL under masking are individually well-grounded and are combined in a compact, interpretable formula.",
+    "Reasonable breadth of models (GPT-J 6B, Phi-3-Medium 14B, LLaMA-3.1 70B, Qwen 2.5 3B) and datasets (LongRA, TellMeWhy, WikiBio, plus a new curated set), plus a decoding-hyperparameter stability study (Table 2) that most attribution papers do not run.",
+    "Scalability is thought through: low-rank + windowed HVP and last-6-layers estimation for 70B is a practical concession, and an ablation (HETA-LR, HETA-LS) is at least gestured at.",
+    "Ablations in Figure 2 cover the meaningful configurations (Transition-only, Hessian-only, KL-only, no gating, uniform gating), showing each component matters."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Suspiciously large baseline gaps. In Table 3 HETA's Soft-NC of 10.3 on LongRA (GPT-J) vs. ~2 for every baseline (and ~5× ReAgent's) is far outside the range typical for attribution benchmarks, and Table 1's DSA jumps from ≤ -0.09 for gradient/attention methods to +2–5 for perturbation methods. Without a sanity check (e.g., a random baseline, a max-attention-on-gold-tokens oracle, or a replication of prior published Soft-NC numbers for one baseline), it is hard to tell whether baselines are correctly implemented or whether the metric normalization advantages HETA.",
+      "suggested_fix": "Include an 'oracle' upper bound and a 'random attribution' lower bound for each metric, report at least one baseline result that reproduces its originally published number on the same setup, and clearly state the normalization used so readers can rule out an implementation artifact."
+    },
+    {
+      "severity": "major",
+      "issue": "Self-introduced primary evaluation metric. DSA is defined by the authors, and the sign/direction in the paper's equation is inconsistent with the interpretation in the surrounding text ('DSA = Σ_{j∈S_NarrQA} f_s_j' after 'Higher DSA indicates more mass on SciQ'). Because HETA's causal-gate design directly encourages concentrating mass on evidence tokens, using an authored metric that rewards that concentration risks circularity, and the definitional inconsistency compounds the concern.",
+      "suggested_fix": "Correct the equation to unambiguously state 'SciQ-mass minus NarrQA-mass' and add at least one independent alignment metric from prior work (e.g., IOU/AUPRC vs. human spans, ERASER-style comprehensiveness/sufficiency) on the same curated set so DSA is not the sole basis for the alignment claim."
+    },
+    {
+      "severity": "major",
+      "issue": "Hessian estimator underspecified. Eq. (3) gives S(T)_i ≈ (1/m) Σ_k ||Π_i H_T (Π_i r_k)||_1, but (a) the number of Hutchinson samples m is never reported (the paper says 'we report m' but I could not find it in the main text), (b) it is unclear whether this estimates the diagonal-block Frobenius norm, the trace, or something else, (c) using an L1 norm collapses signed curvature into a magnitude that can conflate attractive and repulsive second-order effects, and (d) the Gauss–Newton/Fisher surrogate is mentioned as 'optional' with no ablation showing when it is used.",
+      "suggested_fix": "State m explicitly per experiment, prove or empirically show that the estimator converges (variance vs. m), justify the L1 aggregation vs. alternatives (Frobenius, absolute trace), and add a small table on GPT-J showing that the GN/Fisher surrogate is a faithful proxy for the exact HVP on a size where the exact computation is feasible."
+    },
+    {
+      "severity": "major",
+      "issue": "No sensitivity analysis on the fusion weights β and γ. The paper fixes β = γ = 0.5 throughout and the component ablations set the other weight to zero, so we never see how HETA behaves as (β, γ) moves. A method that only works at a single hand-picked operating point would be much less compelling than one that is stable across weights.",
+      "suggested_fix": "Add a small grid over (β, γ) ∈ {0, 0.25, 0.5, 0.75, 1.0}² on at least one model/dataset, reporting Soft-NC/Soft-NS/DSA, and state whether these weights were chosen on a validation split or on the reported test sets."
+    },
+    {
+      "severity": "minor",
+      "issue": "Statistical rigor is limited. Only 3 seeds are used; error bars on tables are reported as 'std < 0.2' or 'std < ±0.06' rather than per-cell CIs; no paired significance tests (e.g., paired bootstrap or Wilcoxon vs. ReAgent) are reported, even though ReAgent is often the closest competitor.",
+      "suggested_fix": "Report per-cell std and paired significance tests vs. the strongest baseline for each dataset/model."
+    },
+    {
+      "severity": "minor",
+      "issue": "Curated dataset construction is somewhat artificial: concatenating an unrelated NarrativeQA passage with a SciQ answer-bearing segment produces a highly separable structure that plays to a causal-gating method's strength. The gold labels are also produced by GPT-4o/GPT-5 intersection, which is auto-annotation rather than human annotation, despite framing throughout the paper that emphasizes 'alignment with human annotations'.",
+      "suggested_fix": "Either drop 'human-annotated' framing where the labels are LLM-derived, or add a modestly sized human-annotated subset (a few hundred items) with inter-annotator agreement measured against people, not model pairs, and re-report DSA/F1 on that subset."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is incremental: attention rollout, HVP-based sensitivity, and KL-under-masking are each prior art; the contribution is their combination plus the gating. This is acceptable if the empirical case is airtight, but the calibration ('establishing a new standard', 'setting a new state-of-the-art', 'remarkable stability') is stronger than the evidence supports given the concerns above.",
+      "suggested_fix": "Soften the claims in the abstract and conclusion to 'consistent improvements over strong baselines under our evaluation protocol' and be explicit that the novelty is the target-conditioned fusion of these three signals rather than any of them individually."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work omits or under-discusses several relevant threads: causal mediation / activation patching for attribution, path patching, DecompX, ALTI/ALTI+, and Shapley-value-based attribution for LMs. Because these are the closest competitors on 'causal' attribution grounds, the omission weakens the positioning.",
+      "suggested_fix": "Add a paragraph contrasting HETA with causal-mediation and Shapley-based attribution and, ideally, include one such method as a baseline."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the Hutchinson sample count m used in Eq. (3) for each model, and how does S(T)_i converge as m grows? Have you compared to an exact HVP on GPT-J at short sequence lengths as a sanity check?",
+    "Why is the L1 norm used to aggregate Π_i H_T (Π_i r_k) rather than a signed quantity or Frobenius norm? Do the results change if you use the signed second-order Taylor contribution instead?",
+    "Can you reproduce, on your setup, one previously-published Soft-NC or Soft-NS number for ReAgent or ContextCite? The 5× gap over ReAgent on GPT-J LongRA is difficult to reconcile with prior reports.",
+    "How was (β, γ) = (0.5, 0.5) chosen, and on what split? What does Soft-NC/Soft-NS/DSA look like across the (β, γ) plane on a held-out dataset?",
+    "The equation for DSA in Section 5.1 appears to read 'DSA = Σ_{j∈S_NarrQA} f_s_j' after the description says higher DSA = more SciQ mass. Please clarify the definition and re-derive the reported numbers under the corrected sign.",
+    "For LLaMA-3.1 70B, the curvature term is computed 'only in the last six layers.' How was this cutoff chosen, and how does attribution quality degrade as fewer/more layers are used?",
+    "The curated dataset labels come from the intersection of GPT-4o and GPT-5 Thinking annotations. What is the human agreement rate on a sample, and how much does DSA move if labels are restricted to that human-verified subset?"
+  ],
+  "calibration_check": "Claims like 'new standard for interpretability in autoregressive language models' and 'remarkable stability' are broader than the evidence — a self-introduced metric, unusually large gaps over baselines, and fixed fusion weights without sensitivity analysis — currently supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LMs is a genuinely important problem and a robust method would be broadly useful, but the paper does not yet demonstrate downstream impact (e.g., debugging, hallucination localization) that would raise this above 'useful contribution to the subfield'."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each of attention rollout, HVP-based sensitivity, and KL-under-masking is prior art; the contribution is their target-conditioned fusion and the DSA evaluation, which is a reasonable but incremental combination."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The formal setup is coherent, but the Hessian estimator (sample count, L1 aggregation, GN surrogate usage) is underspecified, β and γ are fixed without justification, and the extreme gap over baselines is not sanity-checked against an oracle or a reproduced prior number."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, aggregate std bounds rather than per-cell CIs, no paired significance tests versus the closest baseline, and no variance analysis on the Hutchinson estimator itself."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Language such as 'new standard', 'consistently outperforms', and 'remarkable stability' is stronger than the evidence supports; the limitations section only discusses compute cost, not the DSA/self-metric caveat or the small-seed regime."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level story is clear, but the DSA equation has an apparent sign inconsistency, the Hessian aggregation is described ambiguously, and several key hyperparameters (m, β/γ selection procedure, layer cutoff) are only alluded to."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard Introduction / Motivation / Background / Method / Experiments / Related Work / Conclusion structure, within a reasonable ICLR length; sections are well-scoped."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Even setting aside the anonymized links, key operational details (Hutchinson m, GN vs. exact HVP choice, β/γ selection, rollout normalization, causal-mask handling in rollout) are not specified precisely enough for a competent reader to reproduce without guessing."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Recent generative-attribution methods (ContextCite, TDD, PML, ReAgent) are discussed and contrasted, but causal-mediation / activation-patching, DecompX, ALTI/ALTI+, and Shapley-based LM attribution are missing from both discussion and baselines."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative content — a pipeline diagram, component ablations, sensitivity/robustness/F1 panels, and qualitative token maps — that supports rather than decorates the claims."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models spanning 3B–70B and four datasets is respectable, but there are no non-English tasks, no long-context stress test beyond windowing, and no comparison to causal-mediation baselines that could genuinely challenge the causal-gating story."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Borderline reject in current form: a plausibly useful method with a reasonable design and broad experiments, but the magnitude of the reported improvements, the self-introduced primary metric, and the under-specified estimator combine into enough doubt that I would not accept without a substantive revision."
+    }
+  },
+  "publishability_probability": 0.2
+}

@@ -1,0 +1,114 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper adapts crosscoders (originally designed for cross-layer feature alignment) to track feature evolution across pre-training snapshots of Pythia-160M and Pythia-6.9B. It provides several interesting empirical observations: two feature classes (initialization vs. emergent), a directional turning point near step 1000, correlations between emergence time and complexity, circuit-tracing to downstream tasks, and evidence for a statistical-to-feature-learning phase transition supported by unigram/bigram KL analyses and feature-dimensionality dynamics. The contribution is largely methodological adaptation plus empirical analysis, with results that are suggestive but tied to a single model family and moderate scale; the phase-transition claim is plausible but rests on correlational evidence.",
+  "strengths": [
+    "Clean and well-motivated adaptation of crosscoders from cross-layer to cross-snapshot analysis; the argument that decoder norms serve as a proxy for feature presence per snapshot is intuitive and empirically supported by comparison to per-snapshot SAEs.",
+    "Multi-scale evidence: methodological validation (crosscoder vs. per-snapshot SAE Pareto frontier), microscopic feature-level statistics (emergence timing, lifetime, complexity, directional rotation), and macroscopic connection via attribution patching on SVA/IOI/induction tasks.",
+    "The statistical-to-feature-learning transition hypothesis is supported by multiple complementary signals (KL to unigram/bigram distributions, total feature dimensionality dynamics) rather than a single measurement.",
+    "Careful discussion of potential failure modes of crosscoder feature alignment (misalignment, splitting) with pointers to appendices for validation.",
+    "Limitations section is honest about scope (single model family, simple downstream tasks, discrete snapshots)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Generality is limited to the Pythia suite (160M and 6.9B) at a single middle layer each. Claims about 'LLM pre-training' dynamics — especially the phase-transition framing — would be much stronger with at least one other model family or a different layer choice, since the observed turning point near step 1000 could be Pythia/data-schedule specific.",
+      "suggested_fix": "Add a smaller replication on another open snapshot suite (e.g., OLMo, or another Pythia scale) or at least a different layer of Pythia-6.9B; discuss whether the ~step-1000 directional turnover is scale/layer-invariant."
+    },
+    {
+      "severity": "major",
+      "issue": "The phase-transition claim in Section 6 is presented causally but the evidence is correlational: unigram/bigram KL convergence and feature-dimensionality dip both happen around the same window, but the paper does not rule out that dimensionality compression is a crosscoder-training artifact (e.g., features with tiny norms below thresholding) rather than a property of the base model.",
+      "suggested_fix": "Add a control that separates 'no feature exists' from 'feature exists but has low norm under sparsity penalty' — e.g., vary sparsity λ, retrain crosscoders with different feature-count budgets, or complement with an independent probe-based measure of representation rank/participation ratio in the base model activations."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin. Almost all central curves (decoder-norm trajectories, KL convergence, dimensionality, attribution ablations) appear to be from single crosscoder training runs on single seeds; there are no error bars or seed-variance reports, and no significance testing beyond the single Pearson r for complexity-vs-time.",
+      "suggested_fix": "Retrain at least the smaller (Pythia-160M) crosscoders with 3+ seeds and report variability on the emergence-timing distribution, lifetime distribution, directional-turnover statistic, and dimensionality curve; report confidence intervals on attribution ablations."
+    },
+    {
+      "severity": "major",
+      "issue": "The complexity-vs-emergence-time analysis relies on Claude-Sonnet-4 rubric scoring of 100 features with r=0.309. This is a weak-to-moderate correlation on a small sample, with a single LLM judge and no inter-rater agreement, yet the paper frames it as evidence of a hierarchy.",
+      "suggested_fix": "Increase sample size, use multiple independent judges (different LLMs or humans) and report agreement; alternatively, back off the strength of the hierarchy claim in the abstract/conclusion."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'lifetime' definition uses a hard threshold of ∥W_dec∥ > 0.3 without justification; results on lifetime distribution and 'features persist above 60% of snapshots' depend on this threshold.",
+      "suggested_fix": "Report sensitivity of the lifetime distribution to this threshold, or use a threshold-free measure (e.g., area-under-normalized-norm curve)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Attribution patching is used with integrated gradients but the paper does not quantify how much of the metric is explained by the crosscoder reconstruction vs. the residual ε(x); if ε carries substantial signal on these tasks, the ablation-based claim of 'necessary and sufficient' components is overstated.",
+      "suggested_fix": "Report the fraction of the metric attributable to reconstructed features vs. the reconstruction-error term, per snapshot."
+    },
+    {
+      "severity": "minor",
+      "issue": "Positioning against prior developmental-interpretability work (e.g., learning-coefficient / SLT-based phase transition detection, developmental interpretability on Pythia) is discussed in related work but not directly compared. The 'statistical → feature' phase framing overlaps with existing accounts and needs sharper delineation.",
+      "suggested_fix": "Add a paragraph explicitly contrasting the observed transition timing and interpretation with SLT-based phase detection and Shwartz-Ziv & Tishby's fitting/compression, indicating what is new here."
+    },
+    {
+      "severity": "minor",
+      "issue": "The abstract is essentially empty in the extraction, and several formulas and figure references appear garbled (e.g., 'Figures 9a and 9b' referenced when the paper only shows Figure 3 for the SAE comparison; 'Figure 2' caption seems misaligned with the described Figure 3 content).",
+      "suggested_fix": "Reconcile figure numbering; ensure the abstract in the submitted version summarizes contributions and headline findings."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive is the directional-turning-point observation (near step 1000) to model scale, layer choice, and data ordering? Does it appear at the same absolute step or at the same amount of data consumed?",
+    "How does the total-feature-dimensionality curve behave as a function of crosscoder feature count and sparsity coefficient? Is the compression-then-expansion pattern stable across (nfeatures, λ) settings?",
+    "What is the seed-to-seed variance on emergence times of specific labeled features (previous-token, induction, context-sensitive) in Figure 6b?",
+    "For the attribution experiments, what fraction of the metric is captured by the reconstructed activation vs. left in ε(x), and how does that fraction change across snapshots — particularly in the early 'statistical' phase where reconstruction error may be higher?",
+    "Are the 'initialization features' truly identifiable at step 0, or do they reflect crosscoder inductive bias? What does the crosscoder look like when trained only on very early snapshots?",
+    "How stable is the complexity-vs-emergence correlation under a different judge and a larger sample?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped, but the phase-transition framing and 'general emergence hierarchy' language are stronger than the single-model, single-layer, mostly single-seed evidence supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Adapting crosscoders to track feature evolution is a useful methodological step that will interest the mechanistic-interpretability and training-dynamics communities, though the empirical findings are largely qualitative and tied to Pythia."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The specific adaptation of crosscoders to cross-snapshot alignment is new, but crosscoders themselves and developmental-interpretability of Pythia have both been explored; the contribution is a solid combination rather than a fundamentally new technique."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is well-defined and internally consistent, with reasonable validation (SAE-vs-crosscoder Pareto, attribution ablations), but several central claims are correlational and not disentangled from potential crosscoder artifacts."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Almost no seed variance, error bars, or confidence intervals; a headline complexity correlation of r=0.309 on 100 features with a single LLM judge is not strong statistical evidence for a hierarchy claim."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are acknowledged, but abstract/introduction language about 'phase transition from statistical learning to feature learning' and 'general emergence hierarchy' outruns the single-model, mostly single-seed evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall the paper reads well and the method is explained clearly, though the extraction contains some equation and figure-reference inconsistencies, and the abstract appears missing/empty in the provided text."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard structure (intro, related work, method, analyses, downstream connection, phase-transition observations, limitations, conclusion) fits the ICLR mold well."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model, snapshots, layers, dataset, feature counts, and objective are specified; still, exact hyperparameters (λ, activation function choice, IG steps), snapshot list, and thresholds are pushed to appendices — reproducibility hinges on those being complete."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Related literature on SAEs, crosscoders, phase transitions, and IB theory is cited appropriately, but direct comparison to developmental-interpretability / SLT-based phase-detection prior work is thin given how similar the claims are."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative panels (Pareto curves, emergence-time and lifetime distributions, projection matrices, attribution ablations, KL and dimensionality curves) that directly support the claims; figure numbering in the extraction is inconsistent."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only one model family (Pythia), one middle layer per model, and downstream tasks are limited to SVA/IOI/induction; strong generality claims are not commensurately supported."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A solid, borderline-accept contribution: novel adaptation and interesting empirical picture, but limited breadth and statistical rigor keep it from a clear accept."
+    }
+  },
+  "publishability_probability": 0.45
+}

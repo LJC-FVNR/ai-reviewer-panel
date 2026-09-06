@@ -1,0 +1,120 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes combining three token-attribution components for decoder-only LMs: causal attention-rollout gating, Hessian-based curvature sensitivity via Hessian–vector products, and a KL-divergence masking term. The framework is well motivated and tested across four models, three benchmarks, and a curated NarrativeQA+SciQ dataset with a new DSA alignment metric, and it reports large gains over a broad baseline suite. However, the reported margins (often 2–4× the nearest baseline) are extraordinarily large without correspondingly strong evidence, key mathematical formulations are imprecise or non-standard (particularly the Hutchinson-style Hessian estimator and the attention-rollout aggregation), the ‘gradient can be zero while the function still changes’ motivating example is misstated, and each of the three components is prior art so novelty rests almost entirely on the combination.",
+  "strengths": [
+    "Addresses a real and important gap: most attribution work targets encoder models, and gradient/attention-only methods are known to be unreliable for autoregressive generation.",
+    "Broad baseline set (ContextCite, IG, PML, TDD, Attention Rollout, fAML, Progressive Inference, SEA-CoT, ReAgent) and four models of varying scale (GPT-J-6B, Phi-3-Medium-14B, LLaMA-3.1-70B, Qwen2.5-3B).",
+    "Introduces a controlled evaluation construction (NarrativeQA distractor + SciQ evidence) plus a purpose-built DSA metric, which is a genuinely useful probe of target-conditioned attribution.",
+    "Explicit robustness analysis to decoding hyperparameters (temperature, top-p, top-k, repetition penalty) and to active/passive syntactic rephrasings — an axis most attribution papers ignore.",
+    "Practical scalability variants (HETA-LR, HETA-LR+WIN, HETA-LS) are proposed for the second-order term rather than only reporting an infeasible full-Hessian version."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The motivating example for why first-order methods fail is stated incorrectly: the text claims a case where ∂f/∂xi=0 but f(x+εe_i)=f(x), which would mean the function does *not* change and therefore provides no motivation for higher-order attribution. The intended statement is presumably f(x+εe_i)≠f(x), and the argument only holds under additional smoothness/structure assumptions.",
+      "suggested_fix": "Fix the inequality, and give a concrete numerical case (or a citation-backed example in a real transformer) where a token has near-zero gradient but demonstrable finite-perturbation influence on the target log-prob."
+    },
+    {
+      "severity": "major",
+      "issue": "The scalable Hessian sensitivity uses the estimator S(T)_i ≈ (1/m) Σ ‖Π_i H_T (Π_i r_k)‖_1 with Rademacher r_k. This is not a Hutchinson trace/diagonal estimator and its statistical meaning (bias, what functional of H_T it targets, why an L1 norm is appropriate) is not derived. Attribution scores derived from an ill-characterized estimator are hard to trust.",
+      "suggested_fix": "Derive what this estimator is an unbiased/consistent estimate of, compare against standard Hutchinson diagonal estimators, and empirically show convergence as m grows on a small model where the full block can be computed."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention-rollout term Φ^{(l,h)}(i→T) is described in prose as ‘aggregating only paths ending at T’ but the equation shown simply sums independently over l and h with no compositional product across layers — this is not rollout in the Abnar & Zuidema (2020) sense. Because MT is the causal gate that all other terms are multiplied by, this ambiguity is load-bearing for the whole method.",
+      "suggested_fix": "Write out Φ^{(l,h)}(i→T) explicitly (composition rule, treatment of residual stream, per-head vs per-layer aggregation, causal-mask handling), and confirm empirically that mass is indeed confined to causally reachable tokens."
+    },
+    {
+      "severity": "major",
+      "issue": "Reported gains are implausibly large and reported variance is implausibly small: Soft-NC of 10.3 vs. next-best 2.9 on GPT-J/LongRA, DSA of 4.80–5.10 vs. next-best 3.35–3.78, with stated std<0.06 (Table 3) and std<0.2 (Section 5.2) across only 3 seeds. No significance tests, no confidence intervals, no per-instance win-rate analysis.",
+      "suggested_fix": "Report paired significance tests (bootstrap or Wilcoxon over instances), per-instance win rates over the strongest baseline, and check that Soft-NC/Soft-NS are on the same scale as in Zhao & Shan (2024) — a 3–5× jump on an established metric warrants a sanity check on the metric implementation."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA evaluation risks circularity: GPT-4o and GPT-5-Thinking annotate the ‘important’ SciQ tokens, and DSA rewards attribution methods that align with those tokens. If any of HETA’s components (in particular the KL masking term, which is an LLM-based signal) correlate with what a strong LLM annotator considers important, HETA is advantaged by construction. This is not discussed.",
+      "suggested_fix": "Compare against human-annotated (non-LLM) gold labels on a subset, or annotate with a family of LLMs different from those used in scoring, and show that HETA’s lead is not driven by annotator–method agreement bias."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental: attention rollout (Abnar & Zuidema), Hessian sensitivity for attribution (Dhamdhere, Alvarez-Melis & Jaakkola), and KL-based masking/erasure (widely used) are each prior art. The paper does not clearly argue what is new beyond ‘we combine them and multiply the causal gate outside the sum’.",
+      "suggested_fix": "Sharpen the delta vs. prior work: state a theorem or property that only the combined form satisfies (e.g., causal-mass conservation, curvature completeness), and provide an ablation vs. simply summing (not multiplying) the three signals."
+    },
+    {
+      "severity": "minor",
+      "issue": "Several claims in the Motivation section (e.g., that Peering ‘lacks robustness to paraphrasing’, that ContextCite is ‘limited to sentence-level attribution without next-token conditioning’) are asserted about baselines rather than shown; they influence the framing of the contribution.",
+      "suggested_fix": "Support each baseline critique with a targeted experiment or an explicit citation, or soften to ‘by construction’ statements."
+    },
+    {
+      "severity": "minor",
+      "issue": "The manuscript body defers substantial content to appendices A1–A5 (algorithm, theory/error bounds, Qwen results, ablation details, scalability details) that a reviewer must trust without seeing. Some of this (theoretical error bounds especially) is claim-critical.",
+      "suggested_fix": "Move at least the algorithm listing and the statement of any theoretical properties into the main text, even in compressed form."
+    },
+    {
+      "severity": "minor",
+      "issue": "The abstract and conclusion use strong language (‘establishing a new standard’, ‘setting a new competitive across both benchmark and controlled evaluation settings’) that goes beyond what the current evidence supports.",
+      "suggested_fix": "Scope the claims to the four models and datasets tested; drop the ‘new standard’ framing."
+    }
+  ],
+  "questions_for_authors": [
+    "Please write Φ^{(l,h)}(i→T) explicitly. Is it a composition of masked attention matrices across layers (rollout), or a per-layer/per-head weight? How is the residual stream handled?",
+    "For the Hessian estimator S(T)_i, what population quantity is it a consistent estimator of, and what is its bias/variance? Why L1 rather than L2?",
+    "Soft-NC values of ~10 for HETA versus ~2–3 for all baselines on LongRA — can you confirm the Soft-NC implementation matches Zhao & Shan (2024) exactly, and report per-instance win rates vs. ReAgent?",
+    "How was β=γ=0.5 chosen, and is the reported robustness to decoding hyperparameters preserved if β,γ are re-tuned per model/dataset?",
+    "For the DSA construction, how do you rule out the possibility that GPT-4o/GPT-5-selected ‘important’ tokens are structurally correlated with what your KL masking term flags, giving HETA an evaluator-alignment advantage?",
+    "Table 2 shows every baseline changing >2% under a decoding sweep, but Soft-NC/Soft-NS are computed on the output distribution — why should attention-rollout or IG (which do not depend on sampling) shift substantially with top-k/top-p?",
+    "What is the compute cost of full HETA vs. HETA-LR+WIN and vs. baselines? A wall-clock/memory table in the main text would help calibrate the practicality claim."
+  ],
+  "calibration_check": "Claims are overscoped: the abstract, intro, and results narrative frame HETA as a ‘new standard’ with margins that are implausibly large given the noise level reported, and the underlying math (Hessian estimator, rollout aggregation, motivating counterexample) is stated too loosely to support that framing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LLMs is a genuinely important problem for ICLR, but the paper does not clearly demonstrate that HETA would change practice given the correctness and evaluation concerns."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Each of the three components (attention rollout, Hessian sensitivity, KL masking) is prior art; the contribution reduces to a specific multiplicative combination and an evaluation dataset/metric."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Several core formulations are imprecise (attention rollout aggregation, Hessian HVP estimator, the ‘gradient=0 but function unchanged’ motivating example) and load-bearing details are deferred to unseen appendices."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, no significance tests, no confidence intervals, and reported std (<0.06 on values ~10) is implausibly small; margins vs. baselines are large enough to warrant paired significance analysis."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Language like ‘new standard’ and ‘remarkable stability’ is not scoped to the models/datasets actually tested; a Limitations section exists but is generic and does not engage with the specific weaknesses above."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "High-level narrative is readable, but equations are hard to parse due to OCR/formatting artifacts and the key operators (Φ, HVP estimator, DSA formula) are described ambiguously."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows the standard ICLR structure (Intro, Motivation, Background, Method, Experiments, Ablations, Related Work, Conclusion, Limitations) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Model list, hardware, sequence lengths, β, γ, low-rank rank, and decoding grid are given, but algorithmic details (rollout composition, HVP variance control, DSA normalization) and full ablation tables live in unseen appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Related work covers the main contemporary decoder-attribution methods (ContextCite, TDD, Peering, ReAgent) and classical baselines; positioning against each is stated but partly asserted rather than shown."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Figure captions describe informative content (component ablations, sensitivity, syntactic robustness, alignment F1, qualitative attribution examples), but Figure 1’s pipeline caption is generic and Figure 3 bundles many claims into one panel."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four decoder models across three orders of magnitude in scale and three benchmarks plus a curated dataset is reasonable breadth, but generality claims (‘across model scales and architectures’) rest on a single architecture family (decoder-only transformer)."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Promising direction with a broad experimental sweep, but load-bearing math is imprecise, novelty is limited to a combination, and reported margins are implausibly large without significance analysis — sits between borderline reject (5) and reject (3)."
+    }
+  },
+  "publishability_probability": 0.2
+}

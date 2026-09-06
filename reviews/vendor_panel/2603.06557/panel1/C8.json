@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CODEC, which computes Integrated-Gradients contributions of hidden units to a scalar output target and then trains a sparse autoencoder over the (images x channels) contribution matrix to recover 'contribution modes'. It reports layerwise trends (contributions are sparser, higher-dimensional, and increasingly decorrelated in positive/negative parts than activations), shows that contribution modes support more selective ablation/preservation of ImageNet classes than activation modes, provides mode-specific input visualizations, and applies the same pipeline to a CNN model of retinal ganglion cells plus a brief ViT extension. The framing is appealing and the retina application is a genuinely distinctive contribution, but the empirical case is under-controlled: the key baseline isolating the SAE's value (selecting channels by class-averaged contribution magnitude, or random/gradient-magnitude selection) is absent, no seeds/error bars/significance tests accompany any quantitative claim, the mechanistic-interpretability literature the method most directly competes with is not discussed, and the hyperparameter reporting is internally contradictory.",
+  "strengths": [
+    "The central conceptual move — analyzing hidden-unit contributions (receptive field composed with projective field) rather than activations, and then decomposing those contributions rather than the activations — is well motivated and cleanly articulated, and the activation-SAE control is the right first comparison.",
+    "The perturbation experiments (ablation and preservation, target vs off-target class, swept over fraction of channels perturbed and over all blocks with a summary 'performance score') are a genuine causal validation rather than a purely qualitative interpretability story, and they are run over all 1000 ImageNet classes.",
+    "The retina application is unusual and valuable: using surprisal of the population response as the contribution target, showing mode-based clustering of cell types that is consistent across layers 1 and 2, and linking multi-mode combinations to dynamically varying instantaneous receptive fields yields concrete, experimentally testable hypotheses.",
+    "Some honesty about negatives: the ViT results are reported as weaker than CNN results with a plausible explanation, and the limitations section acknowledges that only selected ResNet blocks were analyzed and that LLM analysis is limited to scaling in supplement.",
+    "A hyperparameter robustness study (L1 weight, seed, non-negativity, threshold, dictionary size, MLP size) is reported, and reconstruction quality is quantified (R^2 = 0.85 contributions, 0.84 activations)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The decisive ablation — does the sparse autoencoder add anything over trivial contribution-based channel selection? — is missing. All perturbation results compare 'contribution mode' channels against 'activation mode' channels, which conflates two factors: the contribution-vs-activation signal and the SAE decomposition. Since contributions are already shown to be sparse and class-selective at the channel level (Fig. 3B, Fig. 5B), the simplest baseline (rank channels by class-averaged contribution magnitude, or by |IG| for the target logit, and ablate the top 2%) could plausibly match Fig. 6D/E without any SAE. Random-channel and gradient-magnitude selection baselines are also absent (the 'random class' curve is an off-target control, not a channel-selection baseline).",
+      "suggested_fix": "Add to Fig. 6D/E at least three selection baselines at matched channel budgets: (i) top channels by class-mean contribution, (ii) top channels by class-mean activation, (iii) random channels, and (iv) a non-sparse decomposition (PCA/NMF on the same contribution matrix). Report the performance score for each so the marginal value of the sparse-mode decomposition is isolated."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No variability is reported anywhere. There are no seeds, error bars, confidence intervals, or significance tests for any headline claim: the sparsity/dimensionality/decorrelation trends across layers (Fig. 3B,D,F), the mode-class correlation advantage over activations (Fig. 5A,C,D), the ablation/preservation advantage (Fig. 6D,E), or the 'sharp increase in ablation efficacy between blocks 6 and 7'. SAE training is stochastic and the choice of 'the mode most correlated with each class' is a selection step over k = 3d modes, which invites selection bias that no null distribution is provided for.",
+      "suggested_fix": "Retrain SAEs with at least 5 seeds and report mean ± s.e.m. (or bootstrap CIs over classes/images) for every quantitative comparison, with a paired test across the 1000 classes for the contribution-vs-activation perturbation gap. For the max-correlation statistics in Fig. 5, provide a shuffled-label null so the reported correlations can be judged against chance given the k x 1000 selection."
+    },
+    {
+      "severity": "major",
+      "issue": "Positioning against the mechanistic-interpretability literature is largely absent. The prose situates the work against saliency maps (IG, SmoothGrad, Grad-CAM), activation clustering, and concept methods, but does not engage with the body of work that most directly overlaps: attribution-based sparse dictionary learning, attribution patching, transcoders/SAE-based circuit discovery, and automated circuit identification. Without this, the claimed novelty of 'decomposing contributions instead of activations' cannot be assessed, and the reader cannot tell whether CODEC is a new unit of analysis or a repackaging of attribution-weighted feature decomposition in a vision/neuroscience setting.",
+      "suggested_fix": "Add an explicit Related Work section that distinguishes CODEC from attribution-patching and sparse-circuit methods and from concept-attribution methods (e.g. CRAFT-style approaches), and, where the comparison is feasible, run at least one such method on the same ResNet-50 perturbation benchmark."
+    },
+    {
+      "severity": "major",
+      "issue": "Internally contradictory hyperparameter reporting undermines confidence in the pipeline. The baseline model is stated to use 'a threshold of 0.9', trained for '300 epochs', but the timing sentence in the same paragraph says '200 epochs', and the robustness paragraph states that R^2 degraded 'when threshold was too high (0.9 vs 0.5)' — i.e., the reported baseline sits at the value flagged as degrading reconstruction. It is therefore unclear which configuration produced the reported R^2 = 0.85 and the Fig. 5-6 results.",
+      "suggested_fix": "State one canonical configuration and use it consistently, reconcile the epoch counts, and clarify whether the reported results use threshold 0.9 or 0.5; if 0.9, explain why a setting shown to hurt reconstruction is preferred."
+    },
+    {
+      "severity": "major",
+      "issue": "Key methodological details of the contribution computation are underspecified. Integrated Gradients requires a baseline/reference point, which is never stated (zero image? blurred image? mean image?), and this choice materially changes hidden-unit attributions and the completeness property invoked in the text. It is also not made precise whether the path integral is taken over the input or over the hidden activations, nor how completeness is preserved when attributing to an intermediate layer of a network with skip connections and BatchNorm. Similarly, the SAE encoder f_enc is described only as an 'MLP' whose 'size' is a hyperparameter, without depth, width, or nonlinearity.",
+      "suggested_fix": "Give the IG reference point and the exact interpolation path used for hidden-layer attribution, verify and report the completeness residual empirically at each analyzed layer, and fully specify the encoder architecture."
+    },
+    {
+      "severity": "major",
+      "issue": "The interpretability claims from the visualizations are purely qualitative. The assertion that 'a given mode computes the same lower-level semantic features across images from different classes' (shiny wood, hands) rests on a handful of hand-picked examples in Fig. 7 for one class at one layer, with no quantification, no human evaluation, no consistency metric across a mode's top images, and no comparison against activation-based visualizations of the same channels.",
+      "suggested_fix": "Quantify mode coherence — e.g., a human or VLM-based rating of whether top-activating contribution maps for a mode share a describable feature, compared against activation-mode and random-channel-group controls — and report it over many modes and layers rather than illustrating with selected panels."
+    },
+    {
+      "severity": "minor",
+      "issue": "Generality is claimed more broadly than the evidence supports in places. The abstract says CODEC is applied to 'benchmark image classification networks' (plural) while all ANN evidence is from ResNet-50 plus a brief, weaker ViT-B section; the ViT ablation results are described as 'inferior' without any numbers in the main text; and the retina analysis rests on a single 3-layer model with 8 channels per layer and 4-17 output cells, a scale at which the SAE decomposition's necessity is unclear.",
+      "suggested_fix": "Either add a second CNN architecture (e.g. VGG or a ConvNeXt) and report the ViT perturbation numbers in the main text, or narrow the abstract's claim to ResNet-50 with the ViT and retina results framed explicitly as preliminary extensions."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation problems: there is no dedicated Related Work or Methods section (method details are distributed across narrative sections), no results table anywhere (all quantitative evidence is in figure panels), the retina model's provenance is cited inconsistently (text attributes the model to one source while the Fig. 8 caption attributes it to another), several equations are garbled in the running text, and there are multiple typos ('retinl', 'selecte channels', 'non-labled', 'Imagenet').",
+      "suggested_fix": "Restructure into standard sections with a self-contained Methods, add a summary table of the perturbation benchmark across selection strategies and layers, reconcile the retina-model citation, and copyedit."
+    }
+  ],
+  "questions_for_authors": [
+    "What baseline (reference input) is used for Integrated Gradients, and how sensitive are the layerwise sparsity, decorrelation, and dimensionality trends to that choice?",
+    "How does simply ranking channels by class-averaged contribution magnitude — no SAE at all — perform on the Fig. 6D/E ablation and preservation benchmark relative to contribution modes?",
+    "Was the baseline SAE threshold 0.9 or 0.5, and were models trained for 200 or 300 epochs? Which configuration produced the reported R^2 = 0.85 and the Fig. 5-6 results?",
+    "Given that the mode most correlated with each class is selected from k = 3d candidates, what does the max-correlation statistic look like under label shuffling, and how much of the contribution-vs-activation gap in Fig. 5A survives that null?",
+    "Across how many SAE seeds are the perturbation results stable, and are the same channels selected for a given class across seeds?",
+    "For hidden-layer attribution in ResNet-50, how is completeness verified in the presence of residual connections and BatchNorm, and what is the typical residual between summed contributions and the scalar target?",
+    "In the retina model, with only 8 channels per layer, how many modes does the SAE learn, and does the mode-based cell clustering differ from clustering directly on the raw 8-dimensional contribution vectors?",
+    "What are the actual ViT-B perturbation numbers relative to the activation baseline, and does the contribution advantage hold for token, MLP, and attention layers separately?"
+  ],
+  "calibration_check": "The limitations section and the ViT discussion are commendably honest, but the main-text claims that CODEC 'reveals causal processes that cannot be determined by analyzing activations alone' and enables 'greater control' outrun the evidence, because the only contrast run is against activation-based SAEs and no baseline isolates whether the sparse decomposition — as opposed to the contribution signal itself — is doing the work.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Establishing contributions rather than activations as the unit for sparse decomposition is a direction interpretability researchers would find worth pursuing, and the retina application is a distinctive bridge to systems neuroscience, but the practical case for adoption is weakened by the untested possibility that a much simpler contribution-ranking procedure achieves the same control."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Applying an SAE to attribution vectors instead of activation vectors is a sensible and reasonably fresh combination in the vision setting, yet both ingredients are standard and closely related attribution-based dictionary and circuit-discovery methods exist and go undiscussed, so the incremental step over prior work is hard to gauge."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The perturbation design (target vs off-target, ablation vs preservation, swept channel budget, all 1000 classes) is a real causal test, but the missing contribution-magnitude and random-selection baselines, the unspecified IG reference point, and the unverified completeness at intermediate layers of a residual network leave the central claim-evidence link incompletely controlled."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, confidence intervals, or significance tests are reported for any headline comparison, and a per-class max-over-modes selection statistic is reported without a shuffled null, so it is not possible to judge whether the contribution-over-activation advantages are statistically real."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper openly reports weaker ViT performance and scopes its limitations regarding partial ResNet coverage and LLMs, but the abstract's 'benchmark image classification networks' and the claim of revealing causal processes 'that cannot be determined by analyzing activations alone' are broader than a single-architecture, single-baseline evaluation supports."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The motivation and the receptive-field/projective-field framing are clearly written and the four-stage CODEC description is easy to follow, but method details are scattered through narrative sections rather than a Methods section, the contradictory epoch and threshold values confuse the actual configuration, and several equations and terms are garbled or misspelled."
+    },
+    "structure_compliance": {
+      "score": 4,
+      "justification": "The paper departs substantially from standard conference structure: there is no Related Work section and no consolidated Method or Experiments section, results are interleaved with methodology across topic-titled sections, and no results table appears anywhere, with all quantitative evidence delegated to figure panels."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Dataset, architecture, IG step count, SAE threshold, dictionary expansion factor, learning rate, batch size, L1 weight, and training time are given, but the IG reference point, the encoder architecture, the exact hidden-layer attribution path, the number of modes and training details for the retina and ViT models, and the resolution of the 200-vs-300 epoch and 0.9-vs-0.5 threshold contradictions are all missing or ambiguous."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Saliency methods and neuroscience antecedents are cited appropriately, but the mechanistic-interpretability work the method competes with most directly — attribution patching, sparse-circuit discovery, transcoders, and concept-attribution dictionary methods — is essentially absent from the prose, so the contribution is not delineated against the closest prior art."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe a coherent and largely claim-supporting sequence (pipeline, layerwise statistics, decomposition schematic, mode-class correlation, perturbation curves plus a summary score, input-space maps, retina modes and IRFs), though several panels appear to be single-example illustrations ('black widow', 'violin', 'panda') carrying claims that need population-level quantification, and none of the captions mention error bars."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Covering a CNN, a ViT, and a biological-response model is commendable breadth for the framework claim, but within each setting the evidence is thin — one CNN architecture, a ViT section with no main-text numbers and admittedly weaker results, a single small retina model — and the baseline set is limited to activation SAEs."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising and conceptually appealing framework with an attractive neuroscience application, held below the acceptance bar by the missing baseline that would isolate the SAE's contribution, the complete absence of variance quantification, and thin positioning against the closest interpretability literature — all of which are addressable with substantial added experiments rather than a redesign."
+    }
+  },
+  "publishability_probability": 0.3
+}

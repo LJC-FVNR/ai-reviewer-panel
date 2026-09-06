@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies adversarial robustness of Differential Attention (DA), arguing that its subtractive structure induces negative gradient alignment that amplifies local sensitivity, while stacking DA layers yields depth-dependent noise cancellation. The theoretical analysis is essentially a straightforward application of the parallelogram identity plus a Lipschitz composition bound, and the empirical validation is reasonable but limited to a small set of architectures and attacks without seeds/variance. The core observation is interesting and timely given DA's growing adoption, but the theory is thin, the crossover claim is under-tested, and there are no adversarially trained or robustness-oriented baselines to contextualize the fragility.",
+  "strengths": [
+    "Timely and non-obvious question: DA has been marketed as noise-suppressing, so identifying an adversarial fragility angle is a useful counterpoint.",
+    "The Fragile Principle is stated crisply, and Lemma 1 / Theorems 1-3 give a clean mechanistic explanation via the cross-term sign under negative gradient alignment.",
+    "The paper acknowledges and empirically probes a nontrivial nuance (depth-dependent crossover) rather than making a one-sided fragility claim.",
+    "Experiments span both trained-from-scratch (ViT/DiffViT) and pretrained (CLIP/DiffCLIP) regimes, with three standard attacks (PGD, AutoAttack, CW) and both L-infty and patch settings.",
+    "The paper includes a λ_init sweep (Table 1) that yields a non-monotonic ASR curve, which is an informative and potentially surprising finding."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The theoretical results are largely restatements of elementary vector identities. Lemma 1 is the parallelogram/cosine identity applied to ∇A1 − λ∇A2, and Theorems 2–3 are algebraic rearrangements. Theorem 4 / Corollary 1 assume a per-layer cancellation factor α without deriving it from DA's structure — α is essentially posited, then the crossover follows trivially.",
+      "suggested_fix": "Either derive α from first principles (e.g., under a concrete noise model or activation distribution linking λ, A1, A2, and shared perturbation components), or explicitly frame the theory as a structural observation rather than a derivation. Sharpen at least one non-trivial claim that could not be obtained by inspection."
+    },
+    {
+      "severity": "major",
+      "issue": "No error bars, seeds, or significance tests are reported anywhere. ASR gaps between ViT and DiffViT on ImageNet under patch attacks are described as 'marginal' but no variance is given; the λ_init non-monotonicity in Table 1 hinges on single-seed numbers.",
+      "suggested_fix": "Report mean±std over ≥3 seeds for training and multiple attack restarts; include paired significance tests (e.g., McNemar or bootstrap CIs) for the DA vs. non-DA ASR comparisons, especially where gaps are small."
+    },
+    {
+      "severity": "major",
+      "issue": "The crossover claim (Corollary 1) is central but only weakly validated: Figure 3 shows depth 1, 2, 4, 8, 12 for a single dataset (CIFAR-10 in main text), and the reported evidence is that ASR drops with depth only at ε=1/255 while at ε=4/255 both saturate. This does not clearly show DiffViT becoming *more robust than* ViT at any depth for meaningful budgets, only that its fragility diminishes.",
+      "suggested_fix": "Provide the crossover depth D* explicitly per (ε, dataset), report matched-capacity ViT baselines at each depth, and show the regime in which DiffViT ASR < ViT ASR with statistical support. Extend depth ablations to CIFAR-100 and Tiny-ImageNet, not only appendix."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'higher ASR' claim for DA can be confounded by clean accuracy differences and calibration. Untargeted ASR mixes originally-misclassified inputs and different decision-boundary geometries; if DiffViT is more confident/selective, its boundaries may simply be closer to the data manifold without this being an intrinsic 'fragility' beyond what any sharper classifier shows.",
+      "suggested_fix": "Report robust accuracy (not just ASR) computed on originally-correct inputs, and compare at matched clean accuracy (e.g., by early stopping or capacity matching). Include a standard-attention baseline that has been sharpened by an unrelated mechanism to demonstrate the effect is DA-specific rather than a generic consequence of sharper attention."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper explicitly excludes robustness-enhancing training and task/model-specific attacks 'to isolate the mechanism.' This is defensible framing but leaves the practical significance unclear: adversarial training is the standard mitigation, and without a single comparison against an AT baseline in the main text (only Appendix D.2), it is impossible to know whether DA's fragility survives standard defenses.",
+      "suggested_fix": "Move an AT comparison into the main paper: DiffViT+AT vs ViT+AT at matched budgets, showing whether DA's fragility gap persists, shrinks, or inverts. This determines whether the finding matters for practitioners."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work does not situate the paper against literature on sharpness/robustness trade-offs (e.g., robustness vs. accuracy trade-offs, sparse attention robustness) or against gradient-masking concerns. Since DA has A1 − λA2 gradients that can partially cancel, the possibility of gradient obfuscation for PGD needs to be ruled out.",
+      "suggested_fix": "Add a subsection ruling out gradient masking (e.g., transfer attacks, black-box attacks such as SPSA/Square) and cite the accuracy-robustness trade-off literature to position the contribution."
+    },
+    {
+      "severity": "minor",
+      "issue": "Writing quality is uneven: repeated 'and'-conjoined run-on sentences (e.g., '…dominates the model's response, and…'), several typos ('trained from for controlled studies'), and hyphenation artifacts. This is fixable but hurts readability.",
+      "suggested_fix": "Careful copyedit; break long compound sentences; fix broken math formatting (e.g., the equation with '/√dk' is garbled in several places)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Figures 2–5 are described only via captions, but even from captions the paper reports both 'DiffCLIP consistently shows higher vulnerability' (COCO) and near-parity on ImageNet, and later says CLIP 'marginally outperforms DiffCLIP' on patches. The core Fragile Principle claim thus does not hold uniformly on the largest-scale evaluation, which deserves discussion beyond a one-line comment about dataset scale.",
+      "suggested_fix": "Add a dedicated analysis of why the effect attenuates at ImageNet scale (capacity? λ dynamics? training length?) with additional controlled experiments."
+    }
+  ],
+  "questions_for_authors": [
+    "How does DiffViT compare to ViT at matched *clean accuracy* rather than matched training recipe? Is the ASR gap preserved when the two models are calibrated to the same clean top-1?",
+    "Can you rule out gradient masking? What are PGD-transfer and Square/SPSA black-box ASRs for DiffViT vs. ViT?",
+    "In Corollary 1, α is central but is treated as an emergent quantity. Can you empirically estimate α per layer and confirm it is <1 for the depths where the crossover is claimed?",
+    "Does DA's fragility persist under adversarial training at matched budgets? The Appendix D.2 result is mentioned only briefly.",
+    "Table 1 shows a striking non-monotonicity in ASR with λ_init (peak at 0.8, then drop). Is this reproducible across seeds, and does it correlate with the frequency of negative gradient alignment?",
+    "How were the ViT and DiffViT depths matched for parameter count / compute? A 12-layer DiffViT has roughly twice the QK parameters of a 12-layer ViT — is the depth-dependent robustness a DA effect or a capacity effect?"
+  ],
+  "calibration_check": "Claims are mostly scoped appropriately (the authors flag local-linear assumptions and explicitly exclude AT and semantic attacks), but the 'first theoretical investigation' framing overstates the depth of the theory, and the depth-dependent robustness narrative is stronger than the single-dataset evidence supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "DA is an increasingly used mechanism and an adversarial-robustness angle is genuinely useful; but the finding — that a sharper attention mechanism is more attackable — is unlikely to change practice without a proposed remedy."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Framing DA fragility via negative gradient alignment and a depth-dependent crossover is a fresh angle, though the underlying math is elementary and the empirical protocol is standard."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The theory is correct but shallow (parallelogram identity + composition bound), and the empirical claims are undermined by no seeds, no gradient-masking checks, and no matched-clean-accuracy comparisons."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, no seeds reported, no significance tests, and several central comparisons (ImageNet patch attacks, λ_init sweep, crossover) hinge on small or single-run gaps."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are stated openly (local linearization, layer isolation, no semantic attacks) and the ImageNet nuance is acknowledged, though 'first theoretical investigation' is a mild overclaim."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Core ideas come through, but the prose has many run-on sentences, broken equations, and typos, and some figures are described ambiguously."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard ICLR structure (Intro/Related/Prelim/Theory/Experiments/Discussion/Conclusion) at reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Datasets, attacks, λ_init, depths, and pretrained bases are specified; but training hyperparameters, optimizer settings, patch-attack sizes, and number of PGD steps are underspecified, and no seed counts are given."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers attention robustness, Lipschitz analysis, and interpretability, but misses accuracy-robustness trade-off literature and gradient-masking concerns directly relevant to the claims."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative comparisons (ASR curves, per-layer Lipschitz, negative-alignment frequency) that directly support the claims, though the amount of aggregation obscures variance."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two model families (ViT/DiffViT, CLIP/DiffCLIP), five datasets, three attacks — adequate but narrow given that the claim is about DA as a mechanism; no language-model DA (the original Differential Transformer domain) is evaluated."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: interesting observation with a clean framing, but shallow theory and under-powered experiments prevent it from clearing the ICLR bar without a substantial revision."
+    }
+  },
+  "publishability_probability": 0.28
+}

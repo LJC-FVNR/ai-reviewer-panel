@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a VQ-VAE-based pipeline that compresses transformer hidden states into discrete codes and computes mutual information between them to characterize LM 'planning' along two axes (forward-looking horizon, branch awareness) plus a layer/block localization diagnostic, evaluated on CFG, path-finding, and OpenWebText with NTP vs MTP training. The methodological framing is interesting and the positioning against probing is thorough, but the central metric depends on separately-learned VQ-VAE encoders whose capacity/objective it does not clearly escape the very confounds it criticizes in probing, and the headline branch-awareness result is vulnerable to a structural confound. Findings are modest and mixed (task-dependent, no consistent NTP/MTP effect), and experiments use small from-scratch models, limiting the generality implied by 'planning in language models.'",
+  "strengths": [
+    "Tackles a genuinely interesting and timely question—whether decoder-only LMs organize forward-looking, branch-aware internal computation—with a coherent framing across horizon, branching, and information localization.",
+    "The information-theoretic motivation is well articulated: MI's invariance to invertible reparameterization and symmetry are real advantages over probe-accuracy proxies, and the paper is careful to restrict itself to relative (nMI) comparisons and to acknowledge that absolute MI is meaningless here.",
+    "Task suite spans a useful spectrum (synthetic CFG, path-finding with controlled path lengths, natural text), and the path-finding design with two disjoint correct paths plus a decoy is a thoughtful setup for probing branch awareness.",
+    "Related-work positioning against probing and mechanistic interpretability is fair, current, and clearly delineates the intended contribution; limitations (aggregate/average-sense insights only) are stated.",
+    "Conclusion is appropriately hedged, reporting the negative/null NTP-vs-MTP result rather than overselling it."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The core metric may not escape the confound it criticizes. The paper argues MI between VQ-VAE codes is 'confound-resistant' unlike probing because it introduces no external supervised model, but the VQ-VAE encoder IS a separately-trained model whose capacity, codebook size K, and auxiliary losses (cosine, entropy) directly determine the codes and therefore the measured MI. Different block sets use separately trained VQ-VAEs, so cross-condition comparisons entangle 'information in the LM' with 'what each encoder chose to preserve.' The claim of confound-freedom is not established.",
+      "suggested_fix": "Provide controls showing nMI trends are stable across codebook sizes, encoder capacities, and random seeds of the VQ-VAE itself (not just LM seeds); demonstrate that the horizon/branch conclusions are invariant to these choices, and directly compare against a matched probe on the same synthetic ground truth from App. D.2 in the main text."
+    },
+    {
+      "severity": "major",
+      "issue": "The branch-awareness result (I(ZH;Zalt) > I(ZH;Zdecoy)) has a structural confound. Both correct paths are valid routes fully determined by the edge list in the prefix, whereas the decoy is not a valid path. Higher MI with the alternative correct path may simply reflect that the prefix encodes graph connectivity (from which valid paths are derivable), not that the model 'considers' the alternative during generation. This does not isolate model-internal branch awareness from information trivially present in the input.",
+      "suggested_fix": "Add a control where the decoy is also a valid path in a different graph, or measure MI with an alternative correct path that requires the same inference difficulty as the decoy; better, condition on the graph structure to isolate model-specific branch representation beyond input-derivable connectivity."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is overclaimed relative to evidence. Experiments use architecture-matched GPT-3 Small (~125M), a 0.3B appendix model, and an 8-layer transformer trained from scratch on synthetic/OWT data. Broad claims about 'planning in language models' and implications for 'principled model design' are not supported at the scale of models the community associates with planning behavior.",
+      "suggested_fix": "Either scope claims explicitly to small from-scratch models on these tasks, or add at least one pretrained mid-scale LM to test whether the horizon/branch/recency findings persist."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is incomplete. 'Multiple seeds' is asserted but the number is unspecified; Figure 3 captions do not mention error bars; Table 1 reports mean ± std but with unclear n and no significance tests for the NTP-vs-MTP or short-vs-long comparisons the text draws conclusions from. The body's MTP-favorable claims (higher ratio/accuracy) sit uneasily with the Conclusion's 'no consistent differences.'",
+      "suggested_fix": "Report seed counts, add error bars to all nMI curves, run significance tests on the key comparisons, and reconcile the body and conclusion regarding NTP vs MTP effects."
+    },
+    {
+      "severity": "minor",
+      "issue": "Interpretation of the horizon result is loose. In path-finding the full answer is essentially determined by the prefix (the graph), so sustained prefix-to-later-token MI may reflect task determinism rather than deliberate 'planning ahead'; the CFG-vs-PF contrast may largely restate task structure.",
+      "suggested_fix": "Disentangle 'information determined by the task' from 'computation the model allocates ahead of time,' e.g., via a baseline that measures MI achievable from the input alone."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity and presentation: prose is dense and run-on in places, Table 1's numbers are hard to parse (values appear misaligned with column headers), and heavy reliance on appendices for validation (A.4, D.2) pushes load-bearing evidence out of the main text.",
+      "suggested_fix": "Tighten exposition, reformat Table 1, and bring the key validation experiment (that nMI tracks a known underlying distribution) into the main body."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are the horizon and branch-awareness conclusions to VQ-VAE codebook size K, encoder capacity, and VQ-VAE random seed? Do relative nMI trends survive these perturbations?",
+    "For branch awareness, what rules out that higher I(ZH;Zalt) simply reflects that valid paths are derivable from the prefix edge list, independent of any model-internal 'consideration' of the alternative?",
+    "How many seeds underlie Figures 3–4 and Table 1, and are the NTP-vs-MTP differences statistically significant given the stated variance?",
+    "The body suggests MTP yields richer branch-aware computation and better horizon uniformity, but the Conclusion states no consistent NTP/MTP difference—which claim should the reader take away?",
+    "Can you show, on a controlled setting with known ground-truth MI, that your count-based estimator on VQ-VAE codes recovers the true ordering more faithfully than a capacity-matched probe?"
+  ],
+  "calibration_check": "The Conclusion is appropriately hedged (task-dependent, null NTP/MTP effect), but the central 'confound-resistant' claim for the VQ-VAE+MI metric and the 'branch awareness' interpretation outrun the evidence given unaddressed confounds and small-model scope.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The question is interesting and the pipeline is reusable, but findings are modest, mixed, and demonstrated only on small from-scratch models, limiting immediate impact on practice."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Using VQ-VAE compression plus count-based MI to study internal computation is a mildly novel combination, but MI-based and probing-based representation analysis is well established."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The central metric depends on separately-learned encoders whose confounds are not clearly excluded, and the flagship branch-awareness result is vulnerable to a structural input-derivability confound."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Seed counts are unspecified, several figures lack error bars, and no significance tests support the NTP-vs-MTP or short-vs-long comparisons the text relies on."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The conclusion reports null results and states limitations, though the 'confound-resistant' and 'branch awareness' framings are somewhat stronger than the controls justify."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The logical structure is followable but the prose is dense and run-on, and load-bearing validation is deferred to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, analyses, conclusion) is present and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Method and losses are described at moderate detail with hyperparameters in appendices, but the pipeline's many moving parts (VQ-VAE configs per block set) and appendix reliance make faithful reproduction nontrivial."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against probing, mechanistic interpretability, and information-theoretic analysis is thorough, current, and fair."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions clearly convey what is plotted and the claims, but Table 1 appears misaligned/hard to parse and figures reportedly lack variance indicators."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Small from-scratch models and largely synthetic tasks under-support the broad 'planning in language models' claim; no pretrained mid/large LM is tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, well-motivated framework undercut by confounds in its core metric, a fragile flagship result, limited scale, and incomplete statistics—borderline reject needing substantial added validation."
+    }
+  },
+  "publishability_probability": 0.27
+}

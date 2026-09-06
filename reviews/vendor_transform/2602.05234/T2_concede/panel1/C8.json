@@ -1,0 +1,123 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CDAS, which pairs a Jensen-Shannon distribution-matching objective with the distributed interchange intervention (DII) protocol borrowed from DAS, yielding a bi-directional, largely tuning-free steering method. The work is unusually honest: on the main AxBench benchmark CDAS loses to RePS in three of four model/layer settings and wins in one, and the authors say so plainly. The genuinely interesting evidence is in the two safety case studies, where CDAS suppresses refusal and neutralizes a CoT backdoor while preserving MMLU/TruthfulQA accuracy far better than RePS. However, that evidence rests on single-run tables without error bars, per-method layer selection on the evaluation metric, 100-item tinyBenchmarks, and a faithfulness metric (KL to the natural distribution) that is close to CDAS's own training objective, so the central claim of \"more faithful steering\" is suggestive rather than established.",
+  "strengths": [
+    "The core idea is conceptually clean and well-motivated: instead of imposing an external preference or likelihood target, supervise the intervention to reproduce the model's own counterfactual output distribution, and let DII implicitly sample steering factors from the model's natural factor distribution rather than a hand-picked set.",
+    "Calibration is a real strength. The abstract, results prose, conclusion, and limitations all state that CDAS does not uniformly outperform Lang. and PO baselines, that factor tuning is still needed for general-purpose steering, and that layer sensitivity persists. This is rarer than it should be.",
+    "The DAS baseline (CDAS's DII protocol with the Lang. objective substituted for JSD) is a well-chosen ablation that isolates the training objective, and it produces informative negatives: DAS defends against red-teaming prompts but fails completely (100% ASR) on the true backdoor trigger.",
+    "The utility-preservation results are the most convincing part of the paper: RePS degrades Llama-3.1-8B by roughly 27 points on TruthfulQA and 36 on MMLU while overriding refusal, whereas CDAS stays within about a point. That is a practically meaningful difference for anyone deploying inference-time steering.",
+    "The two case studies are well-chosen and non-trivial: refusal override on models up to 70B, and a sleeper-agent CoT backdoor with an unknown trigger where the intervention must generalize from red-teaming prompts to the true trigger.",
+    "Model coverage spans three families (Gemma-2, Phi-3.5, Llama-3.1) and 2B to 70B, which is broader than much of the steering literature."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Almost all headline numbers are reported without variance. Table 1 fair scores are averaged over ten random test splits but no standard deviation is given; Tables 2, 3, and 4 appear to be single runs with no seeds or intervals; only Figure 1 reports standard error over three initializations. Several of the differences the paper leans on are small (e.g. a 0.023 vs 0.150 cross-layer score change on Gemma-2-2B, the 2.63 tinyMMLU gain) and could easily be noise.",
+      "suggested_fix": "Train each intervention with at least three seeds and report mean plus standard deviation or confidence intervals in every table; add paired significance tests for the comparisons the conclusions depend on, especially the CDAS-vs-RePS utility-preservation gap and the cross-layer consistency claim."
+    },
+    {
+      "severity": "major",
+      "issue": "The faithfulness evidence is partly circular. CDAS is trained to minimize a JS divergence between the intervened distribution under DII and the un-intervened counterfactual distribution, and it is then evaluated on the KL divergence between the intervened distribution and the natural distribution, which the paper itself identifies as corresponding to the D-minus term of Equation 3. CDAS winning that metric is close to tautological, so it cannot independently support the claim that CDAS is 'most faithful to the model's output distribution.'",
+      "suggested_fix": "Report the KL metric as a training-objective diagnostic rather than as evidence of faithfulness, and support the faithfulness claim with measures not aligned to the objective: perplexity on held-out natural text under intervention, generation diversity and repetition statistics, human or judge ratings of naturalness, and a broader benchmark suite than two 100-item tinyBenchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "Evaluation protocol favors the proposed method in ways the AxBench section explicitly guards against but the case studies do not. In Section 5.2 the intervening layer is selected per method 'based on ASR, prioritizing low ASR on the trigger' — that is model selection on the evaluation metric. In Section 5.1 all methods share a layer chosen to maximize DIM's suppression score, an arbitrary criterion that may disadvantage some methods. The DII source-token position is also chosen by grid search 'for optimal steering effectiveness' with no statement of whether that search used held-out data.",
+      "suggested_fix": "Adopt the fair/oracle split protocol from Section 4 throughout: select layer, factor, and source-token position on a validation split and report scores on a disjoint test split, for every method. State explicitly which data the token-position grid search used."
+    },
+    {
+      "severity": "major",
+      "issue": "The ablation of the method's two components is incomplete. CDAS combines a new objective (JSD matching) with a new intervention protocol for steering (DII). The DAS baseline isolates the objective, but only in the case studies, not on AxBench; and there is no run of the JSD objective with a conventional addition or clamping intervention, so the contribution of DII itself is never isolated. The choice of JSD over forward KL, reverse KL, or a distillation temperature is also asserted rather than tested.",
+      "suggested_fix": "Add a two-by-two grid (objective in {Lang., JSD} times protocol in {addition/clamping, DII}) on at least one AxBench setup and one case study, plus a divergence ablation comparing JSD to forward and reverse KL, so that readers can attribute the observed behavior to the right component."
+    },
+    {
+      "severity": "major",
+      "issue": "The central benchmark result is negative or mixed, and the generality claims that survive it rest on very few points. CDAS trails RePS at 2B/L10, 2B/L20, and 9B/L31, and leads only at 9B/L20. From this the paper infers that 'CDAS may benefit from model scale' and the conclusion states CDAS 'advances the performance frontier on Gemma-2-9B.' Two model sizes in one family, at two layers each, cannot separate a scale effect from a layer or family effect, and the 9B/L31 result directly contradicts it.",
+      "suggested_fix": "Either test the scale hypothesis properly by adding intermediate sizes and a second model family swept over more layers, or soften the scale claim to an observation about a single favorable configuration and drop 'advances the performance frontier' from the conclusion."
+    },
+    {
+      "severity": "minor",
+      "issue": "There is a possible train-data confound in the AxBench comparison. CDAS (and, following Wu et al. 2025b, RePS) uses an augmented training set with gpt-4o-mini-generated neutral responses and templated concept-eliciting instructions, whereas Lang. and DIM use the original Concept500 pairs, and several baseline numbers are copied from two prior papers rather than re-run. Differences in supervision volume and quality are therefore entangled with differences in objective.",
+      "suggested_fix": "Re-run at least Lang. and DIM on the augmented data where the format allows, state clearly which baseline numbers are reproduced versus copied, and report the token/compute budget of each method's training data."
+    },
+    {
+      "severity": "minor",
+      "issue": "Figure 2 is referenced in the intervention-location paragraph as the illustration of the 'one-to-many' DII protocol, but no caption for it appears among the display items. Since that protocol is the least standard part of the method, the reader is left to reconstruct which positions receive which source representation from prose alone.",
+      "suggested_fix": "Include Figure 2 with a caption that specifies, for a concrete chat-templated example, exactly which source token is read and which base positions are clamped."
+    },
+    {
+      "severity": "minor",
+      "issue": "Optimization details are absent from the main text: rank is fixed at 1, but learning rate, optimizer, number of epochs, batch size, and the orthonormality parameterization of w_Phi are all deferred to appendices that are not visible here, and no training-cost comparison against RePS/BiPO/Lang. is given.",
+      "suggested_fix": "Move a compact hyperparameter table into the main paper and add wall-clock or GPU-hour costs per method, since efficiency is one of the stated motivations for intervention-based steering."
+    },
+    {
+      "severity": "minor",
+      "issue": "The refusal-induction direction of the bi-directional claim is uninformative because refusal score saturates at 100 for CDAS, DAS, and RePS on all three models. Only suppression differentiates the methods, so 'bi-directional' is effectively evaluated in one direction.",
+      "suggested_fix": "Use a harder elicitation setting or a graded metric (e.g. refusal rate under jailbreak prompts, or partial-compliance scoring) so the induction direction can actually discriminate between methods."
+    }
+  ],
+  "questions_for_authors": [
+    "Was the grid search over the DII source-token position performed on a validation split, or on the same instructions used to report the AxBench and case-study scores?",
+    "In Section 5.2 the layer is chosen per method by lowest ASR on the trigger. If instead all methods were fixed to a single layer chosen on held-out red-teaming prompts only, how does the CDAS-vs-RePS ordering change?",
+    "Can you report a faithfulness measure that is not the training objective — for instance perplexity on held-out natural text under intervention, or repetition/diversity statistics of steered generations — to substantiate the claim that CDAS avoids the off-distribution artifacts of Lang. and PO?",
+    "What happens if the JSD objective is used with a standard addition or clamping intervention instead of DII, and conversely if DII is used with the RePS preference objective? This would separate the objective's contribution from the protocol's.",
+    "Why JSD rather than forward or reverse KL? Distillation-style matching normally uses KL, and JSD's boundedness has different gradient behavior; is there empirical support for the choice?",
+    "Table 2 shows CDAS suppressing refusal poorly on Phi-3.5-mini but well on the two Llama models. Is this a scale effect or a model-family effect? A mid-size Llama or a second small model from a different family would help disambiguate.",
+    "How many seeds underlie Tables 1-3, and what is the run-to-run spread? In particular, is the 0.023 versus 0.150 cross-layer stability contrast between CDAS and RePS larger than seed variance?",
+    "The tinyBenchmarks in Table 4 have 100 items each, so one item is one percentage point. What is the binomial confidence interval on the 2.63 tinyMMLU gain, and does it exclude zero?",
+    "For the AxBench 'unit factor' setting, CDAS collapses to roughly 0.12-0.24 while tuned factors reach 0.52-0.99. Given that the tuning-free property is a headline advantage in the case studies, why does it fail so completely on general-purpose concepts, and what distinguishes the two regimes?"
+  ],
+  "calibration_check": "Claims are, unusually, mostly well scoped to the evidence — the paper repeatedly concedes that CDAS does not beat strong-supervised baselines — but two statements overreach: that CDAS 'advances the performance frontier on Gemma-2-9B' (true at one of two tested layers) and that it 'may benefit from model scale' (inferred from two sizes in one family, contradicted at 9B/L31), and the 'most faithful' claim leans on a metric aligned with CDAS's own objective.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Inference-time steering and its interaction with mechanistic interpretability is an active area ICLR cares about, and the utility-preservation result is practically useful, but a method that loses to RePS on three of four main-benchmark settings is unlikely to change practice on its own."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Both ingredients are borrowed — DII from DAS and distribution matching from distillation — and the contribution is their combination plus the observation that DII implicitly samples steering factors; the framing is thoughtful but the technical step is incremental."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The DAS ablation is a genuinely good control and the negative results are reported faithfully, but per-method layer selection on the evaluation metric, an unspecified-split grid search over source-token position, and a faithfulness metric that mirrors the training objective all weaken the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only Figure 1 reports variance (three seeds); Tables 1-4 give point estimates with no error bars or significance tests, the key utility comparison rests on 100-item tinyBenchmarks where one item equals one percentage point, and several conclusions hinge on differences plausibly within noise."
+    },
+    "calibration_honesty": {
+      "score": 8,
+      "justification": "The paper states repeatedly and prominently that CDAS does not always outperform baselines, reports the failure of the unit-factor setting and the layer sensitivity, and gives a substantive limitations section; only the 'performance frontier', 'model scale', and 'most faithful' phrasings stretch beyond what is shown."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The problem setup, the DAS review, and Equation 3 are explained precisely and the Remark distinguishing CDAS from causal variable localization is a helpful piece of intellectual hygiene, but the 'one-to-many' DII protocol depends on a figure whose caption is absent and much of the experimental detail is pushed into appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization with abstract-level framing, related work, method, benchmark evaluation, two case studies, conclusion, and limitations, all at reasonable length and with a useful roadmap paragraph before the experiments."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Data curation, model choices, evaluation protocols, judges, and the fair/oracle scoring split are described in enough detail to be re-implemented, but the main text omits optimizer, learning rate, epochs, batch size, and the parameterization of the steering vector, and the number of seeds is unstated for most tables."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against optimization-free steering, Lang./BiPO/RePS objectives, causal abstraction and SAEs, distillation-style distribution matching, and the refusal-direction and sleeper-agent literatures is accurate and the delineation from DAS is explicit; SAE-based steering is discussed but never compared empirically."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "The four tables and the three-panel ASR figure map cleanly onto the claims they support and Figure 1 is the only display item with error shading, but the tables lack variance, Table 4's sample size is too small to bold a winner, and Figure 2 is cited in the method without an accompanying caption."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Five models across three families and two distinct safety case studies is respectable coverage, but the ablation grid is incomplete (DII never isolated, no divergence ablation), the scale claim rests on two Gemma sizes, and rank is fixed at 1 with no low-rank generalization."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An honest, well-motivated paper with a modest methodological contribution whose main benchmark result is mixed and whose most interesting case-study advantages are single-run, selected on the evaluation metric, and measured partly by the method's own objective — promising but currently below the bar, and fixable with seeds, a clean protocol, and the missing ablations."
+    }
+  },
+  "publishability_probability": 0.22
+}

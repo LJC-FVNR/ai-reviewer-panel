@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER proposes a plausibility-guided decoding loop that dynamically modulates KV-cache steering strength per decoding step, combined with a one-time attention-sensitivity layer ranking, to mitigate oversteering in activation steering for instruction following. The method is well-motivated, clearly described, and evaluated across three benchmarks, five models (1B-14B, two families), with meaningful ablations (fixed-strength, reversed/random ranking, random tokens) and efficiency analysis. The main weaknesses are the absence of error bars or significance testing on the main results, a limited set of steering baselines (only PASTA and SpotLight), and a somewhat heuristic top-1-token plausibility criterion. Overall this is a solid, useful contribution slightly above the typical borderline ICLR submission.",
+  "strengths": [
+    "Well-motivated problem (oversteering in static activation steering) with an elegant, training-free solution: accept/reject steering per step via a plausibility check against the raw distribution, with progressive halving of steered layers.",
+    "The gating mechanism (skipping steering when the raw top-2 probability already falls below beta * top-1) is provably correct and keeps overhead modest (~16% throughput, negligible memory), making the method practically deployable.",
+    "Broad empirical coverage for this subfield: IFEval, LIFBench, and a new GSM8K-Format benchmark; generalization across Llama-3.1-8B, Llama-3.2-1B, and Qwen-2.5 3B/7B/14B; plus text-quality/task-fidelity evaluation with both an LLM judge and corroborating human evaluation.",
+    "Good ablation and robustness suite: fixed-strength variants (ST1-ST6) isolate the value of dynamic control; reversed ranking, random layers, and random tokens validate the sensitivity ranking and instruction-span targeting; robustness to beta, alpha (over orders of magnitude), and prompt format is shown.",
+    "The plausibility filter is shown to transfer as a safety gate to other steering methods (Figure 2b), supporting the claim of a general anti-oversteering mechanism."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No error bars, seed variance, or significance tests on the main results (Tables 1, 2, 4). Gains over tuned baselines (e.g., 76.5 vs 72.1 avg; IFEval P.Acc 78.8 vs 76.5) are on benchmarks with only hundreds of prompts, so some margins may be within noise. Only the random-layer/token ablations report +/- values, showing the authors can measure variance but chose not to for headline numbers.",
+      "suggested_fix": "Report variance across multiple prompt shuffles/seeds (or bootstrap CIs over prompts) for Table 1 and Table 2, and add a paired significance test for the key comparisons vs SpotLight-tuned and zero-shot."
+    },
+    {
+      "severity": "major",
+      "issue": "Only two steering baselines (PASTA, SpotLight) are compared. The activation-steering literature is larger (contrastive activation addition / representation-engineering-style vector methods, ITI-style head interventions, and other inference-time control methods), and the claim of 'surpassing prior steering methods by ~4%' rests on this narrow set.",
+      "suggested_fix": "Add at least one residual-stream steering-vector baseline (e.g., CAA/RepE-style) and ideally one additional recent attention-level method, or explicitly scope the superiority claim to attention-level instruction-following steering."
+    },
+    {
+      "severity": "minor",
+      "issue": "The plausibility criterion uses only the top-1 token of the steered distribution (Eq. 1). This is a weak proxy for distributional plausibility; alternatives (top-k overlap, KL/JSD thresholds) are not explored in the main text.",
+      "suggested_fix": "Ablate the plausibility measure (top-k acceptance, KL threshold) or justify why top-1 suffices; at minimum discuss this design choice."
+    },
+    {
+      "severity": "minor",
+      "issue": "Baseline hyperparameters are tuned on IFEval and then applied to other benchmarks, which risks mild test-set selection bias favoring IFEval-tuned baselines on that benchmark while DIRECTER uses untuned fixed settings; the asymmetry is actually conservative for the authors but the tuning protocol should be clearer.",
+      "suggested_fix": "Clarify the tuning protocol (validation split vs. test set) and, if possible, tune baselines on a held-out split of IFEval."
+    },
+    {
+      "severity": "minor",
+      "issue": "Task fidelity and text quality rely primarily on gpt-4o-mini as judge, a relatively weak evaluator; human evaluation is relegated to the appendix with no detail in the main text on annotator count, agreement, or sample size.",
+      "suggested_fix": "Summarize the human evaluation protocol (n annotators, n samples, inter-annotator agreement) in the main text and consider a stronger judge model for the headline Table 4."
+    },
+    {
+      "severity": "minor",
+      "issue": "No evaluation of general capability side-effects (e.g., MMLU-style benchmarks) beyond instruction-following tasks; the 'no trade-off' claim is supported only by text quality and task fidelity on the evaluated distributions.",
+      "suggested_fix": "Add a small general-capability check or scope the no-degradation claim to the evaluated settings."
+    }
+  ],
+  "questions_for_authors": [
+    "How many prompts/examples underlie each number in Table 1, and what is the bootstrap confidence interval for the 6.5% average improvement and the ~4% margin over tuned steering baselines?",
+    "Why is plausibility defined only via the top-1 token (Eq. 1)? Did you try distribution-level criteria (top-k overlap, KL divergence), and how sensitive is the method to this choice?",
+    "The sensitivity analysis steers one layer at a time and averages disturbance scores (Eq. 2-3): does the ranking interact with the choice of alpha used during profiling, and is the ranking stable across prompts within a task (i.e., could it be computed once per model rather than per prompt)?",
+    "For the gating mechanism: what fraction of decoding steps are skipped in practice, and how does the 16% throughput overhead decompose between the one-time ranking, skipped steps, and rejected steering attempts?",
+    "Does DIRECTER compose with sampling-based decoding (temperature > 0)? All experiments use greedy decoding; does the plausibility check behave sensibly when the raw distribution is flat?",
+    "How was the human evaluation in Appendix E.3 conducted (number of annotators, samples, agreement), and did annotators see paired outputs blind to condition?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped: the 6.5% average gain matches Table 1, limitations (heuristic sensitivity metric, separable instruction-span assumption) are explicitly stated, and 'significantly' is used loosely given the absence of significance testing, which is the main calibration gap.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Oversteering is a recognized practical problem in activation steering, and a modular, low-overhead fix that also improves other methods would be used and cited by the controllable-generation community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Per-step accept/reject of steering via plausibility against the raw distribution, plus sensitivity-ranked progressive layer removal, is a genuinely new combination, though it borrows ideas from speculative/contrastive decoding and KV-quantization sensitivity analysis."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "The method is sound, the gating argument is correct, and the ablation design isolates each component; the top-1 plausibility heuristic and lack of theory for the sensitivity metric are acknowledged limitations."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Greedy single-run results with no error bars or significance tests on any main table, despite modest benchmark sizes and margins of a few points; only the random ablations report variance."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "A real limitations section, conservative fixed hyperparameters, and honest reporting of cases where steering baselines fail; minor overreach in 'significantly enhances' and generality phrasing without statistical backing."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Well-organized with a clear algorithm, intuitive figure captions, and readable prose; Eq. 2 is dense and some phrasing is awkward, but the method is understandable end-to-end."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (intro, related work, method with preliminaries, RQ-driven experiments, analyses, conclusion with limitations) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Fixed hyperparameters (alpha=100, beta=0.5, greedy decoding), named public benchmarks and models, algorithm pseudocode, and appendix pointers for prompts and tuning details make reproduction feasible."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Fair and specific positioning against PASTA and SpotLight with concrete cost comparisons, but the steering-baseline coverage is narrow and residual-stream steering methods are discussed only in prose, not empirically."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative, claim-supporting displays: method overview, fixed-strength and compatibility ablations, beta/alpha/prompt robustness, and efficiency trade-offs; Table 5's qualitative example directly illustrates the failure mode fixed."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Three benchmarks, five models across two families and 1B-14B scale, and good ablations, but only two steering baselines and no general-capability evaluation limit support for the broadest generality claims."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: a well-executed, useful inference-time method whose acceptance hinges on adding variance/significance reporting and broadening the steering-baseline comparison."
+    }
+  },
+  "publishability_probability": 0.55
+}

@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a Toeplitz-matrix framework to categorize positional encodings as additive or multiplicative, and empirically discovers a 'single-head deposit pattern' in RoPE via two synthetic tasks. The core finding is genuinely interesting and the causal ablation design is commendable. However, the paper's central claims about RoPE's practical failure modes are supported exclusively by small-scale synthetic experiments (6-layer decoder), no real-language-modeling validation is provided, statistical reporting is vague, and the hypothesized link between the deposit pattern and length-extrapolation failures—which the paper repeatedly invokes—is explicitly deferred to future work. These gaps collectively prevent acceptance at ICLR 2026 without substantial revision.",
+  "strengths": [
+    "The Toeplitz decomposition is a clean, unifying formal lens that clearly distinguishes additive (bias injection) from multiplicative (kernel modulation) PE mechanisms, and the derivations in Section 3.2 are readable and correct at the level of detail provided.",
+    "The two synthetic tasks (relative-distance classification vs. trigger-word counting) are well-designed for isolation: they operationalize the theoretical distinction and the contrast in results across PE types is sharp and internally consistent.",
+    "The causal ablation suite (head zero-out, head-count sweep, Absolute+RoPE injection, MLA substitution, and pi-removal vs. random-vector control) is unusually comprehensive for a mechanistic study of this type; each ablation tests a specific, stated hypothesis.",
+    "The gradient coherence/cancellation analysis (Propositions 6.1–6.2 and Theorem 6.1) provides a formal mechanism for the deposit pattern and connects the empirical finding to an analytic property of RoPE's multiplicative structure.",
+    "Connecting the deposit pattern to MLA (DeepSeek-V3) is a timely and practically relevant observation that bridges the mechanistic finding to real architectural choices."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "All experiments use a 6-layer Transformer decoder on fully synthetic sequences; no experiment validates whether the deposit pattern exists, persists, or has any effect in realistic language-modeling settings. The paper repeatedly implies this mechanism explains RoPE's real-world performance paradoxes (e.g., length extrapolation failures), but this link is never empirically tested.",
+      "suggested_fix": "Add at minimum one small-scale real-LM experiment (e.g., a character- or token-level LM on WikiText-2/PTB or a simple algorithmic dataset like SCAN/SCAN-length) that (a) confirms the deposit pattern survives beyond the synthetic regime and (b) shows it correlates with degraded out-of-distribution or length-generalization performance. Even a 3-layer GPT-2-scale model would substantially strengthen the claim."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical reporting is insufficiently rigorous for ICLR. 'Variance is less than 5%' is undefined (5% of what? Standard deviation? Coefficient of variation? Range across seeds?). No confidence intervals or standard error bars appear in the figures, and the key result—the ≈60% accuracy drop from ablating the deposit head—is stated only as an approximation. With only 5 seeds and a single synthetic domain, these imprecisions are meaningful.",
+      "suggested_fix": "Report standard deviations or 95% confidence intervals for all accuracy numbers in all figures and Table 1. State the variance metric precisely (e.g., 'std < 0.5 percentage points across 5 seeds'). The ≈60% figure should be an exact mean ± std."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical assumptions underpinning Theorem 6.1 (Jacobian Stability, Monotone Anchor Path, Projection Separability) are asserted to be 'empirically plausible' but never verified. Jacobian singular-value bounds in [1-α, 1+α] for LayerNorm networks are not self-evident and the paper provides no empirical check (e.g., measured Jacobian spectra during training) or citation to prior results confirming this for the specific architecture used.",
+      "suggested_fix": "Either (a) provide empirical measurements of inter-layer Jacobian spectra during training to justify A1, or (b) be explicit in the theorem statement that these are sufficient conditions and the theorem is a conditional result, not an unconditional claim about all RoPE-equipped models."
+    },
+    {
+      "severity": "major",
+      "issue": "Modern, widely-used RoPE variants relevant to the paper's claims—YaRN, LongRoPE, LLaMA-3 extended-context RoPE, and NTK-aware interpolation—are absent from both the related-work discussion and the experimental comparisons. Since these variants specifically address the length-generalization problem the paper attributes to the deposit pattern, their omission is a significant gap in positioning and coverage.",
+      "suggested_fix": "Add a brief discussion of these variants in Related Work and, where feasible, include at least one (e.g., YaRN) in the PE comparison on Task 1 to test whether variants that improve length generalization also exhibit a weaker deposit pattern."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper's title and framing promise a mechanistic explanation for 'RoPE's performance paradox' (poor length extrapolation despite strong theoretical properties), yet the Conclusion explicitly acknowledges that 'the connection we hypothesize between the deposit pattern and RoPE's known struggles with length extrapolation requires direct empirical validation.' This mismatch between the paper's framing and its delivered evidence is substantial and will concern reviewers.",
+      "suggested_fix": "Either (a) add length-extrapolation experiments (train on sequences of length L, test on 2L or 4L) to close this gap, or (b) reframe the paper's contribution more conservatively as a mechanistic characterization of RoPE behavior on content-position coupling tasks, without claiming to explain the length-extrapolation paradox."
+    },
+    {
+      "severity": "minor",
+      "issue": "The caption for Figure 5 is embedded mid-section in the main text (inside Section 5.1's prose) rather than appearing with the other figure captions, creating a confusing reading experience and suggesting incomplete manuscript assembly.",
+      "suggested_fix": "Move the Figure 5 caption to the consolidated captions section and ensure all in-text references to figures use standard placeholder format."
+    },
+    {
+      "severity": "minor",
+      "issue": "The anonymous citation '[Author] et al., 2024a;b' appears twice in the Related Work section; this is an artifact of double-blind preparation, but if these are self-citations that are load-bearing (i.e., the current paper builds directly on them), reviewers cannot assess the incremental contribution over prior work from the same group.",
+      "suggested_fix": "Ensure the manuscript is self-contained without requiring the redacted citations, or add a brief paraphrase of the relevant results from those papers in the text."
+    }
+  ],
+  "questions_for_authors": [
+    "The deposit pattern is demonstrated on a 6-layer decoder with sequences of a few hundred tokens. Do you observe the same phenomenon when training a larger model (e.g., 12–24 layers) on a real language modeling task? Does the pattern appear in the same layer (layer 1 in your setting), or does it shift with depth?",
+    "Theorem 6.1 requires Jacobian singular values bounded in [1-α, 1+α]. Can you provide measurements of the empirical Jacobian spectrum for your trained networks, or cite prior work establishing this bound for pre-norm Transformers, to justify Assumption A1?",
+    "You show that a single RoPE head is sufficient for Task 1 (Figure 6). Does reducing to a single RoPE head also reduce the generalization gap on out-of-distribution sequence lengths? If so, this would directly connect the deposit pattern to length generalization.",
+    "ALiBi completely fails on Task 1 while NoPE also fails—yet their failure modes (Figure 2 captions) seem different. Can you elaborate on why NoPE fails on the relative-distance task? Your framework predicts NoPE should develop implicit positional representations (Zuo et al., 2025), so why does this not suffice for Task 1?",
+    "Table 1 shows MLA scores 88.3 on Task 1 vs. RoPE's 92.6—a 4-point gap. This gap is non-trivial; does the paper have a mechanistic explanation for why MLA's hybrid structure trades off some position-sensitive performance? Is this gap statistically significant given your 5-seed setup?"
+  ],
+  "calibration_check": "Claims are partially calibrated—the Conclusion honestly defers the length-extrapolation connection to future work—but the Introduction, Abstract framing, and throughout the body consistently imply this mechanistic explanation accounts for RoPE's real-world performance paradoxes, a claim that the synthetic-only experiments cannot support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The deposit pattern is a genuinely novel mechanistic observation about RoPE that could influence future PE design (as the MLA connection illustrates), but its significance is bounded by the absence of real-LM validation and the deferred length-extrapolation link."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The Toeplitz framing of PE has antecedents in cited work, but the specific content-position coupling distinction and the empirical deposit pattern are new contributions that go beyond incremental combination."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The causal ablation design is sound, but the theoretical assumptions are unverified, the key real-world implication (length extrapolation) is untested, and the entire experimental scope is one small synthetic setting."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Five seeds with 'variance less than 5%' (undefined metric), no confidence intervals in figures, approximate reporting of the primary quantitative result (≈60% drop), and no significance tests constitute inadequate statistical rigor for ICLR."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The limitations section honestly defers the length-extrapolation claim, but the framing throughout the paper systematically overstates the scope of the synthetic findings as explanations of real-world RoPE behavior."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The Toeplitz decomposition and the experimental design are explained clearly and accessibly; the paper is well-organized and the notation is consistent, with the exception of the misplaced Figure 5 caption."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed and the paper length appears appropriate, though the misplaced figure caption and the embedded anonymization artifacts suggest incomplete manuscript preparation."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The synthetic tasks are described in sufficient detail to reconstruct, training details are in Appendix D, and 5 seeds are used; however, the theoretical proofs and full per-head curves are appendix-deferred and cannot be evaluated here."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of foundational PE literature is solid, but modern length-generalization RoPE variants (YaRN, LongRoPE, NTK-RoPE) directly relevant to the paper's central performance-paradox claim are absent."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The violin-plot ablation design (Figure 4) is an appropriate and informative choice for showing the deposit pattern; captions are detailed and clearly identify what each panel demonstrates."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "All experiments are on a single 6-layer decoder with two purpose-built synthetic tasks; there is no cross-domain, cross-scale, or real-language-modeling evidence, making generality claims to real LLMs unsupported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The deposit-pattern finding and Toeplitz framework are interesting contributions, but blocking gaps—no real-LM experiments, weak statistical reporting, unverified theoretical assumptions, and a central claim explicitly deferred to future work—place this below the ICLR acceptance threshold without major revisions."
+    }
+  },
+  "publishability_probability": 0.18
+}

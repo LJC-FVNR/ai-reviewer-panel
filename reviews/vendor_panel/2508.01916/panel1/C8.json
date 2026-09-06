@@ -1,0 +1,118 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes neighbor distance minimization (NDM), an unsupervised objective that learns an orthogonal rotation plus a coordinate partition of a transformer's residual stream, yielding non-basis-aligned subspaces that the authors argue behave like model-internal 'variables'. The idea is genuinely fresh — it removes the supervision (an abstract causal model) that DAS-style subspace methods require — and it is supported by a clean toy-model validation, a five-test GPT-2 Small circuit suite with five unsupervised baselines, InversionView-style qualitative preimages, and knowledge-conflict experiments on 1.5B/2B models. The evidentiary base is weaker than the framing suggests: NDM's reported numbers come from 'the best hyperparameters' selected on the very test suite used to evaluate it (and the same configuration then drives all qualitative results), there are no seeds, error bars, or significance tests anywhere, the Gini > 0.6 'satisfactory' threshold is calibrated by the authors' own inspection, and the most directly related classical method family — independent subspace analysis / ICA, which optimizes essentially the stated total-correlation objective — is neither discussed nor used as a baseline. These are fixable with additional experiments rather than a redesign, so the work is promising but not yet at the acceptance bar.",
+  "strengths": [
+    "The core idea is genuinely novel: prior subspace work (DAS and successors) requires a human-specified abstract causal model, whereas NDM finds candidate subspaces from activations alone, which changes what kinds of hypotheses can be discovered rather than merely confirmed.",
+    "The conceptual motivation is unusually well developed for a method paper: the argument that mutual exclusiveness (not sparsity per se) is the condition enabling superposition, and that co-occurring feature groups should be pushed toward orthogonality, gives a principled reason to expect orthogonal group-dedicated subspaces, and the toy model in Sec. 2/4 verifies the prediction directly against ground-truth W.",
+    "The evaluation is designed rather than assumed: using known GPT-2 circuits (IOI, greater-than) with subspace interchange interventions and measuring concentration of patching effect is a sensible way to test whether a discovered subspace corresponds to a circuit variable when ground-truth features are unavailable.",
+    "The authors anticipate the obvious confound that a partition could score well by having one dominant large subspace, and report Gini over raw effects, dimension-normalized effects, and variance-normalized effects; NDM leads on the average across all three normalizations.",
+    "Baselines are non-trivial and matched: identity, random orthogonal, two PCA orderings, and SAE-feature clustering adapted from Engels et al., all given NDM's dimension configuration so that the comparison isolates the rotation/partition rather than the dimension budget.",
+    "The 2B-scale experiment is a real test rather than a demo — separating parametric-knowledge routing (subspace 2) from context-knowledge routing (subspace 10) via two complementary counterfactual corruptions is a strong qualitative signature, and the authors note baselines show correlated effects under both corruptions.",
+    "Limitations are stated plainly in the body (uninterpretable small subspaces, dependence on the Linear Representation Hypothesis, coarse partitions starting at 32 dimensions, unknown circuits behind the 2B results) rather than buried."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Model selection appears to happen on the evaluation set. Sec. 5.1 states 'The results of NDM using the best hyperparameters are shown in Table 1', and Sec. 5.2 states the qualitative partition is 'given by the best configuration of NDM according to the test results from Sec. 5.1'. The baselines receive no comparable search, and the headline average (0.71) is therefore a maximum over an unreported number of NDM configurations rather than an expected value.",
+      "suggested_fix": "Select hyperparameters on a held-out set of circuits/tasks (or a disjoint subset of the five tests) and report NDM's performance on the remaining tests, plus the full distribution of scores over the hyperparameter grid. If any baseline has tunable choices, tune it under the same protocol and budget."
+    },
+    {
+      "severity": "major",
+      "issue": "No variance is reported anywhere. NDM learns an orthogonal matrix by stochastic optimization with an initialization and a merging schedule driven by a thresholded KSG mutual-information estimate, all of which are seed-sensitive, yet Table 1 and Fig. 5 present single numbers. The claim that NDM 'clearly outperform baselines' is not accompanied by any test, and the gap over the strongest baseline on some individual cells is small.",
+      "suggested_fix": "Rerun NDM with at least 5 seeds per configuration, report mean and standard deviation (or a bootstrap CI) for every cell in Table 1 and for the patching effects in Fig. 5, and apply a paired test across the five tests against the strongest baseline. Also report how stable the learned partition itself is across seeds (e.g., subspace-alignment or Grassmann distance between runs)."
+    },
+    {
+      "severity": "major",
+      "issue": "The most directly related classical method family is absent from both the related work and the baselines. The paper's own stated objective is minimizing total correlation among subspaces, which is precisely the criterion of independent subspace analysis / multidimensional ICA; the related-work paragraph enumerates interpretability papers but never engages with this lineage, so the reader cannot tell whether NDM's neighbor-distance surrogate beats a direct entropy- or ICA-based estimator.",
+      "suggested_fix": "Add ICA/independent-subspace-analysis (and ideally a direct total-correlation-minimizing objective on the same rotation parametrization) as baselines in Table 1, and add a related-work paragraph positioning NDM against that literature — explaining why a nearest-neighbor distance surrogate is preferable in high dimensions."
+    },
+    {
+      "severity": "major",
+      "issue": "The primary metric and its acceptance threshold are self-calibrated. Gini coefficient over patching effects is, as the paper concedes, 'very unconventional in machine learning', and the claim that '> 0.6' constitutes satisfactory concentration is justified by the authors' own inspection of example distributions in App. D.4. Since the central quantitative claim is 'average 0.71, significantly higher than 0.6', the conclusion rests on a threshold with no external anchor.",
+      "suggested_fix": "Anchor the metric empirically: report the Gini value achieved by a supervised DAS subspace fit for each target variable (an upper reference) and by a null distribution of random rotations (a lower reference), so that NDM's 0.71 can be read as a fraction of the achievable range rather than against a hand-set cutoff. Reporting an alternative concentration measure would also show the ranking is not metric-specific."
+    },
+    {
+      "severity": "major",
+      "issue": "Quantitative validation rests on a single 117M-parameter model and two circuits (five tests total). The abstract claims 'a strong connection between subspaces and circuit variables' and 'evidence showing scalability to 2B models', but the 2B experiments have no ground-truth circuit — as the authors acknowledge — so they are suggestive rather than validating, and the coverage does not establish that NDM generalizes across architectures, layers, or task families.",
+      "suggested_fix": "Extend the ground-truth-anchored evaluation to at least one additional model with documented circuits (e.g., Pythia or GPT-2 Medium) and to more layers/sites per circuit, and report the fraction of layers at which NDM's concentration exceeds the reference level rather than only the sites where it was applied."
+    },
+    {
+      "severity": "minor",
+      "issue": "The information-theoretic justification is explicitly heuristic ('Loosely speaking, neighbor distance reflects the entropy'). Since this argument is what licenses applying NDM when the feature-group hypothesis fails, the reader needs to know the conditions under which the surrogate tracks entropy and how badly the KSG estimator degrades at the subspace dimensionalities used (up to 256).",
+      "suggested_fix": "State the connection as a proposition with explicit assumptions (e.g., via the Kozachenko-Leonenko entropy estimator, of which the mean log nearest-neighbor distance is the core term), note that the objective uses distance rather than log-distance and discuss the consequence, and add a sanity check of KSG estimates at the relevant dimensions on synthetic data with known MI."
+    },
+    {
+      "severity": "minor",
+      "issue": "Qualitative evidence is presented with selection largely unquantified. Fig. 2/3 and the appendix figures show interpretable subspaces, and the text says preimages are interpretable 'most of the time', but no counting protocol, rater, or inter-rater agreement is described, and the paper elsewhere admits some small subspaces have no clear interpretation.",
+      "suggested_fix": "Report a blinded interpretability audit: sample subspaces uniformly at random (not by patching effect), have independent raters label each as interpretable/not with an agreement statistic, and report the resulting fraction with the same protocol applied to a random-rotation control."
+    },
+    {
+      "severity": "minor",
+      "issue": "The dimension-configuration procedure is under-specified in the body. The merging rule depends on an MI threshold applied to a dimension-normalized quantity (footnote 3), a starting block size of at least 32, and a measurement cadence, but the sensitivity of the final partition to these choices is deferred entirely to appendices.",
+      "suggested_fix": "Bring a threshold-sensitivity curve into the main text showing how the number of subspaces and the Table 1 average vary with the MI threshold and starting block size, so readers can judge how much the result depends on that hyperparameter."
+    }
+  ],
+  "questions_for_authors": [
+    "How many NDM configurations were trained, and what is the full distribution of test-suite averages across them? What is NDM's average under a configuration selected without reference to the five tests?",
+    "Across independent seeds, how similar are the learned partitions to one another (e.g., principal angles between corresponding subspaces), and does the same subspace index consistently recover the same variable?",
+    "Why is independent subspace analysis / ICA not compared against, given that the paper motivates NDM as total-correlation minimization? How does NDM compare to directly optimizing a differentiable total-correlation surrogate over the same orthogonal parametrization?",
+    "What Gini coefficient does a supervised DAS-learned subspace achieve on each of the five tests, and what is the distribution of Gini values under random orthogonal rotations at the same dimension configuration? Is 0.71 close to the supervised ceiling or barely above the random floor?",
+    "Table 1 shows NDM below the 0.6 reference on several cells (including test 4 and test 5 columns). What distinguishes the cases where NDM succeeds from where it fails, and does the failure pattern correlate with subspace dimension or layer depth?",
+    "In the knowledge-conflict experiments, patching is applied at all token positions for a subspace. Could the apparent parametric/context separation instead reflect positional differences between the two counterfactual constructions (Param Corrupt changes both occurrences, Context Corrupt only the first)? What does a position-matched control show?",
+    "How does the KSG estimator behave at the subspace dimensionalities actually used (up to 256 in Qwen2.5-1.5B), and how sensitive is the merging outcome to estimator bias at those dimensions?",
+    "The residual stream is known to have a small number of very-high-norm 'rogue' dimensions and outlier tokens. Does NDM's partition largely track those, and how do results change if activations are standardized or outlier tokens excluded?"
+  ],
+  "calibration_check": "Claims are mostly scoped honestly — the paper hedges with 'most of the time', flags uninterpretable subspaces, and explicitly cautions that the 2B circuits are unknown — but 'NDM clearly outperform baselines' and the abstract's 'strong connection between subspaces and circuit variables' overreach given single-run numbers with no variance and hyperparameters chosen on the evaluation suite.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Removing the requirement of a human-specified abstract causal model turns subspace analysis from hypothesis-confirmation into hypothesis-discovery, and the proposed 'subspace circuits' direction (input-independent units readable from weights) is something interpretability researchers would plausibly build on."
+    },
+    "novelty": {
+      "score": 8,
+      "justification": "Both the objective (nearest-neighbor distance within learned subspaces as a proxy for total correlation) and the mutual-exclusiveness reframing of superposition are new relative to the DAS/SAE literature the paper cites, though the underlying independent-subspace idea has an unacknowledged classical precedent."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The toy validation and the interchange-intervention design are sound in principle, but selecting the reported configuration on the evaluation suite, calibrating the success threshold by the authors' own inspection, and grounding the objective in an admittedly loose entropy argument together weaken the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "There are no seeds, error bars, confidence intervals, or significance tests anywhere in the paper, despite a stochastically optimized method whose merging schedule depends on a noisy MI estimator, so it is impossible to tell whether the margins in Table 1 exceed run-to-run variation."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations, failure cases, and the interpretive caveats around the 2B results are stated openly in the body rather than hidden, but the superiority claims and abstract framing are stronger than single-run, self-tuned numbers support."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The motivation and the geometric intuition in Fig. 1b are conveyed unusually well, but the formal notation in Eqs. 2-4 is cramped and hard to follow, and the merging algorithm, ablations, and most experimental settings are pushed into appendices, leaving the body thin on operational detail."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "The paper follows the standard arc (motivation, method, toy validation, LM experiments, conclusion) at appropriate length, but related work is deferred to a compressed paragraph inside the Discussion near the end, which delays positioning the contribution against prior subspace methods."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The objective, the orthogonal parametrization, the merging criterion, the models, the circuits, the preimage protocol (1M activations, 0.85 cosine threshold, 4000 sequences), and the counterfactual construction are described concretely enough to attempt a reimplementation, but training hyperparameters, MI threshold values, and the merging schedule are entirely deferred to appendices, and the number of configurations searched is not stated."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of the interpretability landscape (components, sparse features, positions, parameters, subspaces) is broad and the delineation from DAS is clear, but the omission of independent subspace analysis / ICA — the classical method for exactly the stated total-correlation objective — is a substantive positioning gap rather than a citation nitpick."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The display items carry real argumentative load rather than decorating: Fig. 1a/1d show the toy ground truth before and after training, Fig. 3's four preimages for the same token at the same layer is a compelling demonstration of aspect separation, and Fig. 5's asymmetric patching effects under the two corruptions is the crux of the scaling claim; Table 1 is informative but reports point estimates only."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Ground-truth-anchored evidence comes from one 117M model, two circuits, and five tests, while the larger-model results have no circuit-level ground truth, which under-supports the general claim that NDM recovers model variables across models and tasks."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A genuinely original and well-motivated method with promising qualitative and quantitative signal, held below the bar by evaluation-set hyperparameter selection, a complete absence of variance reporting, a self-calibrated success threshold, and a missing baseline family that the paper's own objective points at — all addressable with additional experiments."
+    }
+  },
+  "publishability_probability": 0.4
+}

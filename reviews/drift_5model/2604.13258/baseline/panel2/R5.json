@@ -1,0 +1,104 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes HETA, a token attribution framework for decoder-only LLMs combining attention-weighted causal flow, Hessian-based second-order sensitivity, and KL-divergence information loss. The problem is well-motivated and the three-component design is principled. However, the reported performance margins are implausibly large (up to 6× over ReAgent on Soft-NC), the primary evaluation relies on a self-designed benchmark with LLM-generated annotations as ground truth (including 'GPT-5 Thinking'), and several experimental details — including a missing strong baseline (ReAgent) from two of three model sections in Table 3, and absent sensitivity analysis for the β and γ hyperparameters — raise serious reproducibility and validity concerns that must be resolved before acceptance.",
+  "strengths": [
+    "Addresses a genuinely underserved problem: faithful token attribution for autoregressive, decoder-only LLMs, where encoder-centric methods demonstrably fail.",
+    "The three-component design (causal semantic gating, Hessian curvature, KL information loss) is well-motivated and each component is grounded in prior literature; the combination is novel.",
+    "Broad experimental scope: four model families spanning 3B–70B parameters, three standard benchmarks, a new curated dataset, nine attribution baselines, and multiple robustness stress tests (noise perturbation, active/passive rephrasing, decoding hyperparameter sweep).",
+    "The decoding-hyperparameter robustness analysis (Table 2) is a thoughtful contribution — showing <1% variation for HETA versus 2–5% for all baselines is a clean, reproducible result.",
+    "Ablation study (Figure 2a–c) covers all six meaningful component combinations and correctly identifies the causal gate MT as the most critical element."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Implausibly large performance margins: HETA achieves Soft-NC ≈10.3 on LongRA (GPT-J) and ≈9.9 on LongRA (LLaMA-70B), while the next-best method (ReAgent/IG/PML) scores ≤2.2. A 5–6× improvement in Soft-NC is without precedent in the attribution literature. This strongly suggests either (a) baselines are not implemented correctly or not given fair hyperparameter tuning, (b) HETA hyperparameters (β, γ, rank, window) were tuned on the test distribution, or (c) the Soft-NC/Soft-NS definition diverges from that of Zhao and Shan (2024) in a way that favors HETA. The authors must provide the exact Soft-NC/Soft-NS formulas used, confirm baseline implementations match published codebases, and provide per-method hyperparameter settings.",
+      "suggested_fix": "Reproduce at least two top baselines (ReAgent, IG) using their official implementations under identical evaluation code, and report implementation provenance. If margins remain above ×2, provide a theoretical explanation. Consider an independent replication experiment."
+    },
+    {
+      "severity": "blocking",
+      "issue": "ReAgent is missing from Table 3 for GPT-J-6B and Phi-3-Medium-14B. The prose claims it is 'consistently the strongest non-HETA method', yet its scores appear only for LLaMA-70B. This selective reporting is not explained and could substantially alter the comparative picture for the two smaller models.",
+      "suggested_fix": "Add ReAgent results for all model sections in Table 3, or explicitly state and justify any model/baseline exclusion. All baselines listed in the experimental setup must appear in all result tables."
+    },
+    {
+      "severity": "major",
+      "issue": "Circular benchmark and metric design: the curated dataset is constructed by the authors, the DSA metric is defined by the authors, and ground-truth annotations are produced by GPT-4o and 'GPT-5 Thinking' — a model not publicly available or verifiable. The combination of self-designed task, self-designed metric, and private-model annotations makes the primary alignment result (Table 1) difficult to trust or reproduce independently.",
+      "suggested_fix": "Complement DSA with at least one established human-annotation alignment benchmark (e.g., ERASER, FeVER highlights, or published human-annotated rationale sets). Separately, remove the dependency on GPT-5 Thinking or replace it with a reproducible model; release annotation scripts so the community can re-annotate with available models."
+    },
+    {
+      "severity": "major",
+      "issue": "No sensitivity analysis for the key hyperparameters β and γ. Both are fixed at 0.5 with no ablation. Given that HETA's final score is a product (gate × (β·Hessian + γ·KL)), performance could degrade severely off this setting, which would undermine the claim of robustness.",
+      "suggested_fix": "Add a 2D grid sweep over β, γ ∈ {0.1, 0.3, 0.5, 0.7, 0.9} on one benchmark/model pair and report Soft-NC/Soft-NS variation. Show the method is insensitive in a reasonable neighborhood of β = γ = 0.5."
+    },
+    {
+      "severity": "minor",
+      "issue": "The sigmoid motivation example (Section 3) is logically reversed. In the saturated negative regime (w·x + b ≪ 0), both the gradient and the finite-perturbation response are small — the function barely changes for any finite ε. This is the opposite of the claimed phenomenon. A correct example would be a near-saddle in the positive saturation regime or a ReLU neuron near zero.",
+      "suggested_fix": "Replace the example with one where the gradient genuinely vanishes but finite perturbations produce nontrivial output changes, or remove the specific example and rely only on the abstract Taylor-expansion argument."
+    },
+    {
+      "severity": "minor",
+      "issue": "The DSA formula as typeset is ambiguous: both 'P_j∈S_NarrQA fs_j' and the full expression 'i∈SSciQ ssi − P_j∈SNarrQA fsj' appear in the same sentence but their relationship is unclear. It is also undefined whether SNarrQA and SSciQ are top-k sets or all tokens in each segment.",
+      "suggested_fix": "Present DSA as a single numbered equation with all terms defined; state explicitly whether the sets are all tokens in each segment or a ranked subset."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you confirm that all baseline methods (especially ReAgent, ContextCite, and IG) were run from their official public implementations, and that no hyperparameter tuning was performed on the test sets? If implementations differ from published code, please describe the changes.",
+    "Why are ReAgent's Soft-NC / Soft-NS results absent from Table 3 for GPT-J and Phi-3? Was this a table formatting artifact, or were those experiments not run?",
+    "What is 'GPT-5 Thinking'? Is this a publicly available model or an internal API access? If the latter, how can the annotation step be reproduced by the community?",
+    "What is the wall-clock and GPU-memory overhead of HETA (full and LR+WIN variants) relative to each baseline on a 512-token sequence? Table 2 and the experimental setup mention compute details but defer to the appendix; can a summary be provided in the main paper?",
+    "How sensitive is HETA's performance to β and γ? Were these values chosen via a held-out validation set, or are they theoretical defaults?",
+    "For the Soft-NC metric, what exactly is the perturbation procedure used (masking, replacement, or embedding noise), and does it match exactly the procedure in Zhao and Shan (2024)? The 5–6× margin is surprising and warrants a precise methodological comparison."
+  ],
+  "calibration_check": "The abstract's claim of 'establishing a new standard for interpretability in autoregressive language models' is too strong given that the primary evaluations rely on a self-constructed benchmark and self-defined metric, one key baseline is missing from two model sections, and the reported margins (5–6×) are unprecedented and unvalidated; more modest, evidence-scoped claims are required.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Faithful attribution for decoder-only LLMs is a genuine and growing need; the new benchmark dataset adds value, but the significance hinges on the contested result magnitudes."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Each component (attention rollout, Hessian-vector products, KL masking) is individually known; combining them with a causal gate applied to decoder architectures is a meaningful but incremental synthesis."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Method formalism is adequate, but the implausibly large empirical margins, the incorrect motivating example, and the missing ReAgent baseline in two table sections collectively undermine confidence in the experimental claims."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds reported; standard deviations are provided as single aggregate values rather than per-method; no significance tests; 5–6× Soft-NC margins against baselines are statistically implausible without further validation."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The abstract makes strong universality claims ('establishing a new standard') that outrun the evidence, which relies on self-designed metrics and LLM-generated annotation; the limitations section briefly acknowledges runtime costs but not evaluation circularity."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable and well-organized, but the DSA formula is ambiguous, key details are deferred to the appendix, and Table 3 has unexplained missing rows."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR conference structure is followed with appropriate sections; length appears within norms; Qwen results placed in appendix is justifiable but weakens coverage in the main paper."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core hyperparameters and hardware are stated, but code/data links are anonymized (acceptable), annotation relies on a non-public model ('GPT-5 Thinking'), and baseline implementation details are absent."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of relevant attribution methods is thorough and fair; mechanistic interpretability and activation-patching literature receive only passing mention, which is acceptable given the paper's scope."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative ablation bar plots and robustness comparisons across multiple metrics; the pipeline overview (Figure 1) is well-described; qualitative attribution examples are limited to two instances."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four model families and three standard benchmarks provide reasonable breadth, but ReAgent is missing from two of three model sections in the main results table, and Qwen results are relegated to the appendix."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Promising and principled approach to an important problem, but the unexplained 5–6× performance margins over the closest baseline, missing baseline entries, circular benchmark design, and non-reproducible annotation pipeline constitute substantive experimental deficiencies requiring major revision before acceptance."
+    }
+  },
+  "publishability_probability": 0.2
+}

@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a 'geometric intervention' framework for video anomaly detection with a frozen MLLM: identify high-Fisher-ratio attention heads (RSA), train a small adapter (HMC) that produces context-dependent scaling of those heads, then classify with a logistic scorer. The framework is coherent and includes reasonable ablations, but the empirical gains over the closest tuning-free baseline are marginal (+0.43% AUC on UCF, +0.87% AP on XD) without error bars on the main comparison, the paper systematically overclaims (calling itself 'tuning-free' while training an adapter and scorer, and claiming 'new competitive SOTA' despite trailing weakly-supervised methods), and evaluation is limited to a single MLLM backbone on two benchmarks — so generality claims are not supported. The 'manifold rectification' formalism is largely rebranding of element-wise gated scaling, and novelty relative to adapter/model-editing literature is not clearly established.",
+  "strengths": [
+    "Clean, readable framework: head selection by an interpretable separability score, followed by a lightweight learnable modulator with a global gate + per-head local gate.",
+    "Data efficiency is genuine and well-quantified: Table 4 shows the method plateaus at 1% calibration data, and Table 3 shows the same four heads are identified across 10 seeds — a useful empirical observation for practitioners.",
+    "Ablations isolate the intended components (Table 2): removing GSG, replacing anisotropic with additive/static scaling, and using heuristic head selection all degrade performance, supporting the design choices.",
+    "Post-hoc explainability via re-submitting flagged frames to the frozen MLLM is a sensible, low-cost affordance of the frozen-backbone setup.",
+    "Hyperparameter sweep on K (experts) and F (frames) is reported with clear best-value justification."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Overclaiming that is not supported by the evidence. The abstract/intro/conclusion repeatedly call the method 'tuning-free' and claim 'new competitive SOTA', but (a) an HMC adapter and a logistic scorer are trained end-to-end on labeled calibration data — this is a small-tuning method, not tuning-free; and (b) gains over HiProbeVAD are +0.43% AUC (UCF) and +0.87% AP (XD) with no confidence intervals, and the method still trails weakly-supervised VadCLIP (88.02% / 84.51%). Prose like 'SteerVAD supports a new competitive (SOTA)' is imprecise.",
+      "suggested_fix": "Reframe as 'frozen-backbone, parameter-efficient' rather than tuning-free; drop or heavily qualify SOTA language; add mean±std over multiple seeds for the main comparison table and report a paired significance test versus HiProbeVAD to establish whether the improvements are statistically real."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical support for the main claim is thin. Table 1 reports a single number per method; only the LAE-selection stability analysis (Table 3) provides seed variance, and its σ≈0.04% is suspiciously tight for a full pipeline (it appears to measure LAE-set stability, not end-to-end AUC variance including HMC training initialization). Without error bars on Table 1 and Table 2, differences of ~0.4 AUC cannot be distinguished from noise.",
+      "suggested_fix": "Report end-to-end AUC/AP as mean±std over ≥5 seeds for every row of Table 1 and Table 2 that the paper controls, and clarify exactly what 'σ' in Table 3 measures."
+    },
+    {
+      "severity": "major",
+      "issue": "Breadth is insufficient for the generality the paper asserts. All experiments use one MLLM (InternVL3), two VAD benchmarks (UCF-Crime, XD-Violence), and one head-count/frame configuration. Claims that RSA identifies 'stable functional circuits' and that the framework generalizes across MLLMs cannot be evaluated from this evidence.",
+      "suggested_fix": "Add at least one additional MLLM backbone (e.g., LLaVA-family or Qwen-VL family) to test whether RSA identifies analogous heads and whether HMC gains transfer; add one further dataset (e.g., ShanghaiTech, MSAD) to test cross-domain behavior."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is under-differentiated. The 'representation manifold rectification' operation reduces to h' = h · (1 + s_global · g_i), which is an element-wise gated scaling — essentially a context-conditioned FiLM/adapter on selected attention heads. RSA is a Fisher-style between/within-class scatter ratio. Related work does not situate the contribution against FiLM, LoRA-style adapters, activation steering, representation engineering, or prior attention-head probing/selection methods, so the delta from the mechanistic-interpretability literature is unclear.",
+      "suggested_fix": "Add a dedicated positioning subsection contrasting HMC with FiLM/adapter/steering-vector methods, and RSA with prior Fisher-ratio-based probing and mechanistic head-selection; if the operation is a known primitive, argue for the specific application/insight rather than mechanical novelty."
+    },
+    {
+      "severity": "minor",
+      "issue": "The manifold-hypothesis framing does more rhetorical than technical work. Nothing in the method actually estimates or manipulates a manifold — the operation is an element-wise gated multiply on per-head vectors, and the t-SNE 'restructuring' is expected of any discriminatively trained head.",
+      "suggested_fix": "Either tone down the manifold language and describe the method plainly as gated feature modulation on selected attention heads, or provide a quantitative geometric analysis (e.g., changes in class-conditional intrinsic dimension, alignment/uniformity) that goes beyond a t-SNE picture."
+    },
+    {
+      "severity": "minor",
+      "issue": "The comparison in Table 1 mixes model scales without controls. SteerVAD (~8B) is compared to LAVAD (~14B) and to 0.4B–1.2B zero-shot baselines with no head-to-head at matched compute, so the 'efficiency' narrative is not tightly supported.",
+      "suggested_fix": "Add a matched-backbone comparison (SteerVAD vs. HiProbeVAD and VERA on the same MLLM checkpoint) and report inference FLOPs/latency."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is thin: model editing / activation steering / attention-head selection literature is referenced only in passing, and adapter-based VAD methods are not discussed. The contribution boundary is therefore hard to verify from the prose.",
+      "suggested_fix": "Expand Related Work with a paragraph each on (i) activation steering / representation engineering, (ii) adapter/FiLM methods, and (iii) attention-head probing/selection."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: several OCR-like artefacts ('supports a new competitive (SOTA)', broken hyphenation), an author name appears to leak in the Table 1 row 'HiProbeVAD ([Author] et al., 2025)', and multiple key derivations are deferred to appendices (topology in App. A, framework detail in App. B).",
+      "suggested_fix": "Clean the prose, verify anonymization of the HiProbeVAD row, and move at least the geometric interpretation of the scaling operation and the HMC input/output shapes into the main body."
+    }
+  ],
+  "questions_for_authors": [
+    "Please report mean±std over ≥5 seeds for every row of Table 1 that you control, and a paired test versus HiProbeVAD. Are the +0.43 AUC / +0.87 AP gains statistically significant?",
+    "In Table 3, does σ≈0.04% refer to end-to-end AUC variance (including HMC/scorer initialization and training) or only to variation induced by the 1% calibration split? If the former, why is variance so much smaller than the ablation deltas?",
+    "Do the same layer/head indices (L18H4, L23H24, L21H21, L22H7) surface when RSA is run on a different MLLM backbone, or on a different dataset? Without this, the 'stable functional circuits' claim is only about seed stability on one model.",
+    "How does SteerVAD compare to a simple context-conditioned FiLM/LoRA adapter applied to the same K heads, and to a static steering-vector baseline learned on the same 1% split? The additive/static rows in Table 2 do not fully cover this.",
+    "Why is the method labelled 'tuning-free' when the HMC and logistic scorer are trained with BCE + L2 regularization on labeled data? Would you consider reframing as 'parameter-efficient with frozen backbone'?",
+    "How sensitive are results to the choice of MLLM backbone? A single-backbone evaluation cannot support the generality asserted in the abstract and conclusion."
+  ],
+  "calibration_check": "Claims are systematically over-scoped relative to the evidence: 'tuning-free' understates that an adapter and scorer are trained on labeled data, 'new competitive SOTA' oversells sub-1-point gains without variance, and 'stable functional circuits' generalizes from a single-model/single-dataset stability check.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A clean, data-efficient recipe for adapting frozen MLLMs to VAD is useful, but the gain over the nearest tuning-free baseline is small and the method still trails weakly-supervised approaches."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "RSA is a Fisher-style scatter ratio and the 'manifold rectification' is an element-wise gated scaling on selected heads; the delta from adapter/steering/probing literature is not clearly established."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Ablations on HMC components and on head-selection heuristics are reasonable, but generality is tested on a single backbone and small deltas are not accompanied by significance testing."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main comparison lacks error bars or significance tests; the reported σ≈0.04% only concerns LAE-set stability across calibration splits, not end-to-end AUC variance including HMC training."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Repeated 'tuning-free' and 'new competitive SOTA' framing overstates a method that trains an adapter/scorer and improves the nearest baseline by <1 point without confidence intervals."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall organization is standard and the pipeline is followable, though several core details are deferred to appendices and there are OCR/prose artefacts including one that may leak identity in Table 1."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows conventional structure (Abstract, Intro, Related Work, Method, Experiments, Conclusion, Limitations) at a reasonable ICLR length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Backbone, optimizer, hyperparameters, dataset splits, and pipeline shape are given, but geometric derivation, HMC details, and further visualizations are pushed to appendices, and seed protocol for end-to-end AUC is unclear."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Prior work on adapters, activation steering / representation engineering, and attention-head probing is only lightly acknowledged, leaving the contribution boundary under-specified."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "From captions, figures are conventional (schematic comparison, framework diagram, UMAP/t-SNE clusters) and support rather than substantiate the geometric argument; a quantitative geometric measurement would strengthen them."
+    },
+    "breadth_generality": {
+      "score": 3,
+      "justification": "One MLLM (InternVL3), two VAD benchmarks, one head-count/frame configuration — insufficient to support the paper's implicit generality about 'functional circuits' and MLLM manifolds."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A borderline-reject in current form: coherent framework and useful data-efficiency observation, but marginal gains without significance testing, overclaiming, single-backbone evaluation, and underspecified novelty relative to adapter/steering literature."
+    }
+  },
+  "publishability_probability": 0.2
+}

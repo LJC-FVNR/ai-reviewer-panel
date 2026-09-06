@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that identifies discriminative attention heads (LAEs) via an inter-to-intra scatter ratio and steers their representations with a lightweight hierarchical meta-controller. The method is well-motivated, clearly written, and achieves state-of-the-art among tuning-free approaches on UCF-Crime and XD-Violence using only 1% calibration data. However, the core technical novelty is limited—RSA is Fisher's discriminant criterion and the anisotropic scaling reduces to FiLM-style feature modulation—and the evaluation covers only two benchmarks with a single frozen backbone, making breadth-of-generality claims hard to verify. The improvement margin over the nearest tuning-free competitor is small (~0.4–0.9%), with no significance tests reported.",
+  "strengths": [
+    "Clean problem framing: translating pre-training bias and contextual ambiguity into geometric language (manifold proximity/entanglement) provides an intuitive and consistent narrative throughout the paper.",
+    "Strong ablation study design: each component (GSG, LGM, steering type, expert selection strategy) is individually ablated and contributes measurably, with results clearly presented in Table 2.",
+    "Impressive calibration stability: 100% LAE consistency across 10 independent random-seed runs and negligible AUC variance (σ ≈ 0.04%) strongly support the claim that identified experts reflect intrinsic model circuits.",
+    "Data efficiency is rigorously quantified: Table 4 shows asymptotic saturation beyond 1% with only +0.27% gain at 100%, making the efficiency claim credible rather than anecdotal.",
+    "Large improvement over zero-shot and LAVAD-class methods on XD-Violence (83.02% vs. 70.54% for VERA) demonstrates real practical value over weaker tuning-free baselines."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "RSA is Fisher's (Linear Discriminant Analysis) inter-class-to-intra-class scatter ratio—a 70-year-old criterion. The paper presents it as 'a novel gradient-free geometric method' without citing LDA or acknowledging the equivalence. Similarly, h'_i = h_i ⊙ (1 + s·g) is element-wise conditional feature scaling, structurally identical to FiLM (Feature-wise Linear Modulation, Perez et al. 2018) and related conditioning mechanisms, none of which are cited. The 'manifold' and 'anisotropic' vocabulary inflates the novelty of operations that are well-established.",
+      "suggested_fix": "Explicitly acknowledge LDA/Fisher as the basis for RSA and cite the FiLM/conditioning literature for the modulation step. Reposition the contribution as a principled application and combination of existing tools to a new problem, rather than claiming the tools themselves are novel."
+    },
+    {
+      "severity": "major",
+      "issue": "Single frozen backbone (InternVL3) throughout all experiments. The paper claims a 'new direction for video anomaly detection' and 'powerful new direction for frozen foundation models,' but these claims are evaluated on one MLLM. Different backbone architectures (e.g., LLaVA-1.5, which already appears in Table 1 for a zero-shot baseline, or VideoChat) may produce different LAE distributions, RSA scores, and rectification quality, potentially invalidating the generality of the approach.",
+      "suggested_fix": "Repeat the core experiment on at least one additional frozen MLLM (e.g., LLaVA-1.5 or InternVL2) to demonstrate that RSA + HMC transfer across architectures. If only InternVL3 is feasible, explicitly scope the generality claim to that backbone."
+    },
+    {
+      "severity": "major",
+      "issue": "Evaluation restricted to two benchmarks (UCF-Crime, XD-Violence). Standard VAD evaluation typically also includes ShanghaiTech Campus and CUHK Avenue, which have different anomaly distributions and scene types. The claimed SOTA and generality are weakened by this narrow evaluation footprint, especially since the improvement over the nearest competitor (HiProbeVAD, apparently prior work by the same group) is +0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence—margins well within what dataset-specific tuning could explain.",
+      "suggested_fix": "Add ShanghaiTech and/or CUHK Avenue results. If these datasets are incompatible with the MLLM-based pipeline, provide a clear justification."
+    },
+    {
+      "severity": "major",
+      "issue": "No statistical significance testing for main comparison results. The improvement over HiProbeVAD is +0.43% AUC / +0.87% AP. Without reporting standard deviations over multiple training runs for the main comparison (Table 1), and without paired significance tests, it is impossible to determine whether these margins are real or within run-to-run noise. Table 3 reports seed stability only for LAE selection, not for final AUC across full training runs.",
+      "suggested_fix": "Report mean ± std over at least 3–5 independent full-pipeline runs for the main results in Table 1. Provide a significance test (e.g., paired t-test or bootstrap) against HiProbeVAD and VERA."
+    },
+    {
+      "severity": "minor",
+      "issue": "The Local Gating Module (LGM) generates steering vectors gi from the global context c only, not from the LAE features hi themselves. This design means the rectification is not truly 'local'—it cannot respond to content within each expert's feature. This is an architectural limitation that is never discussed.",
+      "suggested_fix": "Either (a) provide a cross-attention variant that conditions gi on both c and hi and compare it in an ablation, or (b) explicitly discuss why using only c is sufficient and what information is lost."
+    },
+    {
+      "severity": "minor",
+      "issue": "HiProbeVAD is listed in Table 1 as '[Author] et al., 2025' with an anonymized citation, strongly suggesting it is prior work by the submission authors. The paper does not explicitly describe the relationship, making it unclear whether SteerVAD is an extension of HiProbeVAD or an independent system. The distinction between the two methods is never stated.",
+      "suggested_fix": "Include a clear methodological comparison to HiProbeVAD in the Related Work or Experiments section (even under anonymization), explaining what SteerVAD adds beyond the prior system."
+    }
+  ],
+  "questions_for_authors": [
+    "RSA is structurally equivalent to the Fisher/LDA inter-class scatter criterion. Can you clarify what is novel about RSA beyond its application to attention head selection? Did you evaluate Fisher's exact linear projection (LDA) as a stronger baseline for RSA?",
+    "The LGM conditions gi exclusively on the global context vector c. Have you experimented with also conditioning on the per-head feature hi? If not, what is the theoretical justification for ignoring local feature content?",
+    "Table 3 shows that the same four LAEs (L18H4, L23H24, L21H21, L22H7) are selected across all 10 seeds. Are these heads in the final layers of InternVL3? Do these specific heads appear consistently on XD-Violence as well, and how do they differ from those selected by a mid-to-last-layer heuristic?",
+    "The 1% calibration set yields only ~16 videos per dataset per split (as noted in the text). BatchNorm1d in the GSG is sensitive to small batch sizes—how is this handled during training, and does switching to LayerNorm or GroupNorm affect performance?",
+    "What is the relationship between SteerVAD and HiProbeVAD? The latter achieves 86.72% / 82.15% and is anonymized in Table 1. Does SteerVAD replace HiProbeVAD entirely, or does it build on it as a component?"
+  ],
+  "calibration_check": "The paper's claims are appropriately scoped to 'tuning-free approaches' on the two tested benchmarks, and the gap with fine-tuned methods is acknowledged; however, the framing of RSA as a 'novel' method and the 'new direction' language overclaims given that the core operations are standard LDA-based selection and FiLM-style modulation, and the generality claim over frozen foundation models at large is unsupported by the single-backbone evaluation.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Advances the practically important tuning-free MLLM-VAD direction and demonstrates real data-efficiency gains, but the subfield impact is limited by the narrow evaluation and modest margins over the closest prior work."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "The RSA criterion is Fisher's LDA scatter ratio; the anisotropic scaling is FiLM-style conditional modulation; the genuine novelty lies in their combination and application to attention head steering for frozen MLLM-based VAD, which is incremental rather than a conceptual breakthrough."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "Ablations are well-structured and isolate each design choice; the stability analysis is unusually thorough for this type of paper; the composite loss and regularization design are well-justified, though the missing backbone ablation and absence of significance tests are notable gaps."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Final comparison results in Table 1 lack standard deviations across training runs and significance tests; the +0.43% AUC improvement over HiProbeVAD is unverifiable as statistically meaningful without these, and Table 3's seed stability covers only LAE selection, not end-to-end performance."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Claims are mostly scoped to tuning-free approaches and the data-efficiency advantage is rigorously quantified, but presenting Fisher's criterion as a 'novel gradient-free geometric method' and the modulation as 'anisotropic manifold scaling' is misleading framing that overstates the technical contribution."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized, the geometric narrative is consistent and accessible, and the method description is sufficiently precise; minor issues include fragmented figure-caption text in the extraction and over-reliance on appendices for key geometric interpretations."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows standard conference structure (Introduction, Related Work, Methodology, Experiments, Conclusion) with appropriate section lengths and a well-organized ablation subsection."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Hyperparameters (K=4, F=16, lr=1e-3, batch=64, λ_reg=0.1, σ_g=6, r for low-rank bottleneck, 1000 epochs) are fully specified; the backbone and datasets are standard; key architectural details (network depth, hidden dimensions) are partially deferred to an unseen appendix."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers traditional VAD, MLLM-based VAD, and mechanistic interpretability adequately, but omits the directly relevant FiLM/conditioning literature, probing classifier literature, and attention head selection work (e.g., influence functions, attention head pruning) that are necessary to properly position the RSA and HMC contributions."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "The UMAP 3D manifold visualization (Figure 2) and t-SNE rectification comparison (Figure 4) are well-chosen to support the geometric narrative; the framework diagram (Figure 3) caption describes a complete and informative system overview; all captions provide sufficient detail to judge the display items."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two benchmarks (UCF-Crime, XD-Violence) and one backbone (InternVL3) are evaluated; ShanghaiTech and CUHK Avenue are absent; no cross-domain or out-of-distribution evaluation is provided, making the generality of the 'new direction for frozen foundation models' claim substantially unsupported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A carefully executed paper with a principled design and solid ablations, but limited novelty in its core operations, unverified statistical significance for its marginal gains over the closest competitor, and insufficient breadth of evaluation to support its broader claims; major revisions (backbone ablation, additional benchmarks, significance testing, novelty repositioning) are needed before acceptance."
+    }
+  },
+  "publishability_probability": 0.22
+}

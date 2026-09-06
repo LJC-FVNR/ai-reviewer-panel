@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes an information-theoretic pipeline (VQ-VAE compression of hidden states + mutual information between discrete codes) to characterize two facets of internal planning in decoder-only LMs — planning horizon and branch awareness — plus a layer/position localization diagnostic, evaluated on CFG, path-finding, and OpenWebText with NTP vs. MTP training. The methodological framing is thoughtful and the paper is candid about many limitations, but the central inferential leap from 'MI between VQ-VAE codes' to 'planning' is under-defended against trivial alternative explanations, the models are small and mostly synthetic, and the NTP-vs-MTP conclusion is internally inconsistent (abstract vs. conclusion). It reads as a promising diagnostic tool whose headline claims currently outrun the evidence.",
+  "strengths": [
+    "Addresses a genuinely interesting and timely question (whether/how LMs plan internally) with a clearly motivated critique of probing-based approaches and a principled information-theoretic alternative.",
+    "The VQ-VAE-to-discrete-code compression is a sensible engineering choice for making MI estimation tractable over high-dimensional, variable-sized hidden-state blocks, and the authors restrict claims to relative (within-setting) comparisons, acknowledging that absolute MI is meaningless here.",
+    "Reasonable task diversity spanning symbolic (CFG), relational-reasoning (path-finding with short/long variants), and naturalistic (OpenWebText) settings, with a designed decoy-vs-alternative-path construction for the branch-awareness test.",
+    "Appendices reportedly include validation of the VQ-VAE choice, a probing-confound diagnostic, and finite-sample MI error analysis, and the paper is honest that the method captures only aggregate phenomena."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The core interpretive claim — high MI between prefix codes and future decision states indicates 'forward-looking planning' — is not adequately separated from trivial explanations. The decision state ZLT+τ is the model's OWN autoregressively generated output, so it is deterministically produced from the prefix; nonzero MI is nearly guaranteed and need not reflect deliberate pre-output planning. The CFG-vs-PF horizon difference could simply reflect that a path is fully determined by the (already-present) graph edges, whereas CFG continuations are locally constrained — a property of the task/data, not of the model's planning.",
+      "suggested_fix": "Add controls that decouple 'planning' from 'the prefix determines the output.' E.g., compare against a matched model or a shuffled/ablated-prefix baseline, use interventions (patch prefix computations and measure causal effect on later tokens), or compare MI to an information-theoretic upper bound implied purely by task structure so the reader can see what surplus (if any) is attributable to the model."
+    },
+    {
+      "severity": "major",
+      "issue": "The branch-awareness result [I(ZH;Zalt) > I(ZH;Zdecoy)] is confounded by graph structure. The alternative correct path is derivable from the edge list present in the prefix, while the decoy is (by construction) not a valid path. So the prefix encoding more information about the alternative path than the decoy may simply reflect that the prefix encodes the graph, not that the model 'keeps multiple futures alive.' Disjointness of node sets rules out node overlap but not this structural confound.",
+      "suggested_fix": "Compare against a decoy that is ALSO a valid path in a different (matched) graph, or a valid path made invalid only by a single edge deletion, so validity/derivability from the prefix is matched across alt and decoy. Alternatively demonstrate the alternative-path information is present at generation time in a way not trivially inferable from the edge list."
+    },
+    {
+      "severity": "major",
+      "issue": "Internal inconsistency in the headline NTP-vs-MTP claim. The abstract states 'Training with MTP loss modestly reduces purely myopic behavior,' whereas the Conclusion states 'we find no consistent differences between NTP- and MTP-trained models.' Table 1 shows MMTP with higher accuracy and larger branch ratio on PF-Long, but figures suggest only slight/uneven differences. The paper cannot simultaneously claim an effect and no effect.",
+      "suggested_fix": "State the NTP/MTP finding once, precisely, backed by significance tests across seeds. If effects are marginal, say so consistently in abstract, results, and conclusion."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is over-claimed relative to the evidence. Experiments use small architecture-matched GPT-3-Small-scale models (and an 8-layer transformer) trained largely on synthetic tasks; OpenWebText is used only for the localization diagnostic, not for the horizon or branch-awareness analyses. The title and framing ('planning in language models') imply far broader coverage than a handful of small models on mostly synthetic data.",
+      "suggested_fix": "Either scope claims explicitly to small/from-scratch models on structured tasks, or add at least one larger pretrained model and run the horizon/branch analyses on natural text so the planning conclusions are not synthetic-only."
+    },
+    {
+      "severity": "minor",
+      "issue": "MI comparability across separately trained VQ-VAEs. Different block families use separately trained VQ-VAEs, and MI between learned codes depends on the encoder, not just the underlying representations (as the authors acknowledge). Within-setting normalization mitigates but does not fully justify cross-condition comparisons (e.g., NTP vs MTP, CFG vs PF) that the narrative sometimes makes.",
+      "suggested_fix": "Report sensitivity of conclusions to codebook size K and VQ-VAE seeds/hyperparameters, and clarify which comparisons are truly within-encoder vs across-encoder."
+    },
+    {
+      "severity": "minor",
+      "issue": "Statistical reporting is thin. 'Multiple seeds' is asserted but Figure 3 captions do not indicate error bars, and no significance tests accompany the trend claims (e.g., 'peaks beyond tau=1', 'slightly more uniform', 'modestly reduces').",
+      "suggested_fix": "Add error bands/CIs to all trend plots, report seed counts, and use significance tests (or effect sizes) for the qualitative claims."
+    }
+  ],
+  "questions_for_authors": [
+    "Since the decision state is the model's own generated token, how do you distinguish genuine forward-looking planning from the trivial fact that outputs are deterministic functions of prefix computation? What baseline captures the 'null' MI expected purely from task structure?",
+    "In the branch-awareness experiment, is the decoy path a valid path in the graph? If not, how do you rule out that higher I(ZH;Zalt) merely reflects the prefix encoding derivable (valid) paths vs. non-derivable (invalid) ones?",
+    "Please reconcile the abstract ('MTP modestly reduces myopic behavior') with the conclusion ('no consistent differences'). Which is supported by significance testing across seeds?",
+    "How sensitive are the nMI trends and heatmaps to codebook size K, VQ-VAE architecture, and training seed? Do the qualitative conclusions hold under these variations?",
+    "Do the horizon and branch-awareness findings replicate on OpenWebText or a larger pretrained model, or are they specific to small from-scratch models on synthetic tasks?"
+  ],
+  "calibration_check": "The paper is honest about several methodological limits (relative-only comparisons, aggregate-level insight), but the framing of MI-between-codes as 'planning' and the abstract's MTP claim outrun the controls provided, so claims are only partially scoped to the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The question is important and the diagnostic tool could interest interpretability researchers, but the concrete findings are largely confirmatory (recency effect, late layers most informative) and the tool's actionable utility is unclear."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combining VQ-VAE compression with empirical MI as a probing-free interpretability lens is a fresh application, but the individual components are standard and the planning conclusions echo prior work."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "The central claim-evidence link is weak: 'planning' MI is not separated from the trivial fact that outputs are deterministic functions of the prefix, and the branch-awareness result is confounded by graph derivability."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Multiple seeds and some mean±std are reported, but figures lack clear error bars and no significance tests back the many qualitative trend claims ('peaks', 'slightly more uniform', 'modestly reduces')."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Commendably candid about relative-only interpretation and aggregate scope, yet undermined by the abstract/conclusion contradiction on MTP and by 'planning' framing that exceeds the controls."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure and method are followable, but the exposition is notation-heavy and some central claims are muddled or inconsistent across sections."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, conclusion) is present and within reasonable length, with detail deferred to appendices."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Method, losses, tasks, and VQ-VAE setup are described with key details in appendices; judged on methodology alone this is adequate though codebook/training specifics that drive MI would need to be complete."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Probing critiques, mechanistic interpretability, and information-theoretic lenses are discussed fairly and relevantly, positioning the contribution reasonably against prior work."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative, claim-relevant displays (nMI decay curves, heatmaps, branch-ratio table), but they should include error bars and are the primary evidence for trends that need statistical backing."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Small architecture-matched / 8-layer models on mostly synthetic tasks, with OpenWebText used only for the localization diagnostic, do not support the broad 'planning in language models' claim."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, well-motivated diagnostic framework whose headline planning claims are under-controlled and over-generalized; borderline reject that needs substantial added controls and consistency fixes."
+    }
+  },
+  "publishability_probability": 0.28
+}

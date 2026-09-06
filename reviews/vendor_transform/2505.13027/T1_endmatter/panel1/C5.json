@@ -1,0 +1,101 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper introduces a Toeplitz-matrix framework that cleanly separates additive vs. multiplicative positional encodings and uses it to discover a striking 'single-head deposit pattern' in RoPE on synthetic position-sensitive tasks, supported by thoughtful ablations and an assumption-heavy gradient analysis. The mechanistic finding is genuinely interesting, but the central explanatory claim—that this pattern explains RoPE's real-world performance paradox/length-extrapolation struggles—is explicitly deferred to future work, and all evidence comes from two very simple synthetic tasks on a single 6-layer model with no real-language or scale validation. The work is promising but needs substantial additional experiments to support its broader claims.",
+  "strengths": [
+    "The Toeplitz-based unification of additive and multiplicative PE is a clean, interpretable lens that makes the additive-vs-multiplicative distinction concrete in the logit matrix (Eqs. 1-2), and the framework correctly predicts the qualitative task-split behavior.",
+    "The 'single-head deposit pattern' is a novel, striking, and well-documented empirical phenomenon; the head-wise causal ablation (Figure 4) with the NoPE and RoPE-Task-2 controls convincingly ties it to the RoPE-plus-position-sensitive combination rather than generic training.",
+    "The ablation program is well-designed: Absolute-PE injection (showing re-emergence in deeper layers), subset-of-heads RoPE (showing one head suffices), the MLA mitigation, and the pi-removal vs. random-vector control each isolate a distinct hypothesis.",
+    "The gradient analysis (Propositions 6.1-6.2, Theorem 6.1) provides a genuine formal account of why a non-cancellable seed in RoPE gets exponentially amplified into single-head specialization, giving the empirical deposit pattern a theoretical anchor."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The paper's headline contribution is a 'mechanistic explanation for [RoPE's] observed performance paradox,' yet the link between the synthetic-task deposit pattern and RoPE's real-world behavior (length extrapolation, perplexity gaps vs NoPE/relative PE) is never directly tested; the authors explicitly leave it for future work. The central explanatory claim is thus asserted, not demonstrated.",
+      "suggested_fix": "Validate the mechanism on at least one real setting: e.g., show the deposit pattern occurs in a language-model-trained transformer and that interventions which reduce it (MLA or head-mixing) measurably improve length-extrapolation or the Kazemnejad-et-al. parity/lookup tasks where RoPE underperforms NoPE."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Experimental breadth is very narrow: two extremely simple synthetic tasks (binned-distance classification, trigger counting) on a single 6-layer decoder. Generalization to other architectures, depths, vocabularies, and sequence lengths is untested, so the generality of 'the deposit pattern is intrinsic to RoPE' is under-supported.",
+      "suggested_fix": "Vary model depth/width, sequence length, and vocabulary; add at least one non-trivial algorithmic task (e.g., Dyck or copy/reverse) and one real-data task; report where the deposit pattern does and does not appear."
+    },
+    {
+      "severity": "major",
+      "issue": "Assumption 3.1 (xi = ci + pi) is the foundation of the framework but does not naturally apply to RoPE, which rotates Q/K rather than adding a position vector to the embedding; the authors call it a 'structural lens,' but the framework's conclusions about RoPE's multiplicative kernel rest on a decomposition RoPE does not actually perform.",
+      "suggested_fix": "Make the status of the decomposition for RoPE fully rigorous (e.g., via the complex-representation derivation at the logit level only, without requiring an embedding-level pi), and clarify which claims depend on the strong vs. weak form of the assumption."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin: variance is described only as '<5%' in prose, Table 1 gives single point estimates with no error bars, and no significance tests are reported despite the MLA-vs-RoPE and RoPE-vs-Absolute comparisons being central.",
+      "suggested_fix": "Report mean +/- std over the 5 seeds for every table cell and figure curve, and add paired significance tests for the key claims (deposit-head ablation drop, MLA vs RoPE on Task 2)."
+    },
+    {
+      "severity": "major",
+      "issue": "The proposed 'mitigation' (MLA) is DeepSeek's existing architecture adopted wholesale; the paper does not establish that MLA's benefit here is causally due to reduced deposit-pattern over-specialization rather than to its other differences (extra projection pathways, capacity increase, NoPE/RoPE concatenation).",
+      "suggested_fix": "Add a controlled ablation isolating the NoPE+RoPE concatenation from MLA's other components (e.g., a simple parallel NoPE-head + RoPE-head hybrid matched for parameter count) to show the mitigation, not just the architecture, is what matters."
+    },
+    {
+      "severity": "minor",
+      "issue": "The theoretical results (Props 6.1-6.2, Thm 6.1) rest on Assumptions A1-A3 whose empirical plausibility is only asserted ('consistent with pre-norm,' 'generic in overparameterized models'); without seeing how tightly the proofs use them, it is hard to judge whether the exponential-amplification conclusion is robust.",
+      "suggested_fix": "Empirically verify A1-A3 during early training (singular-value ranges of inter-layer Jacobians, sign of the anchor gradient) and report a sensitivity analysis showing the conclusion survives reasonable relaxation of each assumption."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the single-head deposit pattern appear in a transformer pretrained on natural language, and does its strength correlate across checkpoints with measured length-extrapolation degradation?",
+    "How does the pattern scale with depth, width, head count, and sequence length - does it weaken or strengthen, and is the 'single' head always in layer 1?",
+    "Table 1 shows MLA underperforms RoPE on Task 1 (88.34 vs 92.64); is this gap significant over seeds, and does it grow on harder position-sensitive tasks where the deposit specialization might actually be beneficial?",
+    "Can you separate the effect of MLA's NoPE+RoPE concatenation from its added capacity and projection-pathway differences via a parameter-matched control?"
+  ],
+  "calibration_check": "Claims are mostly scoped to synthetic tasks in the body, but the abstract/introduction framing ('mechanistic explanation for its observed performance paradox') overclaims relative to evidence, since the real-world paradox link is explicitly left for future work.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The deposit pattern is an interesting mechanistic finding, but real-world impact is undemonstrated and the central explanatory claim is deferred to future work."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The deposit pattern and the Toeplitz unifying lens are genuinely new; the MLA 'mitigation' is an existing architecture repurposed rather than a novel contribution."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Synthetic-task methodology and ablations are sound, but the framework's core decomposition does not cleanly apply to RoPE and the central explanatory claim is not directly tested."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Five seeds with qualitatively reported '<5%' variance and no error bars in Table 1 or significance tests for the key comparisons."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are explicitly stated, but the abstract/intro framing overclaims a 'mechanistic explanation' for a real-world paradox that the paper does not validate."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Well-written with a logical flow; the framework and experimental narrative are easy to follow despite some heavy notation."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard Introduction/Related Work/Method/Experiments/Ablations/Theory/Conclusion structure with reasonable length for ICLR."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Synthetic tasks, model size, vocab, and dataset sizes are described; full details are deferred to an appendix; code links redacted per double-blind (not penalized)."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Fair coverage of PE, mechanistic-analysis, and Toeplitz/spectral literatures with correct positioning against Kazemnejad et al. and Zuo et al.; some anonymized citations."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative figures (head-wise ablation violins, hybrid re-emergence, layer-wise pi-removal) that directly support the claims rather than decorating them."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two very simple synthetic tasks on one 6-layer decoder with no real-data, scale, or algorithmic-task validation; generality of the 'intrinsic to RoPE' claim is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising mechanistic finding and framework, but it needs substantial added experiments (real tasks, length-extrapolation link, scale) to support its broader claims."
+    }
+  },
+  "publishability_probability": 0.25
+}

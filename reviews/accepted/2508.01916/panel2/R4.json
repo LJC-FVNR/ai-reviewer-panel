@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes Neighbor Distance Minimization (NDM), an unsupervised method that learns an orthogonal rotation of a model's representation space so that a nearest-neighbor distance criterion within candidate subspaces is minimized, yielding non-basis-aligned interpretable subspaces. The motivation via mutual-exclusive feature groups and total correlation is thoughtful, and the empirical story spans toy models, GPT-2 Small circuits (with a Gini-based concentration metric), qualitative InversionView-style preimages, and applications to Qwen2.5-1.5B and Gemma-2-2B knowledge routing. Overall, the contribution is novel, useful for the mech-interp community, and reasonably supported, though several aspects (statistical reporting, baseline diversity vs. DAS/SAE alternatives, and metric choice) deserve strengthening.",
+  "strengths": [
+    "Genuinely novel unsupervised subspace-decomposition objective with a clean theoretical motivation (feature groups, mutual exclusiveness, and a total-correlation interpretation) that goes beyond DAS-style supervised approaches.",
+    "Multi-pronged evaluation: toy models with ground-truth features, quantitative causal-intervention tests against known GPT-2 Small circuits (IOI, Greater-Than), qualitative preimage analysis, and a plausibility experiment on 2B models (Qwen2.5-1.5B, Gemma-2-2B) for context vs. parametric knowledge routing.",
+    "Comparison to five unsupervised baselines (identity, random, PCA-1, PCA-2, SAE-feature clustering) on the GPT-2 test suite, with NDM winning on average — a fair like-for-like comparison given the unsupervised framing.",
+    "Thoughtful methodological details, e.g., MI-based subspace merging via KSG estimator to handle the non-differentiable dimension configuration, and honest discussion of limitations (small subspaces without clear interpretations, LRH reliance, orthogonality assumption).",
+    "Practical interpretability payoff: qualitative examples show subspaces consistently capture distinct aspects (current token, position, prior token, topic) across inputs, which is what would make these subspaces useful as circuit 'variables'."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical reporting is thin. Table 1 gives point estimates of Gini coefficients across only 5 tests with no seeds, no error bars, and no significance tests vs. baselines; the 2B knowledge-routing results (Fig. 5) similarly report single percentages. Given the small number of tests, it is hard to know whether the NDM-vs-baseline gap is robust to seed / hyperparameter noise.",
+      "suggested_fix": "Report NDM results across multiple random seeds for R, provide mean ± std (or bootstrap CIs) for each Gini cell and for the 2B patching percentages, and add a paired significance test (e.g., paired bootstrap or Wilcoxon over tests/prompts) against each baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "Missing supervised upper-bound comparison. The most natural reference for 'is this subspace really the variable?' is DAS/Boundless-DAS on the same GPT-2 circuit variables. Without it, readers cannot tell how much of the concentration NDM achieves relative to a method that was actually told which variable to find.",
+      "suggested_fix": "Add DAS (or a comparable supervised subspace-finding method) as a supervised oracle in Table 1 on Tests 1–5, and discuss the gap between unsupervised NDM and supervised DAS explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "Gini coefficient as the primary evaluation metric is non-standard and its calibration ('>0.6 is satisfactory') is justified only qualitatively in App. D.4. Because Gini is sensitive to the number and sizes of subspaces, comparisons across methods that use the same [d1,...,dS] but different rotations may still be confounded by how concentration interacts with the specific dimension distribution.",
+      "suggested_fix": "Complement Gini with a more transparent metric such as the fraction of total patching effect captured by the top-k subspaces, or the effect ratio between the target subspace and the runner-up, and report both. Include a sensitivity analysis of the '>0.6' threshold."
+    },
+    {
+      "severity": "major",
+      "issue": "The 2B-model knowledge-routing evaluation is suggestive but not tightly controlled. Because subspace patching is applied across all token positions with no ground-truth circuit, apparently 'clean' routing subspaces could reflect confounds (e.g., entity token identity, sequence-level statistics) rather than parametric-vs-context routing. The paper acknowledges caveats in App. D.6 but does not run additional controls in the main text.",
+      "suggested_fix": "Add a within-model control (e.g., patch a made-up-vs-made-up pair that should have no effect, or shuffle counterfactuals) and report the null-effect distribution; ideally, quantify how many of the 10+ subspaces show a Param-only or Context-only pattern beyond what the baselines produce by chance."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning against DAS, Boundless-DAS, and SAE-based subspace/feature-clustering work is present but compressed; the specific delta over Engels et al. (2024) multi-dimensional-feature detection and over supervised subspace methods could be sharper.",
+      "suggested_fix": "Expand the Related Work paragraph (or add a short comparison table) to make the axis-of-novelty (unsupervised, non-basis-aligned, whole-space partition, input-independent) explicit vs. each closest prior method."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility hinges on numerous unspecified-in-main-text choices (MI threshold, KSG parameters, starting subspace size, training schedule, and how [d1,...,dS] was tuned for the 'best' NDM row of Table 1). Since selection uses the same test suite, there is a risk of overfitting hyperparameters to the evaluation.",
+      "suggested_fix": "Report the full hyperparameter grid, the selection protocol, and, if selection is done on the test suite, add a held-out circuit (or a cross-validated split across the 5 tests) to demonstrate the choice generalizes."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity issues: several equations were mangled in extraction (e.g., the argmin/nearest-neighbor equations and Table 1 numbers), and Fig. 1a/1c/1d compress a lot into single panels. The Method section would benefit from a clearer pseudocode block up front rather than deferring to Algorithm 1 in the appendix.",
+      "suggested_fix": "Include a concise algorithm box in the main text with the exact loss, the merging rule (MI/threshold), and stopping criterion; double-check equation typesetting."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable are the learned partitions across random initializations of R? Do independently trained NDM runs converge to the same (up to permutation) subspace decomposition, and how does that stability compare to PCA baselines?",
+    "How does NDM compare against DAS / Boundless-DAS as a supervised upper bound on Tests 1–5, and against a simple whitening + ICA baseline (which similarly seeks independent components)?",
+    "The '>0.6 Gini = satisfactory' threshold is central. How sensitive are the main conclusions to this cutoff, and would results still hold under a top-1 subspace effect-share metric?",
+    "For the 2B knowledge-routing experiment, what is the effect distribution across the ~24 subspaces for Param Corrupt vs. Context Corrupt, and how often do baselines produce at least one 'clean' Param-only or Context-only subspace by chance under the same dimension configuration?",
+    "Was the 'best hyperparameter' NDM row of Table 1 selected on the same 5 tests it is evaluated on? If so, can you provide a held-out circuit (e.g., a docstring or greater-than-variant circuit) to demonstrate the partition generalizes?",
+    "The method assumes strict inter-group orthogonality. When features across groups are known to be non-orthogonal (e.g., correlated concepts in real LMs), how gracefully does NDM degrade, and does the MI-based merging step correctly absorb such cases?"
+  ],
+  "calibration_check": "Claims are largely well-scoped — the authors repeatedly note limitations (uninterpretable small subspaces, coarse merging, LRH reliance, 2B caveats) — but the phrase 'strong connection between subspaces and circuit variables' modestly overstates what 5 Gini measurements without seeds can establish.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "An unsupervised, model-wide subspace decomposition that yields circuit-variable-like units addresses a real pain point in mech-interp; if reproducible it is likely to be built on."
+    },
+    "novelty": {
+      "score": 8,
+      "justification": "The neighbor-distance-minimization objective with total-correlation justification, combined with MI-based dimension merging, is a genuinely new take relative to supervised DAS and SAE-feature clustering."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The methodology and causal-intervention evaluation are sound in principle, but selection of the 'best' NDM configuration on the same test suite and lack of confounder controls in the 2B setting weaken the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 5 test cases, single-run point estimates, no seed variance, no error bars, and no significance tests against baselines — the weakest axis of the paper."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are discussed openly (small subspaces, LRH assumption, coarse partition, 2B caveats), though the abstract's 'strong connection' phrasing slightly outruns the statistical evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Intuition and motivation are well conveyed, but the Method section is dense, notation in the loss is not fully explained in the main text, and a clean pseudocode/algorithm box would materially help."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (Intro, Motivation, Method, Toy Experiments, LM Experiments, Discussion/Related Work, Conclusion) is followed and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Method description in the main text plus deferred algorithm/appendix details is adequate but not complete: key hyperparameters (MI threshold, starting subspace size, training length, selection protocol) need to be pinned down explicitly."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of subspace, SAE, and component-level interpretability is broad, but the specific novelty axis vs. DAS/Boundless-DAS and Engels et al. multi-dimensional features could be sharpened."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, figures do meaningful work — WᵀW visualization, preimage tables, and per-subspace patching bars in the 2B experiments — though several panels are dense and one main-text figure would benefit from being unpacked into two."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Toy + GPT-2 Small (5 tests) + Qwen2.5-1.5B + Gemma-2-2B is a reasonable span, but generality claims would benefit from more circuits, more model families, and more counterfactual controls."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline-accept ICLR paper: novel and useful, with a solid conceptual contribution and reasonable evidence, but statistical reporting and one supervised-baseline gap keep it from a confident accept."
+    }
+  },
+  "publishability_probability": 0.5
+}

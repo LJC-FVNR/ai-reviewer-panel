@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an activation steering method that dynamically modulates strength via a plausibility-guided decoding loop combined with an attention-sensitivity-based layer ranking. The core idea — rejecting steering when the top token becomes implausible under the raw distribution and then progressively shrinking the set of steered layers — is a sensible and novel synthesis of contrastive-decoding-style filtering with KV cache steering, and evaluation spans several benchmarks and model scales. However, absolute gains are modest (~6.5% over zero-shot, ~4% over prior steering), key comparisons rely on a small set of steering baselines (PASTA, SpotLight), and the empirical rigor is weak: greedy decoding with no reported seeds/error bars on main tables, no significance testing, LLM-as-judge without variance reporting, and a self-constructed benchmark (GSM8K-Format) that is central to the oversteering story. The contribution is real but currently under-supported for ICLR acceptance.",
+  "strengths": [
+    "Addresses a genuine and increasingly discussed problem (oversteering in activation steering) with a clean, plug-in mechanism (plausibility gate) that is also shown to help competing methods when bolted on.",
+    "The plausibility-gate + progressive layer shrinkage design is reasonably novel; the efficient short-circuit gate using top-2 raw probabilities (skip steering when p_{i2} < β·p_{i1}) is a nice practical insight.",
+    "Cross-model generalization is examined across Llama-3.1/3.2 and Qwen-2.5 at 1B–14B, adding evidence beyond a single model.",
+    "Ablations isolate the two mechanisms: reversed ranking, random-layer selection, random-token steering, and fixed-strength STk comparisons.",
+    "Efficiency analysis (throughput, per-token latency, memory) and the compatibility with FlashAttention are relevant practical strengths over attention-logit-biasing baselines like SpotLight.",
+    "Text-quality/task-fidelity check via LLM judge (and mentioned human study in appendix) addresses the natural oversteering concern that instruction gains may cost content quality."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin. Main Table 1 and Table 2 report point accuracies with no seeds, no confidence intervals, and no significance tests. Only two ablation rows carry ± values. With ~4% gaps against tuned baselines and LLM-judge metrics, it is not established that improvements are statistically meaningful.",
+      "suggested_fix": "Report multiple runs (varying decoding temperature, prompt variants, or judge seeds where relevant), include standard deviations or bootstrap CIs, and run paired significance tests versus the strongest baseline on each benchmark."
+    },
+    {
+      "severity": "major",
+      "issue": "Baselines are narrow. Only PASTA and SpotLight are compared, both attention-level. Prior activation-steering families (contrastive-vector steering à la Turner/Panickssery/Zou, DoLa-style contrastive decoding, ITI, representation engineering) are cited but not compared, even though the plausibility loop is conceptually adjacent to DoLa/contrastive decoding.",
+      "suggested_fix": "Add at least one representation-engineering / contrastive-vector steering baseline and one contrastive-decoding baseline (e.g., DoLa or CAD) so readers can see whether the gains come from the plausibility filter or from steering per se."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is a newly constructed benchmark used to substantiate the central 'oversteering hurts task accuracy' claim. Because baselines are shown to collapse specifically on this benchmark (e.g., PASTA T.Acc 82.7→48.1), the framing depends heavily on a dataset the authors themselves designed.",
+      "suggested_fix": "Document construction, size, difficulty distribution, and inter-annotator/verifier agreement of GSM8K-Format; ideally replicate the oversteering trade-off on an established formatting/reasoning benchmark not built by the authors."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'plausibility guidance' mechanism is very close in spirit to contrastive/plausibility-constrained decoding (Li et al. 2022; Chuang et al. 2023 — cited), but the paper does not clearly delineate what is new beyond swapping the amateur/expert pair for raw vs. steered distributions. The novelty claim relative to these methods is under-argued.",
+      "suggested_fix": "Add explicit head-to-head positioning (equation-level and empirical) versus contrastive decoding and DoLa; specify precisely which components are inherited and which are new (e.g., progressive layer shrinkage, sensitivity ranking)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Hyperparameter tuning is asymmetric: PASTA/SpotLight are tuned on IFEval and then transferred to other benchmarks, while DIRECTER uses one fixed (α, β) 'without task-specific tuning.' This is favorable framing but the search grid for the baselines is not described in the body.",
+      "suggested_fix": "Report the tuning budget and grid for each baseline in the main text, and either tune DIRECTER on the same protocol or show DIRECTER's best per-task numbers alongside the transferred numbers."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-sensitivity metric is admitted to be non-principled. The paper's own limitations section flags this. Since layer ranking is a core mechanism, its justification is somewhat post-hoc: reversed ranking hurts by only ~2.8% and random layers by ~1.6%.",
+      "suggested_fix": "Include analyses relating the sensitivity ranking to alternative choices (e.g., logit-lens-based influence, gradient-based, causal patching) and, if possible, show the ranking is stable across prompts/models."
+    },
+    {
+      "severity": "minor",
+      "issue": "LLM-as-judge evaluation with a single model (gpt-4o-mini) and no variance/agreement reporting is a known source of noise for closely spaced numbers (e.g., text quality 4.24–4.43).",
+      "suggested_fix": "Report judge-swap sensitivity (a second judge model), inter-judge agreement, and bootstrap CIs on Task Fidelity."
+    },
+    {
+      "severity": "minor",
+      "issue": "The algorithm listing in the extracted text is partially garbled (lines 5–17 skip variables and 'accepted' branch semantics). Even accounting for extraction artifacts, the loop's exact termination and the mapping from ranked layers to Lcand,t after halving warrants more careful presentation.",
+      "suggested_fix": "Tighten Algorithm 1 with explicit accepted/rejected branches, define what 'Lcand[1:k]' means with respect to the ranking direction, and state the base case when Lcand becomes empty."
+    }
+  ],
+  "questions_for_authors": [
+    "Beyond top-1 identity, does the plausibility gate ever cause DIRECTER to accept a token that is different from both the raw and the fully-steered top-1? A distributional analysis of when the gate fires and to which layer count it converges would clarify what is doing the work.",
+    "How does DIRECTER compare to standard contrastive decoding (e.g., DoLa) or to a simple 'if steered top-1 is implausible, fall back to raw' baseline that does not vary the number of steered layers?",
+    "For IFEval the paper reuses the Venkateswaran & Contractor rewriting via GPT-4o-mini to separate task and instruction spans. How sensitive are all methods (not just DIRECTER) to the quality/style of that rewrite?",
+    "How stable is the attention-sensitivity ranking across prompts, tasks, and random subsets? If the ranking is prompt-dependent, the one-time cost claim may be misleading.",
+    "In Table 2, DIRECTER trails SpotLight* on Qwen-2.5-7B (74.4 vs 74.9). Is that within noise, and how many seeds/prompt variants support the ordering?",
+    "Task fidelity is reported as ~92% for DIRECTER vs 84.8% zero-shot, but on IFEval task accuracy is much closer. What accounts for the gap between the LLM-judge fidelity and the programmatic IFEval numbers?",
+    "The 16% throughput overhead is computed relative to zero-shot on which context/generation-length regime? Given the raw + steered forward passes plus the loop, worst-case overhead in long-context (LIFBench MD) would strengthen the efficiency claim."
+  ],
+  "calibration_check": "Most claims are appropriately scoped (the paper openly frames DIRECTER as a mitigation for oversteering rather than a SOTA sweep), but the 'model-agnostic', 'general mechanism', and 'without trade-offs in generation quality' claims run slightly ahead of the evidence, which rests on greedy runs, two steering baselines, and single-judge quality scoring.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a well-motivated pain point (oversteering) with a plug-in mechanism others can adopt, but absolute gains and scope of impact are moderate rather than field-shifting."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The plausibility-guided progressive layer-shrinkage loop and the attention-sensitivity ranking are new in combination, but each borrows heavily from contrastive decoding and prior sensitivity/quantization analyses."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Methodology is coherent and the ablations isolate the main components, but greedy-only decoding, no significance testing, and a home-grown headline benchmark leave gaps between claims and evidence."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables lack seeds, error bars, or significance tests; only two ablation cells carry ±; LLM-judge scores are close and reported without variance or agreement — too thin for gaps of a few percent."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (non-principled sensitivity metric, clean task/instruction separation assumption) are acknowledged, and the paper avoids overt SOTA overclaiming, though 'general mechanism' framing is somewhat aggressive."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Method and motivation are legible and the flow is standard, but Algorithm 1 and Eq. 2 are presented in a slightly opaque way and the KV-cache-steering formal definition mixes notation that could be tightened."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure — Introduction, Related Work, Method, Experiments, Conclusion — with RQ-driven experiments and an appendix map; length appears within norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Base models, hyperparameters (α=100, β=0.5), evaluation datasets, and prompt-rewriting protocol are stated, but tuning budgets for baselines, GSM8K-Format construction details, and judge prompts are relegated to appendices whose sufficiency cannot be assessed from the body."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Instruction tuning, prompting, and attention-level steering are covered, but contrastive/plausibility-constrained decoding (DoLa, CAD) and contrastive-vector steering families are not compared empirically, weakening positioning."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions indicate purposeful figures (overview, plausibility ablations, hyperparameter sweeps, efficiency), and they are tied to specific RQs; several are workhorse rather than especially illuminating."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Multiple model families and scales, three benchmark families, and several ablations support the generality claims moderately; only two steering baselines and one judge model temper this."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject in current form: a solid, useful contribution with a plausible mechanism, but held back by narrow baselines, a self-constructed key benchmark, and insufficient statistical evidence."
+    }
+  },
+  "publishability_probability": 0.32
+}

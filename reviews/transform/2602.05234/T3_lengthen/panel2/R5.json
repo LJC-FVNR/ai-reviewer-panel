@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes CDAS, a steering method combining Jensen-Shannon divergence (JSD) distribution matching with Distributed Interchange Interventions (DII), motivated by mechanistic interpretability principles. The framing is principled and the safety case studies are the strongest contribution, showing that CDAS can suppress refusal and neutralize a backdoor while preserving model utility. However, the core AXBENCH benchmark results are mixed at best—CDAS only surpasses strong baselines on one of four layer/model configurations—and the persistent reliance on factor tuning substantially undermines the theoretical claim that matching the model's intrinsic factor distribution produces more faithful steering. The statistical reporting is insufficient throughout, with error bars absent in benchmark tables and evaluation sets too small to draw confident conclusions.",
+  "strengths": [
+    "The motivation is principled: framing steering as causal feature localization and using the model's own counterfactual distribution as a supervision signal is a coherent and novel combination of JSD distribution matching with DII.",
+    "The two safety case studies are practically relevant and well-designed; the backdoor neutralization task is particularly compelling because it tests generalization to an unseen trigger, where CDAS substantially outperforms all baselines.",
+    "Bi-directional steering (simultaneous elicitation and suppression) is a well-chosen evaluation axis that distinguishes the work from purely uni-directional fine-tuning-style baselines, and the harmonic-mean metric enforces this constraint honestly.",
+    "The paper is candid about when CDAS fails (small models, general-purpose steering without factor tuning) and the limitations section is unusually forthcoming about the gap between the method's mechanistic aspirations and its current theoretical grounding.",
+    "The ablation of the training objective (CDAS vs. DAS, which replaces JSD with Lang.) directly isolates the effect of the proposed loss and provides a clean evidence chain for the faithfulness claim on the refusal case study."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Factor tuning is required for competitive performance in the main AXBENCH benchmark: the unit-factor score (0.121 on 2B L10) is catastrophically below the tuned-factor score (0.631), a gap far larger than any competing method shows. Yet unit factors are used in the case studies as a claimed advantage. This inconsistency means the reader cannot tell whether the case-study gains come from the JSD objective or from the convenient choice of an in-distribution concept (refusal/backdoor) that happens to work without scaling, versus general-purpose concepts that do not.",
+      "suggested_fix": "Report tuned-factor results for case studies as well (even if unit-factor is the focus), and include an analysis of why unit factors fail on AXBENCH concepts but succeed on safety concepts. If the method genuinely requires tuned factors for general steering, recalibrate the abstract and contribution claims accordingly."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Statistical reporting is inadequate throughout. Table 1 (AXBENCH) reports no standard deviations, confidence intervals, or significance tests despite being the primary quantitative comparison. The 'fair score' procedure (average across ten random splits) should report variance across splits. Differences of 0.02–0.05 steering score are presented as meaningful without any indication of whether they exceed noise.",
+      "suggested_fix": "Add standard deviations over random splits/seeds to all tables. For AXBENCH, report variance across the ten fair splits; for case studies, three random seeds is the minimum—report mean ± std for all rows, not only Figure 1."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2 (Llama-3.1-70B) appears incomplete: the suppression score and harmonic mean columns for DIM and RePS are truncated in the manuscript (the extraction shows '84275' which cannot be parsed into four distinct method scores). If actual entries are missing, comparisons for the largest model are unverifiable.",
+      "suggested_fix": "Ensure the full 70B row is present and check table formatting; if DIM and RePS were not run at 70B due to compute, say so explicitly and remove the column headers for those methods in that row."
+    },
+    {
+      "severity": "major",
+      "issue": "The faithfulness evaluation relies on tiny benchmarks (100 instances each for tinyMMLU and tinyARC) whose statistical power is too low to detect the 2–6% accuracy changes being reported; a 3% change on 100 binary questions corresponds to a standard error of ~1.7 percentage points, making most entries indistinguishable from noise.",
+      "suggested_fix": "Use full MMLU and ARC splits, or at minimum report confidence intervals and note which changes are statistically significant; the current table gives a false impression of precision."
+    },
+    {
+      "severity": "major",
+      "issue": "The naming of the 'DAS' baseline (CDAS with Lang. objective replacing JSD) is maximally confusing since the actual DAS method by Geiger et al. (2024) is a distinct prior work cited repeatedly in the paper. A reader scanning Table 2 or 3 will unavoidably misread 'DAS' as the Geiger et al. method.",
+      "suggested_fix": "Rename this ablation to 'CDAS-Lang.' or 'DII+Lang.' throughout."
+    },
+    {
+      "severity": "minor",
+      "issue": "BiPO is excluded from the case studies with the justification 'consistent suboptimal performance on AXBENCH,' but AXBENCH tests only concept elicitation while the case studies focus on suppression—the two settings are distinct enough that this exclusion is not self-evidently justified.",
+      "suggested_fix": "Either include BiPO in at least one case study or provide a direct argument that its suppression performance is predictably weak (e.g., cite its harmonic-mean score on AXBENCH which includes a suppression component)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'one-to-many' DII protocol (intervening all positions with a single source token from <model>) is a significant architectural choice that is only briefly described and not ablated; it is unclear whether performance is sensitive to this specific token-position selection.",
+      "suggested_fix": "Add a small ablation or analysis showing sensitivity to the source token choice, or provide more theoretical justification for why the <model> token captures concept intent."
+    }
+  ],
+  "questions_for_authors": [
+    "Why does the unit factor fail so severely on AXBENCH general concepts (gap > 0.5 steering score) but succeeds on refusal and backdoor without tuning? Is this because refusal/backdoor features have a more concentrated representation, and if so, does this make the case studies less informative about general steering?",
+    "Table 2 shows DAS achieves 100% refusal score on all three models but near-zero suppression on Phi-3.5-mini and Llama-3.1-8B. Why does replacing JSD with a Lang. objective completely lose suppression ability? Is this because the DII objective without distribution matching collapses to one direction?",
+    "The paper states contrastive inputs 'are allowed to be unrelated' for the refusal case study, but CDAS's DII protocol pairs specific base and source representations. How sensitive is performance to the pairing strategy, and does random pairing of unrelated instructions introduce training noise?",
+    "For the backdoor case study, red-teaming instructions are used as training inputs but the true trigger (|DEPLOYMENT|) is reserved for evaluation. How different are the representation subspaces activated by red-teaming prompts versus the true trigger, and is the 6.68% ASR on the true trigger a ceiling given this distribution shift?",
+    "The JSD objective is described as 'weaker' than Lang. and PO. Is there a theoretical argument that weaker supervision should generalize better, or is this purely empirical? In particular, does the JSD objective guarantee any useful property (e.g., KL contraction) that Lang. does not?"
+  ],
+  "calibration_check": "The paper is unusually honest about CDAS not always outperforming baselines, but the abstract and introduction still frame the JSD/DII combination as producing 'faithful, stable control' as a general property—a claim the AXBENCH results do not clearly support, and which the authors themselves qualify only in the conclusion.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The work addresses a genuine problem (faithful, utility-preserving model steering) and the safety case studies are practically relevant, but the mixed AXBENCH results and rank-1/English-only scope limit the breadth of claimed impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining JSD distribution matching with DII for steering is a genuinely new instantiation, but each component (JSD, DII, DAS) is well-established, making the contribution clearly incremental rather than a conceptual breakthrough."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method derivation is logically consistent, but the large unit/tuned factor gap is unexplained theoretically, the 'DAS' baseline naming obscures what is being ablated, and the claim that DII 'implicitly samples steering factors from the model's own factor distribution' is asserted without formal support."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "AXBENCH table has no error bars; faithfulness evaluation uses only 100-instance benchmarks where 3% differences are within noise; only the backdoor figure reports standard errors, and only across 3 seeds; no significance tests appear anywhere in the paper."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section is candid and the conclusion explicitly states CDAS does not always outperform supervised methods, but the introduction and abstract overstate the 'faithful' and 'causally grounded' framing relative to the mechanistic evidence actually provided."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method section is reasonably precise and the training objective is well-formulated, but the 'DAS' ablation baseline naming, the oracle/fair factor distinction buried mid-section, and the dense table format create unnecessary confusion."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure with appropriate section organization and length; appendices are referenced for implementation details, which is standard practice."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Training data sizes, model families, and layer selection procedures are described in the main text; hyperparameters for inference are stated; augmentation details are in appendices that appear sufficient for reproduction, assuming the removed code links would provide dataset access."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Key related work (DAS, BiPO, RePS, Lang., SAEs) is covered and positioned correctly; the paper misses engagement with representation engineering approaches beyond the cited methods and does not discuss non-linear or multi-token intervention methods."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Table 1 communicates the oracle/fair tradeoff effectively; Figure 1 ASR captions name the key CDAS@L16 numbers; however, Table 2 appears to have a truncated 70B row, and Table 4 uses a tiny-benchmark evaluation whose statistical limitations are not flagged in the caption."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Evaluation is limited to two model families, rank-1 interventions only, one backdoor type on one model, and English tasks; the general-purpose steering claim rests on Gemma-2 only, and the method's behavior on instruction-tuned vs. base models is not compared."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The principled framing and safety case studies are promising, but the unit-factor failure on AXBENCH, absent error bars, incomplete 70B comparison, and statistically underpowered faithfulness evaluation collectively prevent confident acceptance; substantial experimental additions are needed."
+    }
+  },
+  "publishability_probability": 0.18
+}

@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper presents the first adversarial robustness analysis of Differential Attention (DA), identifying 'negative gradient alignment' as a structural driver of sensitivity amplification and formulating this as the Fragile Principle. The theoretical framework (Lemmas 1–2, Theorems 1–4, Corollary 1) is sound under standard local linearization assumptions, and the depth-dependent crossover result is a genuinely interesting prediction. Empirical evidence across ViT/DiffViT and CLIP/DiffCLIP on five datasets broadly supports the claims. However, the work is weakened by the absence of statistical reporting (seeds, error bars, significance tests), limited scale of the controlled experiments (CIFAR-level ViTs trained from scratch), a conflation of architectural and training differences in the CLIP/DiffCLIP comparison, and an insufficiently substantiated 'functional necessity' argument for negative alignment.",
+  "strengths": [
+    "First theoretical investigation of DA under adversarial perturbations; the gradient-norm decomposition via alignment angle is mathematically clean and directly motivated by DA's subtractive structure.",
+    "The depth-dependent crossover result (Corollary 1) is elegant and non-trivial: DA can be simultaneously locally fragile and globally robust when stacked, and this is validated empirically across multiple attacks and budgets.",
+    "Experimental scope is principled: the authors deliberately avoid adversarially trained models to isolate the architectural effect, and they test under three complementary attack families (PGD, CW, AutoAttack) plus adversarial patches.",
+    "The λ ablation (Table 1) revealing a non-monotonic ASR peak at λinit=0.8 is a concrete, actionable finding that links the theory directly to a practical design parameter.",
+    "The limitations section is honest and appropriately circumscribes the local-linearization and layer-isolation assumptions."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No statistical validation whatsoever: no seeds, no error bars, no standard deviations, no significance tests. Adversarial robustness metrics (ASR, Lipschitz estimates) are computed on stochastic networks and depend sensitively on initialization; reporting single-run point estimates without variance is insufficient for an empirical claim.",
+      "suggested_fix": "Train each ViT/DiffViT configuration across at least 3–5 random seeds; report mean ± std for all ASR, Lipschitz, and alignment-frequency figures and tables. For CLIP/DiffCLIP (pretrained), report variance over evaluation runs or multiple perturbation-budget repetitions."
+    },
+    {
+      "severity": "major",
+      "issue": "The CLIP vs. DiffCLIP comparison conflates architectural and training differences: DiffCLIP was trained from scratch with DA, while CLIP was trained with standard attention. Observed differences in adversarial vulnerability could stem from training dynamics, data curriculum, or training-induced weight distributions, not solely from the attention mechanism.",
+      "suggested_fix": "Either (a) fine-tune a CLIP checkpoint by swapping only the attention layers to DA (keeping other weights approximately fixed) to isolate architecture, or (b) explicitly acknowledge and quantify this confound, discussing what residual conclusions remain valid under this limitation."
+    },
+    {
+      "severity": "major",
+      "issue": "The controlled ViT/DiffViT experiments are conducted only on low-resolution, small-scale datasets (CIFAR-10/100 at 32×32). Results on toy-scale models may not transfer to practical transformer regimes (e.g., ImageNet-scale ViT-B/16), and the paper does not sufficiently validate this generalization.",
+      "suggested_fix": "Add at least one controlled experiment at ImageNet scale (or on full Tiny ImageNet without relegating it entirely to the appendix), or include stronger language scoping claims to the CIFAR regime."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim that negative gradient alignment is a 'functional necessity' of DA's design (Section 4.1: 'not merely a byproduct but a functional necessity') is asserted argumentatively rather than proved. It is logically possible for DA to achieve effective noise cancellation without inducing cos θ < 0; the paper does not formally rule this out.",
+      "suggested_fix": "Either provide a formal proof that effective subtraction-based noise cancellation requires cos θ < 0 in expectation, or soften this claim to 'structurally induced' or 'empirically prevalent' and rely on the Section 5.4 measurements to carry the weight."
+    },
+    {
+      "severity": "minor",
+      "issue": "The depth-dependent crossover threshold D* (Corollary 1) is never empirically estimated or bounded. The theoretical quantity α is described as 'emergent' and not reducible to λ alone, making the practical interpretation of D* under-specified.",
+      "suggested_fix": "Provide an empirical estimate of D* for the evaluated configurations, or at minimum demonstrate the crossover point explicitly in the depth ablation figures and discuss what range of λ values produces crossing within the tested depth range."
+    },
+    {
+      "severity": "minor",
+      "issue": "Patch-attack results on ImageNet show CLIP marginally outperforming DiffCLIP, which is qualitatively inconsistent with the Fragile Principle. The paper dismisses this with 'dataset scale and diversity can modulate the manifestation of DA's fragility' without mechanistic justification.",
+      "suggested_fix": "Analyze why patch attacks on ImageNet produce this reversal—is it a consequence of the ImageNet training distribution, the larger number of classes, or something specific to the patch attack formulation for contrastive models? At minimum, flag this as a limiting case for the Fragile Principle rather than glossing over it."
+    }
+  ],
+  "questions_for_authors": [
+    "How is the learned λ value at convergence distributed across the different depth and dataset configurations? The ablation varies λinit but the paper does not report whether λ diverges significantly from its initialization during training, which is important because the theory is stated in terms of λ (not λinit).",
+    "For the depth ablation, are the DiffViT models of different depths trained independently from scratch (matched training budget per depth), or is deeper the result of adding layers to a shallower checkpoint? Training details that affect convergence quality across depths could explain part of the robustness trend.",
+    "Can the authors show empirically that the frequency of cos θ < 0 is higher for DA models that achieve better clean accuracy (i.e., that the functional-necessity claim holds even when the clean task is solved well)? This would significantly strengthen the Section 4.1 argument.",
+    "The certifiable robustness radius analysis in Appendix B is referenced but not discussed in the main text. How does this bound compare to empirical attack success at typical epsilon values, and does it provide any tighter insight than the Lipschitz estimates in Figure 4?",
+    "Under adversarial training (Appendix D.2), does negative gradient alignment frequency decrease, and does the local Lipschitz estimate converge toward the standard-attention baseline? These measurements would clarify whether adversarial training directly counteracts the structural mechanism identified in the paper."
+  ],
+  "calibration_check": "The core claims (negative gradient alignment amplifies sensitivity; DA is more adversarially fragile than standard attention at shallow depth; deeper DA stacks partially recover robustness under small budgets) are plausibly scoped to the evidence, but the 'functional necessity' assertion and the phrase 'fundamental trade-off' are stronger than the presented evidence supports, especially given that all controlled experiments are on CIFAR-scale models and the CLIP comparison conflates architecture with training.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The analysis is the first of its kind for DA and is practically relevant to researchers deploying DA in safety-critical settings, but the scope is narrow (one attention variant, primarily CIFAR-scale) and the findings are mostly cautionary rather than enabling a new capability."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The negative-gradient-alignment framing, the Fragile Principle formalization, and the depth-dependent crossover analysis are genuinely new; the underlying gradient-norm decomposition is standard (law of cosines), but its application to DA's subtractive structure and the crossover corollary are non-trivial contributions."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The theoretical derivations are correct under stated assumptions (local linearization, layer isolation), which are standard and appropriately disclosed; the experimental design is principled in isolating the architectural effect, but the 'functional necessity' claim is not rigorously established."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No random seeds, error bars, standard deviations, or significance tests are reported for any experimental result; this is a critical gap for an empirical paper claiming to demonstrate statistically meaningful differences in adversarial vulnerability between model classes."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper's limitations section is unusually candid about local linearization and layer isolation, and the discussion acknowledges that the depth-based robustness advantage disappears under stronger attacks; however, 'functional necessity' and 'fundamental trade-off' are slightly overclaimed relative to the supporting evidence."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized, the theoretical notation is consistent, and the connection between each theorem and the empirical section is explicit; the exposition of the depth-dependent mechanism is particularly clear, though the CLIP/DiffCLIP confound is underexplained."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Follows standard conference structure (intro, related work, preliminaries, theory, experiments, discussion, conclusion) at appropriate conference length; the limitations are integrated into the theory section and the discussion rather than relegated to a footnote."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Attack hyperparameters and datasets are specified; λinit and depth ranges are given; however, the ViT/DiffViT architecture (number of heads, hidden dimension, positional encoding) is not fully specified, and the λ learned at convergence is not reported, making precise reproduction difficult."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of attention robustness, Lipschitz analysis, and structural fragility is adequate and current; the positioning against DA follow-up works (Hammoud & Ghanem, Schneider et al., Abid et al.) is appropriate, though the paper could more explicitly compare against Lipschitz-constraining attention work (Kim et al., Dasoulas et al.) in the experimental section rather than only in related work."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, the figure suite (ASR comparisons, depth ablation, Lipschitz estimates, alignment frequency) is well-chosen and directly maps to each empirical claim; the multi-panel layout covering both adversarial examples and patches across model families is informative, though the absence of error intervals in all plots is a presentation gap."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Controlled experiments cover only CIFAR-10/100 (32×32 ViTs); only one DA variant is analyzed; the pretrained comparison conflates architecture with training; the paper claims the findings generalize to 'safety-critical applications' without experimenting beyond vision classification, which is an unsupported leap."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A borderline-reject submission: the theoretical contribution is genuine and the experimental design is principled, but the complete absence of statistical reporting, the CLIP/DiffCLIP confound, the CIFAR-only controlled experiments, and the overstated 'functional necessity' claim collectively prevent acceptance in their current form; these issues are fixable but require substantive new experiments and analysis."
+    }
+  },
+  "publishability_probability": 0.22
+}

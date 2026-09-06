@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER introduces an inference-time activation steering method that couples KV-cache key scaling with a plausibility-guided decoding loop and a one-time attention-sensitivity layer ranking. The core motivation—that static steering strength leads to oversteering—is well-grounded, and the adaptive control loop is a conceptually clean contribution. Empirical results on IFEval, LIFBench, and the authors' GSM8K-Format benchmark show consistent, if modest, improvements over PASTA and SpotLight across several model families. The paper is clearly written and well-ablated, but a non-standard IFEval evaluation protocol, a narrow set of steering baselines, absent error bars on primary comparisons, and the use of an unvalidated in-house benchmark collectively limit the strength of the claims as presented.",
+  "strengths": [
+    "The plausibility-guided decoding loop cleanly operationalises the oversteering problem: the halving-and-retry scheme is simple, interpretable, and shown by ablation to outperform any fixed steering strength.",
+    "No extra dataset is required—layer ranking is computed in a single prefill-time pass—which makes DIRECTER practically attractive relative to PASTA's costly head-profiling.",
+    "Hyperparameters are fixed (α=100, β=0.5) across all tasks, models, and prompt formats, credibly demonstrating that the method does not overfit to any one benchmark.",
+    "Multi-model coverage (Llama-3.2-1B through Qwen-2.5-14B) and the compatibility experiment (applying the plausibility gate to PASTA/SpotLight) together build a useful generality argument.",
+    "Efficiency analysis is thorough: throughput, per-token latency, and memory are all reported, and the advantage of KV-cache steering over attention-logit methods (FlashAttention compatibility) is correctly noted."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Non-standard IFEval evaluation protocol. The paper rewrites the original IFEval prompts with gpt-4o-mini 'to separate task and instruction'. This departs from the benchmark's published protocol and from how every other cited paper evaluates on IFEval, making direct numerical comparison to prior literature unreliable. The rewriting procedure itself is unvalidated: it may alter constraint difficulty, change the instruction-span length, or introduce artifacts that systematically favour the authors' method.",
+      "suggested_fix": "Report results on the unmodified IFEval prompts in the main table (even as an additional column). If the rewriting is essential to support instruction-span marking, demonstrate that results on the standard split are directionally consistent, and include a brief validation that the rewriting does not change human-perceptible constraint difficulty."
+    },
+    {
+      "severity": "major",
+      "issue": "Narrow set of steering baselines. The comparison is limited to PASTA and SpotLight. Prominent alternative inference-time methods that address instruction adherence—Inference-Time Intervention (ITI/Li et al. 2023b, already cited), Contrastive Activation Addition, and representation engineering (Zou et al. 2023, also cited)—are discussed in related work but not evaluated. Omitting them is especially visible because DIRECTER's framing is broad ('a general mechanism for mitigating oversteering') yet the evidence base for that claim involves only two prior systems.",
+      "suggested_fix": "Add at least one residual-stream or contrastive steering baseline (e.g., ITI or CAA) to Table 1. If any cited method is computationally prohibitive, say so explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is an unvalidated in-house benchmark. The paper introduces this benchmark, defines its own formatting and task metrics, and then reports state-of-the-art results on it without any external validation of the evaluation protocol or human agreement study. Using an unvalidated proprietary benchmark as one of three primary evaluation axes weakens the generality claim.",
+      "suggested_fix": "Either replace or supplement GSM8K-Format with an established formatting-compliance benchmark (e.g., FollowBench, InFoBench, or the formatting sub-tasks of IFEval's unmodified split). If GSM8K-Format remains, include an inter-annotator agreement study and release the evaluation code to enable reproducibility."
+    },
+    {
+      "severity": "minor",
+      "issue": "Primary comparison tables (Tables 1 and 2) report no variance estimates. Even under deterministic greedy decoding, prompt-level variance matters: IFEval performance is known to be sensitive to minor prompt reformulations, and the multi-model table (Table 2) shows a gain of only +0.3% (1B Llama: 61.3→61.6). Readers cannot determine whether small improvements are meaningful or within noise.",
+      "suggested_fix": "Report mean ± std over at least 3 prompt template variants (already used in Fig. 3c) for each method in Tables 1 and 2, or provide a bootstrap confidence interval on the aggregate score."
+    },
+    {
+      "severity": "minor",
+      "issue": "Worst-case latency of the plausibility loop is not characterised. The ≈16% throughput claim is an average; with α=100 the top-1 token changes frequently at early decoding steps, meaning the halving loop may iterate up to log₂(L)=5 times per token for 32-layer models. A per-step iteration-count distribution or a worst-case bound would allow practitioners to assess deployment risk.",
+      "suggested_fix": "Add a histogram or 95th-percentile statistic for the number of loop iterations per decoding step, broken out by benchmark."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention sensitivity disturbance score (Eq. 2–3) uses cosine distance without ablating the distance metric or the additive combination of direct and propagated effects, and its theoretical grounding is acknowledged to be absent. The paper shows it outperforms reversed ranking and random ranking but does not compare to simpler alternatives (e.g., gradient-based saliency, activation norm change, or random ranking with the same halving scheme).",
+      "suggested_fix": "Add one or two rows in Table 3 for alternative sensitivity formulations (e.g., L2-norm-based disturbance, gradient magnitude) so readers can assess whether the specific metric design matters beyond 'pick influential layers'."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 2 shows Llama-3.2-1B improves by only +0.3% (61.3→61.6). Given the natural run-to-run variation of LLM evaluation, can the authors provide a confidence interval or statistical test demonstrating this gain is non-trivial?",
+    "Why were the IFEval prompts rewritten rather than evaluated on the standard split? How do DIRECTER's scores on unmodified IFEval compare to PASTA† and SpotLight†?",
+    "The gating mechanism (Section 3.2, paragraph 3) skips steering when the top-2 probability gap implies the plausibility constraint cannot be satisfied. How often is this gate triggered per benchmark, and does skipping disproportionately occur on specific token types (e.g., high-entropy positions)?",
+    "Key scaling by α=100 is extreme; the softmax renormalisation partially absorbs the shift, but does this effectively reduce the intervention to a hard-attention mask on instruction tokens? If so, how does it differ from PASTA mechanistically?",
+    "The paper claims compatibility with FlashAttention as an advantage over attention-logit methods. Have the authors verified this empirically (i.e., that DIRECTER's throughput numbers were measured with FlashAttention enabled), or is this a theoretical claim?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped—the 6.5% gain is correctly stated as relative to the zero-shot baseline, and the 4% gain over prior steering methods is numerically consistent with Table 1—but the 'general mechanism' framing and the efficiency claims lean slightly beyond what is fully evidenced given the narrow two-baseline steering comparison and the uncharacterised worst-case loop overhead.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a real and well-documented failure mode (oversteering) with a practical, dataset-free solution, but the improvements are modest in absolute terms and the scope remains restricted to attention-steering for instruction following."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The coupling of KV-cache scaling with a plausibility-gated halving loop and sensitivity-based layer ranking is a new combination, though each ingredient has prior precedent (contrastive decoding, KV-cache manipulation, attention profiling)."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The ablation structure correctly isolates plausibility guidance, layer ordering, and token targeting, but the attention sensitivity metric lacks theoretical justification and the non-standard benchmark protocol introduces a confound in the primary evaluation."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Greedy decoding is deterministic but Tables 1 and 2 report no variance across prompt variations or seeds; the +0.3% 1B result and the ~1–2% margins over tuned baselines lack statistical backing, and only ablation variants have error bars."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper explicitly names the span-detection assumption, the theoretical weakness of the sensitivity metric, and the small-generated-token efficiency caveat; limitations section is genuine rather than perfunctory."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "Notation is consistent and Algorithm 1 provides a helpful procedural summary; the dual-effect decomposition in Eq. 2 could be explained more intuitively, but the overall exposition is above average for this venue."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard abstract/intro/related-work/method/experiments/conclusion structure is followed at appropriate conference length; the separate 'Limitations' appendix section is slightly redundant with the in-text limitations paragraph."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Core hyperparameters (α=100, β=0.5) and model identifiers are disclosed, but the gpt-4o-mini IFEval rewriting procedure is only partially described, GSM8K-Format evaluation code is absent, and the sensitivity analysis's efficient simplification is deferred to an appendix without full algorithmic detail in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Activation steering and instruction tuning literature is covered competently, but ITI, CAA, and representation engineering—cited in passing—are not evaluated, leaving a gap between the related-work narrative and the experimental comparison."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe well-chosen comparisons (fixed-ST ablation, plausibility gate transfer, robustness sweeps, efficiency breakdown); the multi-panel robustness figure (Fig. 3) and efficiency figure (Fig. 4) appear informative and directly tied to specific research questions."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four model families and three benchmark types are covered, but the steering baseline set is too narrow (only PASTA and SpotLight), GSM8K-Format is unvalidated, and IFEval is evaluated non-standardly, limiting the strength of the generality claim."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A technically sound and clearly written paper with a genuine adaptive-control contribution; the non-standard evaluation protocol, missing baselines, and absent variance estimates are fixable issues that place it at the ICLR borderline-accept threshold."
+    }
+  },
+  "publishability_probability": 0.4
+}

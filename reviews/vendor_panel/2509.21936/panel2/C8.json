@@ -1,0 +1,116 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper formalizes retrieval-like tasks as a 'single-location regression' (SLR) model with random sequence length and a general token-reweighting function, and uses high-dimensional (statistical-physics) tools to compare attention activations. The main results are clean and interesting: softmax attention attains the Bayes risk at the population level for a broad class of weighting functions, linear attention provably does not (its error tends to the trivial predictor's error as L grows in the max-correlation variant), intermediate activations isolate which properties matter (non-vanishing mean, cross-token normalization, fast growth), and a replica computation characterizes the ERM test risk at proportional sample complexity where softmax still dominates. The weaknesses are the stylized single-layer/no-query/rank-one setting, an unproven 'manifold' restriction that the authors themselves note excludes other local minima, a non-rigorous replica result, and thin numerics (small L, one system size, no seeds or error bars, no bridge back to the transformer experiments used as motivation).",
+  "strengths": [
+    "The core separation is crisp and non-obvious: Prop. 4.2 shows softmax attains the Bayes risk under a natural condition on the weighting function g_nu (satisfied by both spiked-SLR and max-SLR), while Cor. 4.3 gives matching sharp rates for linear attention (1 - O(log L / L) on max-SLR vs. exactly 0 for softmax, and 1/nu vs. e^{-c_L nu} on spiked-SLR).",
+    "The data model is a genuine generalization of prior single-location work: random sequence length plus a generic weighting function unifies the spiked and maximum-correlation variants, and the renormalization is what makes the softmax nonlinearity tractable in the high-dimensional limit rather than requiring linearization.",
+    "The mechanism analysis is more informative than a bare separation: Cor. 4.1 identifies non-vanishing mean as necessary for non-zero gradients at initialization, and the erf vs. normalized-softplus comparison in Fig. 2 cleanly separates the roles of cross-token normalization (erf suffers under variable L, softplus does not) and tail growth (softplus gap widens with L).",
+    "Cor. 4.4 gives a genuinely new qualitative prediction — variance in sequence length specifically hurts linear attention via a Jensen-type inequality — which is a concrete, falsifiable statement about why normalization matters.",
+    "Honest scoping throughout: Result 5.1 is explicitly labeled non-rigorous replica, the manifold restriction is flagged as unproven with counterexample local minima acknowledged, the absence of learnable queries is stated as a limitation, and concurrent work (Dohmatob 2025; Barnfield et al. 2026; Dragutinovic et al. 2025) is cited and differentiated rather than ignored.",
+    "Positioning is careful: the paper explicitly states how it departs from the closest prior model (variable length, generic weighting, renormalization) and from the general sequence-multi-index result of Cui (2025) (which gives no model-specific insight)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The restriction to the manifold M (zero cross-correlations m_kv = m_vk = q_vk = 0) is an assumption, not a result, and the paper concedes that the population landscape has local minima outside M (App. A.2.6). Since the headline linear-vs-softmax gap in Section 4.3 is stated for minima over M, the claim that this 'captures the performance efficiently attainable with one-pass SGD' rests on an invariance-plus-stability argument that is only partially proved (invariance at D = infinity) and numerically checked at finite D.",
+      "suggested_fix": "Either prove that GD/one-pass SGD from Gaussian initialization stays in a shrinking neighborhood of M with high probability at finite D (a concentration argument on the cross-correlations along the trajectory should be feasible), or add a systematic numerical study reporting max cross-correlation over training as a function of D, L, and nu, plus the fraction of random seeds that converge to off-manifold minima and their risk relative to the on-manifold value."
+    },
+    {
+      "severity": "major",
+      "issue": "The numerical evidence carries no uncertainty quantification. Fig. 3 reports markers from a single quasi-Newton run at a single system size (sqrt(ND) = 10^4) and describes agreement with theory as 'excellent' without any quantitative measure; there is no mention of seeds, no error bars, no finite-size scaling, and no residual between predicted and measured risk. For a paper whose finite-sample section is a non-rigorous replica prediction, the numerics are the only validation available.",
+      "suggested_fix": "Report mean and standard deviation (or interquartile range) over at least ~10 seeds per point, sweep at least three system sizes to show the deviation from the asymptotic prediction shrinking with D, and give a quantitative agreement metric (e.g., relative error in test risk vs. D) rather than a qualitative statement."
+    },
+    {
+      "severity": "major",
+      "issue": "The empirical settings are narrow relative to the generality the framing suggests. Fig. 2 covers L = 2, L ~ Unif{1,2,3}, and L = 10; Fig. 3 covers only L = 3 with alpha up to about 8. The interesting regimes for the retrieval motivation are long contexts and larger alpha, and the softplus-kernel gap is claimed to widen with L on the basis of very few L values.",
+      "suggested_fix": "Extend Fig. 2 to a wider ladder of L (e.g., up to L = 100 or an L-sweep at fixed nu showing the predicted log L / L scaling) and add at least one larger-L panel to Fig. 3; a log-log plot of the linear-attention risk gap against L verifying Cor. 4.3's rate would substantially strengthen the asymptotic claims."
+    },
+    {
+      "severity": "major",
+      "issue": "The motivating evidence (Fig. 1) is reproduced from Shen et al. (2024), and nothing in the paper closes the loop back to it. There is no experiment connecting the SLR predictions to an actual attention layer trained on AR/MQAR/NIAH, nor any test of the paper's distinctive prediction (that sequence-length variance specifically hurts unnormalized attention) in a real architecture. The paper therefore explains a stylized proxy of the phenomenon rather than the phenomenon it opens with, and kernelized attention is probed only through softplus while SSMs — prominent in the motivation — are never analyzed.",
+      "suggested_fix": "Add a small-scale controlled experiment: train one-layer softmax vs. linear vs. softplus-kernel attention on MQAR or a synthetic NIAH with fixed vs. variable sequence lengths, and check whether the ordering and the variable-length penalty predicted by Cor. 4.4 appear. Alternatively, scope the introduction to say explicitly that the paper explains a stylized abstraction and does not validate the mechanism in trained transformers."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some framing slightly outruns what is proved. The Section 4 result is an approximation/expressivity statement about population minimizers, yet it is repeatedly described as capturing what one-pass SGD achieves; and the abstract's 'consistently outperforms linear attention' in the finite-sample regime rests on a grid of three task settings at one L.",
+      "suggested_fix": "Separate the language for 'minimum of the population risk' from 'reachable by SGD' unless the trajectory analysis is added, and qualify 'consistently' with the explicit range of (task, nu, L, alpha) actually tested."
+    },
+    {
+      "severity": "minor",
+      "issue": "Notation is heavy and locally inconsistent, which hurts readability of the central results. The discussion after Result 5.1 refers to 'Qk and Qv' as squared norms while the equations use q_k, q_v; the order parameters of Section 4 (m_kk, m_vv, R_kk, R_vv) and of Section 5 (m_k, m_v, q_k, q_v, V_k, V_v) are never explicitly reconciled; and the self-consistent equations (18)-(25) are presented with almost no reader guidance on how the fixed point is initialized and selected beyond a single sentence.",
+      "suggested_fix": "Unify symbols across Sections 4 and 5 (or add a mapping in Table 1), and add a short paragraph or boxed algorithm describing the fixed-point iteration, initializations (uninformed/informed), convergence criterion, and how the minimum over S is selected."
+    },
+    {
+      "severity": "minor",
+      "issue": "Corollary 4.1's second clause as transcribed reads as a tautology (both the hypothesis 'non-vanishing mean, i.e. if E sigma(xi) = 0' and the symmetric-activation clause appear to state the same gradient equality), suggesting a sign/negation typo in a statement that carries real weight since it justifies adding the constant bias to linear and erf activations.",
+      "suggested_fix": "Restate Cor. 4.1 with unambiguous quantifiers (vanishing vs. non-vanishing mean, and which implies zero gradient), and make clear that the added constant in sigma = 1 + chi and 1 + erf is exactly what evades the degenerate case rather than a free modeling choice."
+    },
+    {
+      "severity": "minor",
+      "issue": "The comparison to kernelized attention is limited to a single kernel (softplus), from which the paper draws the general lesson that 'the kernel has to be well tuned.' With one kernel there is no evidence about where the boundary between adequate and inadequate kernels lies.",
+      "suggested_fix": "Add at least two more kernels spanning growth rates (e.g., ReLU or elu+1 as used in practice, and a polynomial or sub-exponential family), and if possible state a condition on the kernel's tail growth under which the Bayes risk is or is not attained in the max-SLR limit."
+    }
+  ],
+  "questions_for_authors": [
+    "How large is the measured deviation from M along GD at finite D, and does it shrink with D? Concretely, what are max_t |m_kv|, |m_vk|, |q_vk| as functions of D for the settings in Fig. 3, and does any seed converge to one of the off-manifold local minima described in App. A.2.6?",
+    "Does the softmax-vs-linear ordering in Fig. 3 hold when regularization is tuned per-model on a validation split rather than by grid search to minimize test risk directly? Tuning r_k, r_v on the test risk risks a mild optimism, and it is worth confirming the gap is unaffected.",
+    "How many seeds and which (N, D) pairs underlie the markers in Fig. 3, and what is the spread across them? The constraint sqrt(ND) = 10^4 does not determine N and D individually.",
+    "Can you verify the predicted rates directly — the 1/nu vs. e^{-c_L nu} separation on spiked-SLR and the 1 - Theta(log L / L) behavior on max-SLR — with a log-scale sweep, rather than the fixed-nu-range panels of Fig. 2?",
+    "Does the Bayes-optimal hard phase mentioned in Section 5 (and its discontinuity in Fig. 3) also manifest for the softmax ERM, i.e. is there a range of alpha where informed and uninformed fixed-point initializations disagree for softmax? The text says they coincide for the tested settings; over what range was this checked?",
+    "How does the analysis change if a learnable query vector is included, so that softmax is no longer a special case of kernelized attention? Is the Bayes-optimality of softmax in Prop. 4.2 robust to that, or does it hinge on the [CLS]-query structure?",
+    "Cor. 4.4 predicts that sequence-length variance specifically penalizes linear attention. Has this been checked in any trained attention layer on a retrieval-style synthetic task, where it would be a directly testable and quite distinctive signature?"
+  ],
+  "calibration_check": "Claims are, on the whole, carefully scoped — the replica result is labeled non-rigorous, the manifold restriction and the absence of a learnable query are flagged as limitations, and no SOTA or practical-superiority claims are made — though the repeated equating of population minima with what one-pass SGD reaches, and the word 'consistently' applied to a three-setting finite-alpha grid at one sequence length, both reach slightly past the evidence.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "It gives a sharp, mechanistic answer to a question the community actively debates (why softmax beats linear/kernelized attention on retrieval), and the identified ingredients — cross-token normalization and exponential tail growth — are the kind of insight that could guide attention-variant design, but the evidence lives entirely inside a single-layer rank-one toy model with no bridge to trained architectures."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The random sequence length, the generic weighting function unifying spiked and max-correlation variants, and the renormalization that makes the softmax analytically tractable are real advances over the closest prior single-location model, but the machinery (sequence multi-index models, replica analysis, order parameters) is inherited and at least one concurrent paper studies softmax-vs-linear separations in a related spirit."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Propositions 4.1-4.4 and Corollaries 4.1-4.4 are stated precisely with proofs deferred to appendices and the Bayes-optimality argument via the Nishimori condition is convincing, but two load-bearing steps are not established: the restriction to the manifold M (with acknowledged off-manifold minima) and the replica-symmetric Result 5.1, and the link from population minima to SGD-reachable solutions is argued rather than proved."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, error bars, variance, or finite-size scaling are reported anywhere; the key validation of the replica prediction is a single-size simulation described qualitatively as 'excellent agreement,' and the regularization is grid-searched to minimize test risk, which is a mild but real methodological concern for the reported gap."
+    },
+    "calibration_honesty": {
+      "score": 8,
+      "justification": "The paper is unusually forthright — it labels the replica method non-rigorous, states that a formal proof of the manifold argument is delicate and left for future work, admits the landscape has other local minima, notes the absence of learnable queries as a limitation, and cites concurrent work rather than obscuring it — with only mild overreach in equating population analysis with SGD attainability."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The organization is logical (task, population risk, other activations, finite-sample) and the intuitions after each result are helpful, but the paper is notation-dense with symbol drift between Sections 4 and 5 (q vs. Q, m_kk vs. m_k), Result 5.1's equation block arrives with little scaffolding, and at least one corollary statement reads as internally contradictory."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed well — abstract, motivated introduction with explicit contribution list, a substantive related-work section, precise model definition, two escalating results sections, computational remarks, and appendices for proofs and experimental details — at an appropriate length."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "The generative model, estimator class, activations, risks, and self-consistent equations are all specified explicitly enough to re-derive and re-implement, and the optimizer (quasi-Newton), regularization grid search, and appendix pointers for experimental detail are given; what is missing is seed counts, the individual (N, D) values behind the sqrt(ND) constraint, and fixed-point convergence criteria."
+    },
+    "related_work": {
+      "score": 8,
+      "justification": "Prior work on kernelized attention, SSMs, associative recall/MQAR, and the sequence multi-index literature is covered accurately, and — importantly — the paper delineates its contribution point-by-point against the closest prior model and against three concurrent works rather than gesturing vaguely at them."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Fig. 2 and Fig. 3 are well-designed to carry the argument (activation comparison against the Bayes risk across two tasks and three length regimes; theory-vs-simulation across alpha with both asymptotic limits and the Bayes-optimal reference marked), but there are only three display items, Fig. 1 is borrowed motivation rather than the paper's own evidence, and neither empirical figure shows uncertainty."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "One architecture (single layer, single head, no query, rank-one signals), one task family with two variants, four activations of which only one kernel, sequence lengths of at most 10 and alpha of at most about 8, and no real-data or trained-transformer check — the evidence base is narrower than the framing about softmax dominance in language models implies."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A clean, honest, technically competent theory paper with a genuinely informative separation result and mechanism analysis, held at borderline-accept by the unproven manifold restriction, the uncertainty-free numerics, and the missing link back to the retrieval phenomenon it sets out to explain."
+    }
+  },
+  "publishability_probability": 0.5
+}

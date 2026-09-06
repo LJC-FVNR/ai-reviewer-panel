@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper provides the first formal theoretical analysis of the 'PCC plateau' phenomenon in attention-based regression — a well-motivated, practically relevant problem. The authors derive two clean results: (1) a gradient attenuation bound showing PCC signal decays at O(1/σ̄_ŷ^{3/2}) relative to MSE as training progresses, and (2) a convex-hull capacity bound showing any convex aggregator is fundamentally limited in PCC gain under high within-sample homogeneity. The proposed ECA framework with three theory-driven components (SRA, DATS, DNPL) shows consistent improvements across four diverse benchmarks. However, several UCI-scale improvements are reported without variance estimates, the DNPL ablation evidence is mixed and partially truncated in the extracted table, the related work section omits the Multiple Instance Learning (MIL) literature that directly confronts the same convex-hull aggregation setting, and the condition guarding Theorem 2.2 is never analyzed for its tightness or real-data satisfaction.",
+  "strengths": [
+    "The PCC–MSE gradient decomposition (Theorem 2.1, Corollary 2.1) cleanly isolates the σ̄_ŷ^{3/2} attenuation mechanism and is empirically validated on synthetic data (Figure 3), meeting the standard for theory-then-validation papers.",
+    "Theorem 2.2 is a provably non-trivial capacity bound: showing that *any* convex aggregator, not just softmax attention, is constrained by the convex hull radius R relative to σ_0/‖w‖₂ is genuinely novel and has consequences beyond the specific method proposed.",
+    "The three ECA components each map directly to one identified limitation, making the architecture interpretable and the ablation table meaningful.",
+    "Results on the spatial transcriptomics dataset are compelling (+14–16% PCC across three folds with stable MSE), a setting where high within-sample homogeneity is independently verified via reported σ = 0.068 vs. σ_0 = 0.164.",
+    "The framework is backbone-agnostic by design and is tested across genuinely diverse settings (tabular, histopathology, video sentiment), which strengthens the generality claim."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The UCI benchmark improvements (e.g., Online News PCC 0.408→0.420) and the MSA result (PCC 0.783→0.806) are reported as single-point estimates with no seeds, no error bars, and no significance tests. For gains in the range of 0.01–0.04 PCC, it is impossible to assess whether these differences are statistically real or noise.",
+      "suggested_fix": "Report mean ± std across at least 5 random seeds for UCI and MSA. Consider a Wilcoxon signed-rank test or bootstrap CI given the small improvement margins, and explicitly report whether gains exceed one standard deviation."
+    },
+    {
+      "severity": "major",
+      "issue": "The DNPL ablation (Table 1, 'ECA w/o DNPL') shows PCC 0.922 on Superconductivity, which from the extracted text appears identical to the full ECA result (0.930 is not visible due to apparent truncation — the table extraction shows '1.' for full ECA). This creates ambiguity about whether DNPL contributes on tasks other than the one highlighted in text. The ablation evidence for DNPL as an independent component is currently unconvincing.",
+      "suggested_fix": "Provide a clean, fully-rendered ablation table with all numeric entries for all three UCI tasks. Additionally, include a learning-curve comparison (Baseline vs. ECA-full vs. ECA-w/o-DNPL) on at least one task to directly show the gradient stabilization effect claimed for DNPL."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper omits the MIL (Multiple Instance Learning) literature, which is the closest prior art to the convex-hull problem addressed here. Methods like ABMIL (Ilse et al., 2018), TransMIL (Shao et al., 2021), and non-local MIL attention (Li et al., 2021) explicitly design aggregation to escape the convex-combination limitation in histopathology and other high-homogeneity settings. The related work section does not acknowledge or compare against them, which misrepresents the novelty landscape and omits relevant baselines for the spatial transcriptomics experiment.",
+      "suggested_fix": "Add a Related Work paragraph on MIL aggregation methods. In the spatial transcriptomics experiment, include at least ABMIL as a secondary baseline to quantify whether ECA's extrapolation advantage is specific to the EGN backbone or general."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2.2 requires R < σ_0/‖w‖₂ for the bound to be finite and meaningful. The paper never checks whether this condition is satisfied in any of the four empirical settings, nor does it analyze what happens when the condition is violated.",
+      "suggested_fix": "Report the empirical values of R and σ_0/‖w‖₂ for each dataset in an appendix table. Briefly discuss the boundary case in the theorem remark."
+    },
+    {
+      "severity": "minor",
+      "issue": "DATS introduces two hyperparameters (T_min and β) and SRA introduces γ_max and λ_γ, but no sensitivity analysis is provided. For a method positioned as a 'drop-in replacement,' practitioners need guidance on how to set these without tuning.",
+      "suggested_fix": "Include a hyperparameter sensitivity plot (e.g., sweeping T_min and β on one UCI task) or provide a principled default derived from the theory (e.g., β ∝ 1/σ_0)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Corollary 2.1 presents a bound written as '√r_global ≤ (1/(2σ_y)) · (1/σ_y^{3/2})' but the text body refers to a decay rate of O(1/σ̄_ŷ^{3/2}), creating an inconsistency in the exponent (the formula combines both σ_y terms into a O(σ_y^{-5/2}) rate while the text claims 3/2). This should be clarified.",
+      "suggested_fix": "Restate the corollary with unambiguous notation: clearly distinguish the two σ_y factors and state the combined asymptotic rate in a single expression."
+    }
+  ],
+  "questions_for_authors": [
+    "Theorem 2.2 bounds the PCC gain of any convex aggregator relative to mean-pooling, but the bound depends on ‖w‖₂. Is the bound scale-invariant in practice? Specifically, if the regression head is re-scaled (e.g., by weight decay), does the empirically observed PCC gain bound stay proportional to the theoretical prediction?",
+    "DNPL (Equation 11) uses StopGrad on σ̄_ŷ. The authors claim stationary points are unchanged, but StopGrad creates a difference between the forward and backward computations. Could you provide a formal proof or counterexample showing that all local minima of L_total are preserved under the StopGrad modification, particularly in the joint MSE+DNPL objective?",
+    "Why is only ALMT used as the base model for MSA rather than the top-ranked method (DLF, PCC=0.781)? If ECA were integrated into DLF, would the improvements hold? This would strengthen the claim that ECA is a general drop-in module.",
+    "The spatial transcriptomics dataset uses 3-fold cross-validation, but the baseline EGN+ECA improvement varies across folds (the large improvement in fold 2 versus apparently smaller improvements in folds 0 and 1 based on Figure 6 description). What are the per-fold numbers, and is the mean improvement over 3 folds statistically significant by a paired test?",
+    "Corollary 2.2 bounds the PCC gradient magnitude by σ_s (in-sample dispersion). For DATS, the temperature is lowered when σ_s is small, which sharpens attention. But when the logits z_si are also near-uniform (as noted in Remark 2.3), sharpening a near-uniform distribution still produces near-uniform weights. Can you provide a quantitative bound or empirical measurement showing that DATS actually increases the residual ‖v̄_s‖ in homogeneous samples?"
+  ],
+  "calibration_check": "Claims are generally well-scoped to the attention-based regression + joint MSE+PCC setting, and the 'first rigorous analysis' assertion appears defensible given the literature survey; however, reporting UCI improvements of ~0.01–0.04 PCC as 'significant improvements' without variance estimates overstates the evidence for those specific benchmarks.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a real, widely observed frustration in attention-based regression for biology and video tasks, and the theoretical diagnosis is practically actionable, but the affected audience is a specific sub-community rather than the broad ICLR population."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The convex-hull PCC gain bound (Theorem 2.2) and the gradient attenuation analysis (Theorem 2.1 + Corollary 2.1) constitute a genuinely new theoretical contribution; the DNPL and DATS mechanisms are also novel, though SRA is conceptually related to residual attention used in MIL literature that is not cited."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The core proofs appear technically correct for the stated setup, and the gradient decomposition is careful, but the condition R < σ_0/‖w‖₂ in Theorem 2.2 is left unverified on real data, and the StopGrad stationarity claim for DNPL lacks a formal proof."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Spatial transcriptomics uses 3-fold CV with standard deviations, which is adequate; however, the UCI and MSA results are single-run point estimates with no error bars, and improvements as small as 0.012 PCC are claimed without any significance test."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The paper correctly scopes its theory to attention-based aggregation and the joint MSE+PCC regime, and discusses limitations via the convex-hull radius condition; however, it refers to sub-0.02 PCC gains on UCI as 'significant' without statistical backing."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is logically structured and the gradient decomposition in Section 2.3 is explained clearly, but Corollary 2.1's notation conflates the exponent in the bound with the asymptotic rate stated in the prose, and the DATS motivation for homogeneous data could use a worked numerical example."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Intro, Theory, Method, Related Work, Experiments, Conclusion) at an appropriate length; the appendix structure described is consistent with a complete submission."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The synthetic dataset construction, ECA architecture (including the MLP for γ_s and Softplus parameterization), and dataset processing pipelines are described in enough detail to reproduce; but hyperparameter sensitivity ranges and the number of seeds used are not reported for UCI and MSA."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The related work section is notably thin (~half a page) and critically omits the MIL aggregation literature (ABMIL, TransMIL) that addresses nearly the same convex-combination limitation in the same application domains (histopathology), misrepresenting the novelty landscape."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The training-curve figures (gradient ratio, σ̄_ŷ growth, fold-wise PCC/MSE) are well-chosen to directly validate the theoretical claims; the synthetic ablation over four homogeneity levels is particularly informative per caption; the main UCI table has apparent truncation artifacts in the extracted text that should be verified in the original."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings with one backbone each is borderline: the spatial transcriptomics and MSA results are strong, but the UCI gains are marginal and lack multiple seeds; no hyperparameter sensitivity analysis is provided, and the method is not tested on non-Transformer attention architectures despite claiming backbone-agnosticism."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "The theoretical contributions are non-trivial and novel, the method is clearly motivated, and the spatial transcriptomics results are compelling; the paper clears the ICLR bar in theory and partial experiments but requires error bars on UCI/MSA results and engagement with the MIL literature before it should be accepted."
+    }
+  },
+  "publishability_probability": 0.4
+}

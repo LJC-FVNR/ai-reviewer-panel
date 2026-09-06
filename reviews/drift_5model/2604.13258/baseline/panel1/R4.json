@@ -1,0 +1,117 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a unified token attribution framework for decoder-only LMs by combining causal-masked attention rollout, Hessian–vector product sensitivity, and KL-based masking impact. The problem is timely, the tripartite design is intuitive, and the paper reports large improvements over strong baselines on four models. However, the empirical case is undermined by suspiciously large gaps (5–10x over ReAgent on Soft-NC), a self-designed evaluation metric applied to a self-constructed dataset, missing significance testing, and thin justification for critical design choices (β,γ=0.5; last-6-layer Hessian for 70B). Novelty is modest since each component adapts prior ideas, and reproducibility of the HVP pipeline is under-specified.",
+  "strengths": [
+    "Addresses a real, well-motivated gap: linear/first-order and attention-only attributions are known to be unfaithful for autoregressive decoders; the paper articulates this clearly with a Taylor-expansion argument for second-order effects.",
+    "Principled multi-signal decomposition (causal gate x (curvature + KL)) that respects the decoder's causal mask and target conditioning.",
+    "Reasonable practical engineering: Pearlmutter HVPs with Hutchinson estimation, low-rank + windowing (HETA-LR+WIN), and layer sampling for large models; the authors report an efficiency ablation.",
+    "Evaluations span four models (GPT-J-6B, Phi-3-14B, LLaMA-3.1-70B, Qwen2.5-3B in appendix) and multiple datasets (LongRA, TellMeWhy, WikiBio, curated).",
+    "Extra stability analyses (Gaussian perturbation sensitivity, active/passive syntactic rephrasing, decoding hyperparameter sweep) go beyond typical attribution papers.",
+    "Ablations isolate the contribution of transition gating, Hessian, and KL terms."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Reported margins are extraordinary and largely unexplained. On Table 3, HETA achieves Soft-NC ~10.3 while the strongest baseline (ReAgent) reports ~2.5, and Soft-NS values likewise dwarf all baselines. Gaps of 4-10x on established metrics for a combination of known ideas invite skepticism about implementation of baselines, scoring normalization, or metric interpretation. No significance testing is performed despite std < 0.2 across only 3 seeds.",
+      "suggested_fix": "Provide the exact Soft-NC/Soft-NS definitions used, per-instance distributions (not just means), paired significance tests (bootstrap/Wilcoxon) vs at least ReAgent and SEA-CoT, and open-source baseline reproductions with hyperparameters. Sanity-check the magnitude scale of Soft-NC — the values look inconsistent with prior literature."
+    },
+    {
+      "severity": "major",
+      "issue": "Circular evaluation risk: DSA is a metric the authors introduce, applied to a dataset the authors construct with the very structure (question-relevant SciQ segment vs distractor NarrativeQA segment) that HETA's causal gate is designed to exploit. Baseline scores on DSA are systematically negative, suggesting a scoring artifact that may reward methods whose top-k precision aligns with the annotators (GPT-4o/GPT-5) rather than genuine causal fidelity.",
+      "suggested_fix": "Report DSA together with independent alignment metrics on a dataset not designed by the authors; report per-baseline mass distributions across segments; test robustness to the annotator (swap GPT-4o/GPT-5 for other labelers or human annotators); and analyze whether negative DSA reflects prevalent baseline failure or a metric artifact."
+    },
+    {
+      "severity": "major",
+      "issue": "Design-choice justification is thin. β=γ=0.5 is asserted without a sensitivity sweep in the main text. For LLaMA-70B, second-order terms are computed only in the last six layers — the paper claims this 'preserves attribution quality' but provides no direct comparison to a full-layer Hessian on a smaller model to validate the assumption.",
+      "suggested_fix": "Add a β,γ sensitivity plot spanning at least a decade of values on multiple datasets; provide a controlled comparison of last-k-layer vs full-layer HVP on GPT-J and Phi-3 to justify the large-model shortcut."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is incremental. Each component — attention rollout (Abnar & Zuidema), HVP-based sensitivity (Pearlmutter/Hutchinson), KL-under-masking (LIME/leave-one-out family) — has direct precedents. The paper's contribution is essentially their integration behind a causal gate, but the manuscript claims 'a new standard for interpretability' without distinguishing what the combination unlocks that Hessian-only or KL-only variants cannot.",
+      "suggested_fix": "Tone down 'new SOTA'/'new standard' language; add controlled experiments where competing methods are given the same causal gating to isolate whether gains come from HETA's specific formulation or from causal masking alone."
+    },
+    {
+      "severity": "major",
+      "issue": "Reproducibility of the HVP pipeline is under-specified. The manuscript mentions Hutchinson m, Rademacher vectors, Gauss-Newton/Fisher surrogates, rank-64 low-rank estimator, and window overlap, but does not report m, the exact surrogate used per model, batching strategy, or the numerical stabilization used near saturating activations. Baselines are also under-specified (e.g., attention rollout with/without residuals, TDD-backward vocabulary set, ContextCite ablation budget).",
+      "suggested_fix": "Include a full appendix table of HVP settings per model and full baseline hyperparameter listings; describe how numerical stability is handled where gradients vanish (per the paper's own motivating example)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity/presentation issues throughout the extraction (mangled equations, missing whitespace, table 2's suspiciously uniform '<1%' entries) hinder assessment. The final attribution equation and normalization Z are hard to parse; DSA formula shown reads inconsistently ('P j∈SNarrQA fsj' vs 'i∈SSciQ ssi - P').",
+      "suggested_fix": "Rewrite Eq. 5 and DSA cleanly; provide worked toy examples showing MT, S(T), and I values on a short sequence."
+    },
+    {
+      "severity": "minor",
+      "issue": "GPT-5 Thinking is cited as an annotator; even accepting the 2026 timeline, using two closely-related LLMs and taking their intersection may inflate agreement (F1=0.91, kappa=0.89) via shared biases rather than reflect ground truth.",
+      "suggested_fix": "Add a modest human-annotated slice to calibrate the LLM annotations."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning underweights alternative faithfulness families (Shapley/SHAP variants for text, causal mediation analysis, path patching), and does not discuss whether HETA's causal gate is faithful in the mechanistic-interpretability sense.",
+      "suggested_fix": "Add discussion and, where feasible, comparison to path-patching or causal mediation baselines."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the exact definition and scale used for Soft-NC/Soft-NS? Prior work reports these on the [0,1] range; can you reconcile HETA's ~10 values with earlier literature?",
+    "How sensitive are the main results to β and γ? Please provide a 2D sensitivity plot.",
+    "On GPT-J or Phi-3, how does 'last-6-layer' Hessian compare to full-layer Hessian in Soft-NC/Soft-NS and DSA? This directly validates the 70B shortcut.",
+    "If competing methods (Peering, TDD, ReAgent) are wrapped with the same target-conditioned attention-rollout causal gate as HETA, how much of the gap closes? This isolates the contribution of gating vs curvature+KL.",
+    "How were baselines reproduced? Were ContextCite and TDD-backward re-run at matched decoding settings and prompt/context lengths? Any authors' released code used?",
+    "Why does Table 2 show HETA at <1% variance uniformly across three unrelated metrics and four models? Please share the raw per-cell numbers rather than max relative change.",
+    "How is the KL term computed when a token embedding is 'masked' — is the token replaced with a MASK/UNK embedding, dropped from context, or embedded as zeros? Each choice can change results substantially.",
+    "How does HETA behave when the target token itself has near-zero gradient on a saturated activation, per the motivating example? A quantitative demonstration would strengthen the claim."
+  ],
+  "calibration_check": "Claims are overclaimed relative to evidence: the paper asserts a 'new state of the art' and 'new standard' for autoregressive interpretability, but the evidence is dominated by very large, poorly explained gains on partly self-designed evaluations, with no significance testing and modest novelty of components.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LMs is important and the framework is reasonable, but the demonstrated advance is contingent on eval choices that need scrutiny before the community will build on it."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "Combines existing ingredients (rollout, HVP, KL-under-masking) behind a causal gate; the integration is sensible but not conceptually surprising, and the paper does not isolate what only the combination enables."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Methodology is coherent and mathematically motivated, but several critical choices (β=γ=0.5, last-6-layer Hessian on 70B, HVP stabilization) are under-justified, and baseline reproductions are opaque."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Three seeds with reported std but no significance tests; extremely large and uniform gaps (Soft-NC ~10 vs ~2 for baselines; <1% variance across all decoding grids) are not statistically or mechanistically explained."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Claims a 'new state of the art' and 'new standard' with limited hedging; limitations paragraph is minimal and focuses only on compute, not on evaluation validity."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure is readable and the tripartite design is easy to follow, but key equations (Eq. 5 normalization, DSA formula) are ambiguous or garbled and would confuse a careful reader."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference structure with abstract, intro, motivation, background, method, experiments, ablations, related work, and conclusion; length appears appropriate."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Model list, dataset construction, and high-level algorithm are described, but the HVP pipeline (m, surrogate, stabilization), baseline hyperparameters, and DSA scoring code are insufficiently specified to reproduce results confidently."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers key generative-attribution baselines (ContextCite, TDD, Peering, ReAgent) and classical XAI, but misses causal mediation / path patching, SHAP-for-text variants, and does not delineate HETA's contribution as sharply as needed."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe pipeline overview, ablation bars, robustness curves, and qualitative token maps — informative and support the claims — though several tables have formatting artifacts that obscure interpretation."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four decoder-only LMs across scales (3B–70B) and multiple datasets are used, but generality claims are undercut by the self-constructed benchmark and metric, and the lack of tests on other target-token positions or long-context regimes."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Borderline reject in current form: promising framework and reasonable engineering, but evaluation and calibration issues require substantive additions before it clears the ICLR bar."
+    }
+  },
+  "publishability_probability": 0.2
+}

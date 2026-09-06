@@ -1,0 +1,102 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a three-part token attribution method for decoder-only LLMs (attention-rollout causal gating, Hessian-based second-order sensitivity, and KL-based information loss) plus a curated NarrativeQA+SciQ probing dataset. The motivation is reasonable and the breadth of models is decent, but the paper contains serious internal inconsistencies in its reported results, undefined metric scales, and a questionable mathematical justification, which together undermine the central 'new state-of-the-art' claim. In its current form the evidence is not trustworthy enough for acceptance.",
+  "strengths": [
+    "Clear and well-motivated problem statement: attention weights and first-order gradients are genuinely inadequate for causal, target-conditioned attribution in autoregressive models, and the paper articulates these limitations well.",
+    "A principled unifying idea that composes causal gating, curvature, and information-theoretic impact, with attention paid to scalability (Hutchinson/Pearlmutter HVPs, low-rank + windowing variants).",
+    "Reasonable experimental breadth: four decoder-only models spanning 3B–70B, three established benchmarks, a new curated probe, plus ablations and decoding-hyperparameter and syntactic-robustness stress tests.",
+    "A potentially useful curated evaluation construction (diagnostic SciQ evidence embedded in non-diagnostic NarrativeQA context) with reported high inter-annotator agreement."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric is defined as a difference of attribution masses under per-instance normalization to sum to one, which mathematically bounds it in roughly [-1, 1]; yet Table 1 reports DSA values of 4.2–5.1 for HETA and 2–3 for baselines. The reported numbers are inconsistent with the stated metric definition, so it is unclear what is actually being measured.",
+      "suggested_fix": "Reconcile the DSA definition with the reported scale: either correct the formula/normalization, state the true range, or explain the transformation that produces values >1. Report the raw quantities that enter DSA."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The results tables are internally contradictory. The LLaMA-3.1-70B summary table lists HETA at Soft-NC 0.6 / Soft-NS 0.8 / DSA 0.6 — LOWER than every baseline (2.x–3.x) — directly contradicting the text's claim that HETA is best and 'higher is better'. Combined with the unexplained Soft-NC scale (values up to 10.3 with no defined range), the faithfulness evidence cannot be verified.",
+      "suggested_fix": "Fix or clarify the contradictory table, define the numeric range/units of Soft-NC and Soft-NS as used here, and ensure all tables consistently support the headline claims."
+    },
+    {
+      "severity": "major",
+      "issue": "The core mathematical motivation is shaky. The saturated-softplus example (log(1+exp(wx+b)) with wx+b << 0) is a regime where BOTH gradient AND function change are small, so it does not clearly demonstrate 'gradient vanishes yet function changes significantly.' The formal statement even asserts f(x+eps*e_i)=f(x), which contradicts the intended point.",
+      "suggested_fix": "Provide a correct, concrete example (and the promised Appendix A1 derivation) where a first-order method provably misses influence that the Hessian term recovers, and fix the self-contradictory formal statement."
+    },
+    {
+      "severity": "major",
+      "issue": "Unsupported SOTA/generality claims ('establishing a new standard', 'new state-of-the-art'). No significance testing is reported; error-bar claims ('std < 0.2', 'std < ±0.06') are stated in text but not visible in the tables, and margins over ReAgent ('over 2x') rest on undefined metric scales.",
+      "suggested_fix": "Add error bars and paired significance tests across seeds/instances, scope claims to the evidence, and avoid 'new standard' language unless supported."
+    },
+    {
+      "severity": "major",
+      "issue": "Key design choices are unjustified or inconsistently described. Weights beta=gamma=0.5 are fixed without sensitivity analysis; the transition vector MT is a deterministic attention rollout yet is repeatedly called a 'learned semantic transition vector'; the KL masking scheme and the token-selection procedure for top-attributed sets (used in F1/DSA) are underspecified.",
+      "suggested_fix": "Add a beta/gamma sensitivity sweep, correct 'learned' terminology, and fully specify the masking and top-token selection procedures."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps beyond the (excused) anonymized links: the target-conditioned rollout aggregation, the exact HVP/Gauss-Newton surrogate configuration, low-rank estimator construction, and per-model layer-sampling choices are only sketched.",
+      "suggested_fix": "Provide precise algorithmic pseudocode (referenced Appendix A3) and complete hyperparameter tables in the main body or appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the exact ranges/units of Soft-NC and Soft-NS as used here, and why do DSA values exceed 1 given the stated sum-to-one normalization?",
+    "In the LLaMA-3.1-70B summary table, HETA appears to score below all baselines — is this a table error, and if so what are the correct values?",
+    "How sensitive are results to beta and gamma? Does the Hessian term provide gains beyond the causal gate + KL alone (the ablation only reports single-component vs full)?",
+    "How are the 'top-attributed' token sets thresholded for F1 and DSA, and how does the choice affect rankings across methods?",
+    "For the saturated-activation example, can you give a case where the gradient is (near) zero but a finite perturbation demonstrably changes the output, and show the Hessian term recovers it?"
+  ],
+  "calibration_check": "Claims are over-scoped relative to the evidence: 'new state-of-the-art' / 'new standard' assertions are undercut by undefined metric scales, absent significance tests, and at least one table where HETA underperforms every baseline.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Faithful token attribution for decoder-only LLMs is an important problem, but the demonstrated impact is uncertain given the shaky evidence and lack of downstream utility beyond the proposed metrics."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "The method largely composes existing pieces (attention rollout, Hessian/HVP sensitivity, KL masking); the combination is somewhat new but incremental rather than conceptually fresh."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The motivating math example is questionable/self-contradictory, and central metric definitions (DSA) are inconsistent with reported values, weakening the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No significance tests, error bars are asserted in text but not shown, metric scales are undefined, and at least one table contradicts the headline claims."
+    },
+    "calibration_honesty": {
+      "score": 3,
+      "justification": "Repeated 'new standard'/SOTA claims are not supported and are directly contradicted by internal inconsistencies, though limitations (runtime/memory) are honestly noted."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The prose is mostly readable and the pipeline is conveyed, but undefined metric ranges, terminology slips ('learned' rollout), and garbled tables hurt comprehension."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is present (abstract, intro, motivation, background, method, experiments, ablations, related work, conclusion/limitations) at reasonable length."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Core estimators and compute setup are described at a moderate level, but rollout aggregation, KL masking, low-rank construction, and top-token selection are underspecified (independent of the excused anonymized links)."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Positioning against ContextCite, TDD, PML, ReAgent and classical attribution methods is reasonably fair and specific, though comparisons hinge on the disputed results."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions describe informative display items (pipeline overview, ablation bars, robustness panels) that map to the claims; judged on captions alone they are adequate but the supporting tables are inconsistent."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four models and several datasets plus ablations give decent coverage, but generality claims are undermined by the unresolved table contradictions and absent significance analysis."
+    },
+    "overall_recommendation": {
+      "score": 3,
+      "justification": "A promising framework with a reasonable motivation, but blocking internal inconsistencies in the reported results and undefined metrics make the central claims unverifiable, warranting a major redo before acceptance."
+    }
+  },
+  "publishability_probability": 0.12
+}

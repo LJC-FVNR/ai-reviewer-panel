@@ -1,0 +1,111 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes a VQ-VAE + mutual-information pipeline to study planning-related structure in LM hidden states, applied to CFG, path-finding, and OpenWebText, and to compare NTP vs MTP training. The framework is a reasonable methodological contribution and the paper is careful about interpreting nMI comparatively rather than absolutely. However, empirical scope is thin (essentially one small architecture, ~125M with one 0.3B sanity check), a key finding is null (no consistent NTP/MTP difference), several results are confirmatory of prior work (recency, late-layer concentration), and the central methodological claim—that VQ-VAE-based MI avoids probing confounds—is defended only in appendix and does not clearly rule out that the trained VQ-VAE itself acts as a probe with its own capacity-dependent biases.",
+  "strengths": [
+    "Well-motivated question: planning horizon and branch awareness are interesting axes and the paper articulates them cleanly, connecting to MPC/world-model literature.",
+    "The VQ-VAE + count-based MI pipeline is a sensible engineering choice for reducing dimensionality and enabling comparable MI estimates across settings; the added cosine/entropy losses to prevent codebook collapse are reasonable.",
+    "Careful scoping of claims: authors explicitly restrict interpretation to relative nMI within a setting rather than absolute planning scores, and acknowledge that coarse-graining destroys absolute meaning.",
+    "The branch-awareness experiment on PF with disjoint alt/decoy paths is a clean design that meaningfully addresses the 'does the model retain unused correct continuations' question, and the alt/decoy ratio with mean±std is a useful summary.",
+    "Multiple task types (symbolic grammar, structured search, natural text) with distinct planning demands, providing at least some evidence that horizon findings are task-contingent rather than an artifact of one benchmark.",
+    "Diagnostic in §3.3 combining unconditional and conditional nMI across layers/blocks is a nice touch: the conditional analysis usefully attributes much of block-1 dependence to the final prefix position."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Scale and architectural breadth are very limited. Nearly all conclusions come from GPT-3-Small-sized models trained from scratch, with a single 0.3B check for one plot. Planning behavior—especially the MTP vs NTP comparison and the branch-awareness ratio—may look very different at ≥1B or with modern architectures/instruction tuning, yet the paper frames its findings as 'LMs' broadly.",
+      "suggested_fix": "Add at least one substantially larger scale (e.g., 1B–3B) and, if feasible, one pretrained public model (matched by architecture), and either show the trends hold or scope the abstract/intro to 'small transformer LMs trained from scratch on these tasks'."
+    },
+    {
+      "severity": "major",
+      "issue": "The core methodological claim that VQ-VAE-based MI 'avoids probe-induced confounds' is under-supported. A trained VQ-VAE is itself a learned mapping whose codebook size, encoder capacity, and training objective determine what information survives quantization; the estimated I(Z_A;Z_B) is therefore bounded by log|codebook| and shaped by encoder capacity in a way conceptually analogous to probe capacity. The rebuttal to probing is deferred to App. D.2–D.5 and to a validation study in App. A.4.",
+      "suggested_fix": "Move a distilled version of the probing-vs-VQ-VAE comparison and the codebook-size / encoder-capacity sensitivity study into the main text; show that qualitative rankings (e.g., decay shape in Fig. 3, alt/decoy ratio ordering in Table 1) are invariant to K and to encoder depth. Otherwise, the framework may inherit exactly the confounds it claims to avoid."
+    },
+    {
+      "severity": "major",
+      "issue": "The NTP vs MTP comparison—prominently motivated in the intro—produces a largely null result ('no consistent differences'), yet the paper does not report the effect sizes or seed-level variance needed to make 'no difference' a defensible claim. Table 1 has mean±std but the horizon curves in Fig. 3 are described qualitatively; there is no significance test, no confidence bands, no discussion of statistical power.",
+      "suggested_fix": "Report per-seed nMI curves with shaded CIs, run at least 3–5 seeds per condition, and provide either a paired test or Bayes-factor-style analysis before claiming 'no consistent difference'. Alternatively, reframe the NTP/MTP question as exploratory."
+    },
+    {
+      "severity": "major",
+      "issue": "Findings in §3.3 (late layers and recent tokens carry most decision-relevant information) largely reproduce well-established observations (recency, late-layer specialization; the paper itself cites Pal et al. 2023, Sukhbaatar et al. 2019, Beltagy et al. 2020). Without a novel prescription or a surprising quantitative finding, this section reads as a demonstration of the pipeline rather than a contribution.",
+      "suggested_fix": "Either (a) use the diagnostic to make a novel, actionable claim (e.g., predict which architectural changes improve which capability) and validate it, or (b) shorten §3.3 and re-scope it explicitly as a worked example of the pipeline rather than as a research finding."
+    },
+    {
+      "severity": "minor",
+      "issue": "The path-finding tasks are small (28-node vocab, path lengths 4/6) and the 'backward from goal' interpretation of the horizon peak at the second intermediate node is speculative. Without a manipulation (e.g., swapping start/goal, varying graph density) the causal story is a plausible reading of one nMI shape.",
+      "suggested_fix": "Add a controlled manipulation—reverse the direction, vary path length continuously, or vary graph branching factor—to test whether the nMI peak tracks 'proximity to the fixed endpoint' as the reverse-planning hypothesis predicts."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility of the pipeline hinges on many VQ-VAE hyperparameters (K, λ_q, λ_cos, λ_ent, encoder/decoder depth, block size 16) whose sensitivity is asserted but not shown in the main text. The validation experiment in App. A.4 is referenced but not summarized.",
+      "suggested_fix": "Add a compact main-text table with the sensitivity of the headline quantities (Fig. 3 decay slope, Table 1 alt/decoy ratio) to K∈{64,256,1024} and to block size, so readers can see the qualitative claims are robust without hunting through the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: several places have missing spaces / concatenation artifacts (e.g., 'long-range gen-eration', 'GS toa') and section cross-references appear as bare numbers (' 3.1'). While partially an extraction artifact, some appear intrinsic (e.g., inconsistent LaTeX macros for §, footnote spacing).",
+      "suggested_fix": "Do a careful pass on cross-references and spacing; ensure section symbols render and that no equations or captions have collapsed tokens."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are the qualitative conclusions (Fig. 3 decay shape; Table 1 alt/decoy > 1) to codebook size K and to VQ-VAE encoder capacity? Do the orderings survive when K is varied by an order of magnitude?",
+    "In App. D.2, does a well-tuned probe (e.g., an MLP with matched parameter count to the VQ-VAE encoder) produce systematically different qualitative conclusions from your MI estimator, or only different absolute numbers?",
+    "For the NTP-vs-MTP comparison, what is the seed-level variance of the reported nMI curves, and how many seeds were run? Would a paired test across seeds support the 'no consistent difference' claim?",
+    "The prefix-summary code Z^{1:L-1}_{1:T} aggregates all prefix hidden states across layers and positions into a single discrete code. Doesn't this discard the very structure needed to distinguish 'the model plans ahead' from 'the prefix trivially constrains future tokens by grammar/graph edges'? How do you rule out the latter for CFG and PF?",
+    "The 'backwards-from-goal' interpretation of the PF-Short horizon peak is intriguing but observational. Have you tested it with a controlled manipulation (swap start/goal; make start unfixed and goal fixed, and vice versa)?",
+    "How do the horizon results depend on model scale? The single 0.3B check is on CFG only—does the 0.3B model still show fast nMI decay, or does the horizon extend?",
+    "For OpenWebText, why is the horizon analysis (§3.1) not run? Presenting horizon results only on synthetic tasks weakens the case that the framework tells us anything about natural-language planning."
+  ],
+  "calibration_check": "Claims are generally scoped correctly to relative nMI within a setting, but the abstract/intro framing ('planning in LMs', 'general-purpose pipeline') overreaches given that all evidence comes from small from-scratch models on three tasks with a null NTP/MTP result.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Interesting framing of planning as horizon + branch awareness, but the empirical payoff is modest: a null NTP/MTP result and mostly confirmatory findings about recency/late-layer concentration."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The VQ-VAE + count-based MI + conditional MI application to LM planning analysis is a novel combination, though each component is individually well-known and MI-based interpretability has precedents (Voita, Skean, etc.)."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Method is internally coherent and the relative-only interpretation is disciplined, but the claim of avoiding probing confounds is under-defended in the main text and the pipeline has many degrees of freedom (codebook, encoder capacity, block size) that could shape results."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Multiple seeds are mentioned and Table 1 reports mean±std, but the horizon curves in Fig. 3 lack shaded CIs, there are no significance tests, and 'no consistent NTP/MTP difference' is stated without effect-size or power analysis."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper is unusually careful about limitations of absolute MI values, restricts claims to within-setting comparisons, and acknowledges that findings are aggregate rather than per-prompt."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The method is explained but with extraction/formatting artifacts, several critical comparisons (probing, VQ-VAE sensitivity, validation) live entirely in the appendix, and the discussion of the aggregate prefix code Z^{1:L-1}_{1:T} does not clearly distinguish 'planning' from 'prefix constrains future by construction'."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (intro, method, three-part analysis, conclusion) with appropriate related-work coverage; within reasonable ICLR length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Model sizes, training objectives, dataset construction, VQ-VAE loss composition, and code/hyperparameter conventions are described sufficiently in principle; missing sensitivity tables in the main text and heavy reliance on appendix material are the main gaps."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Reasonable coverage of mechanistic interpretability, probing, and information-theoretic analyses; positioning against Pal et al. and probing critiques is clear, though newer MI-based interpretability work could be more directly contrasted quantitatively rather than just cited."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, figures directly support the horizon (Fig. 3), branch-awareness (Table 1), and layer/block heatmap (Fig. 4) claims; missing error bands on horizon curves and the aggregated 'Z^{1:L-1}_{1:T}' visualization limit interpretability."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Essentially one architecture at one scale (GPT-3 Small, from scratch) with a single 0.3B sanity check on one task; three datasets are used but the generality claims about 'LM planning' outrun the evidence, especially since the horizon analysis on OWT is not fully surfaced."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: methodologically thoughtful and honest about scope, but too limited in scale, too reliant on appendix defenses of its core methodological claim, and produces a mix of null and confirmatory results that don't yet clear the ICLR acceptance bar."
+    }
+  },
+  "publishability_probability": 0.28
+}

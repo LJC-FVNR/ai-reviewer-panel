@@ -1,0 +1,114 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper identifies 'internal bias' — a model's preliminary guess about the answer, elicited by forcing generation after </think> — as a driver of overthinking in reasoning models, and supports this with correlational statistics, two counterfactual interventions (question removal and bias injection via fine-tuning), and attention analysis. The core hypothesis is intuitive, the counterfactual design is thoughtful, and results are consistent across three models and several tasks. Weaknesses include a limited model set (three checkpoints, all Qwen-family or DeepSeek-R1 distillations of it), reliance on keyword-counting proxies for reflection, absence of seed/error-bar reporting for the small AIME sets (n=30), and some conceptual slippage between 'attention to question' and 'causal reactivation of bias'.",
+  "strengths": [
+    "Well-motivated question: mechanistic causes of overthinking are genuinely underexplored, and the framing is crisp.",
+    "The two counterfactual interventions (removing the question mid-reasoning; SFT-based bias injection with Random2Correct/Random2Wrong controls) move the paper beyond pure correlation and are a real methodological contribution.",
+    "Consistent effects across CharCount (en/zh), KnowLogic, AIME 2024/2025 and three models; the 31–53% length reduction with maintained accuracy is a striking, non-trivial result.",
+    "Interpretability analysis with attention-sink normalization (dividing by 1/p) and layer-wise ratios is a careful touch; the 'strawberry' case study aligns with the statistical trend.",
+    "Honest mitigation section that shows existing methods (FCS-SFT/DPO, SEAL, PROBE) fail to remove the bias effect — the authors resist the temptation to claim their framework fixes overthinking."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Reflection is measured by counting a fixed keyword list (e.g., 'wait'). This is a coarse proxy: models with different lexical habits, or after fine-tuning that alters vocabulary usage (e.g., FCS-SFT), may show keyword changes that don't map cleanly to reflection episodes. Several central claims (parroting probability, mitigation ineffectiveness) rest on this proxy.",
+      "suggested_fix": "Validate keyword counts against a human-annotated or LLM-judge segmentation of reasoning episodes on a subsample; report agreement. Also report reflection segments/step counts as an alternative to raw token counts."
+    },
+    {
+      "severity": "major",
+      "issue": "AIME 2024/2025 have only 30 problems each, and Table 1/2/4 report point estimates with no seeds, no confidence intervals, and no significance tests. Given accuracy swings like 36.7→46.7 on AIME 2025 (Remove) and 63.3→50.0 (FCS-SFT on AIME), these differences may be within run-to-run noise for a single sample of 30.",
+      "suggested_fix": "Run each configuration with multiple decoding seeds (≥5) and report mean ± std, with bootstrapped CIs on accuracy and paired significance tests on reasoning length."
+    },
+    {
+      "severity": "major",
+      "issue": "Model breadth is thin for the 'universality' claim: DeepSeek-R1, QwQ-32B, and R1-Distill-Qwen-14B are all Qwen-family reasoning models (R1 is a separate lineage but distills into this family). No Llama-based reasoning model (e.g., R1-Distill-Llama), no o1-family reasoner accessible via logprob probing surrogate, no non-Qwen open reasoner. This weakens the generalization claim to 'reasoning models' broadly.",
+      "suggested_fix": "Add at least one non-Qwen reasoner (e.g., R1-Distill-Llama-8B/70B, or a Nemotron/OpenReasoner variant) for the core CharCount and one complex task, at least on the correlational analysis."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'direct answer' construction (forcing </think> immediately) is treated as a faithful readout of an internal, latent bias, but the operationalization is a specific prompting trick and could plausibly measure prompt-conditioning artifacts rather than a pre-reasoning belief. The 64-sample multi-template averaging helps but the paper doesn't quantify template sensitivity or show that different template families yield the same abias distribution.",
+      "suggested_fix": "Report inter-template agreement / entropy of direct-answer distributions across templates, and ideally corroborate with a purely representational probe (Appendix J.1 is mentioned but should be moved into the main paper) so the concept isn't tied to a single prompting recipe."
+    },
+    {
+      "severity": "minor",
+      "issue": "The bias injection experiment fine-tunes on 50 rephrased declarative statements per sample and then tests on that exact sample. This risks demonstrating memorization rather than genuine bias reshaping; the Random2Correct/Random2Wrong controls address it partially but don't rule out that the injected content also acts as an in-context prior that would show up without any 'internal bias' mechanism.",
+      "suggested_fix": "Add a held-out probe: inject bias about sample X, test on a paraphrased X (same target letter/word but different surface) or on nearby items, to show the effect transfers as a belief rather than acting as label leakage."
+    },
+    {
+      "severity": "minor",
+      "issue": "Causal wording around attention ('attention to question reactivates internal bias') is stronger than what a correlational attention analysis supports. The attention shift at reflection tokens is compatible with several mechanisms (e.g., the reflection triggers question re-reading rather than the question re-reading triggering reflection).",
+      "suggested_fix": "Either soften to 'consistent with' language or add an intervention (e.g., attention masking of question tokens at the decision step) that directly tests the causal claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'complexity is matched across deviation groups' argument in §4.3 uses 'first reasoning length' as a proxy for problem complexity, but that itself may be influenced by bias (a biased model may also front-load a shorter first pass). The argument is not fully independent.",
+      "suggested_fix": "Additionally control by an external difficulty measure (e.g., word length / letter frequency for CharCount, published AIME difficulty tiers, or an independent model's solve rate)."
+    },
+    {
+      "severity": "minor",
+      "issue": "Prose has repeated small typos and word-run artifacts ('reason-ing', 'con-tributing', 'univer-sality') that suggest a PDF-to-text pass; there are also inconsistent notation choices (Pfirst vs P_first, punctuation around \\think>).",
+      "suggested_fix": "Copy-edit pass; the abstract in particular reads roughly."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable is the direct-answer distribution across your 64 templates — is there a small subset of templates driving the estimated bias, and does the correlation with reasoning length hold if you restrict to any single template family?",
+    "For the question-removal intervention, what exactly is the input the model conditions on after removal — an empty prompt plus the accumulated CoT, or a placeholder? Does the accuracy improvement on AIME survive if you also match the total sampled tokens (i.e., is the gain from removing bias or from reducing chance of a late derailment)?",
+    "In bias injection, if you fine-tune on statements for sample X and test on a paraphrased X, does the effect persist? This would separate 'bias reshaping' from 'answer memorization'.",
+    "Have you validated the reflection-keyword proxy against human or LLM-judge annotation? What is the false-positive/negative rate on identifying actual reflection episodes?",
+    "Do the effects reproduce on a non-Qwen-lineage reasoner (e.g., R1-Distill-Llama-70B)?",
+    "Can you report AIME numbers with multiple seeds and confidence intervals given n=30?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped ('one important reason', 'may reactivate'), though the 'universality' language in §4 overreaches given only three closely related models, and the attention section slips from correlational into causal phrasing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Provides a mechanistic explanation for overthinking that reframes existing efficiency work; likely to be cited by the reasoning-efficiency subcommunity, though not paradigm-shifting."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The specific framing of a pre-reasoning 'internal bias' measured via forced-</think> generation, combined with a mid-reasoning question-removal intervention, is a fresh angle not directly duplicated by prior faithfulness or efficient-reasoning work."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The counterfactual design is a real strength, but rigor is undermined by reliance on keyword-based reflection counts, a specific prompting operationalization of 'bias', and some causal claims about attention that outrun the evidence."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seeds, no error bars, no significance tests on 30-item AIME sets where key claims (accuracy improvements from Remove, FCS-SFT accuracy drop) live; correlational analyses lack CIs."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are stated, the mitigation section honestly reports that the authors' framing doesn't yield a clean fix, and hedging language is used in places, though 'universality' overclaims given the model set."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Structure and core narrative are clear, but the writing is roughened by extraction artifacts, some notation is inconsistent, and a few definitions (e.g., Pfirst, r) are introduced tersely."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference organization with Intro/Related/Method/Experiments/Interpretability/Mitigation/Conclusion; length appears within ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, datasets, prompt templates (in appendix), keyword lists, and training regimes are described in reasonable detail; missing seeds and a more precise spec of the direct-answer templates in the main text are the main gaps."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positioning against efficient-reasoning and CoT-unfaithfulness literature is fair and reasonably comprehensive; the distinction from Arcuschin et al. (bias-driven post-hoc rationalization) is articulated well."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe genuinely informative figures — a mechanism illustration, deviation-vs-length bars with reflection overlay, attention heatmap on a canonical example, and layer-wise attention ratios — that directly back the claims."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three models (all Qwen-family or R1-into-Qwen distillations), four task families, two languages; adequate for a phenomenon paper but under-supports the 'reasoning models generally' framing without a non-Qwen reasoner."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: interesting phenomenon and above-average methodology for a mechanistic paper, held back by proxy-based measurement, thin statistical reporting, and limited model diversity."
+    }
+  },
+  "publishability_probability": 0.5
+}

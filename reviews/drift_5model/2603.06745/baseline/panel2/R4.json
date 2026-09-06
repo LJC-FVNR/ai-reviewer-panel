@@ -1,0 +1,105 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time activation steering method that dynamically modulates steering strength via a plausibility-guided decoding loop combined with an attention-sensitivity-based layer ranking. Empirical results on IFEval, LIFBench, and a new GSM8K-Format benchmark show consistent gains (~6.5% avg over zero-shot, ~4% over prior steering baselines) with preserved text quality and modest efficiency cost. The core ideas — plausibility-guided rejection of steered predictions and layer selection via a one-time sensitivity analysis — are novel and well-motivated, and ablations support the key design choices. Some concerns remain around statistical reporting (single seed / greedy decoding for most experiments), the ad-hoc nature of the sensitivity metric, and clarity issues introduced by transcription noise in the equations.",
+  "strengths": [
+    "Well-motivated problem: oversteering is a real, acknowledged failure mode of prior activation steering methods (PASTA, SpotLight), and dynamic per-step modulation is a sensible response.",
+    "The plausibility-guided rejection loop is a clean, general mechanism; the paper demonstrates it also improves competing methods (PASTA, SpotLight) when used as a safety gate, supporting its generality.",
+    "Broad empirical coverage: IFEval, LIFBench (long-context), and GSM8K-Format across Llama-3.1-8B, Llama-3.2-1B, and Qwen-2.5 at 3B/7B/14B — the multi-scale/multi-family evaluation strengthens the generalization claim.",
+    "Ablations are targeted and informative: reversed ranking, random layers, random tokens, fixed-strength variants, and threshold sweeps directly probe the main design choices.",
+    "Reports both text quality and task fidelity (LLM-judged, with human evaluation in appendix), which addresses the common critique that steering methods trade fluency for adherence.",
+    "Practical efficiency: ~16% throughput reduction and negligible memory overhead is competitive with the baseline family and compatible with FlashAttention (unlike attention-level interventions)."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness of headline gains is weak: main tables (Table 1, Table 2) appear to report single-seed numbers under greedy decoding with no error bars or significance tests. The 6.5% avg gain over zero-shot and 4% over PASTA*/SpotLight* rest on point estimates, and some Qwen results (e.g., 74.4 vs 74.9 on 7B) are within noise range.",
+      "suggested_fix": "Report seed variance for stochastic components (LLM-judged eval, random-layer ablation already shows ±0.7 / ±1.1 so the machinery exists) or bootstrap confidence intervals over the benchmark, and mark which margins are significant."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention sensitivity metric D_j(ℓ) in Eq. 2 is presented as empirically motivated but its formulation (sum of direct + propagated effects, both defined as differences of cosine distances) is not derived from any principle and the paper explicitly concedes 'not based on a formal theoretical framework.' The ablation shows reversed ranking (79.0) and random layers (80.2) both fall short of the ranked variant (81.8), but the 1.6-point gap over random is small and no comparison is made to simpler heuristics (e.g., layer depth, attention entropy, magnitude of Δ activation).",
+      "suggested_fix": "Add comparisons to simple heuristic rankings (layer index, attention-entropy-based, gradient-based saliency) to show that the specific two-term cosine-distance formulation adds value over trivially cheap alternatives."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is a newly introduced benchmark by the authors, and prior steering methods appear to collapse on it (PASTA*: 62.7 T. Acc; SpotLight*: 78.7). Since baselines were tuned on IFEval and transferred to GSM8K-Format, the strong DIRECTER advantage on GSM8K-Format could partially reflect that DIRECTER's adaptive mechanism is self-tuning while baselines are not. This makes the comparison somewhat structurally favorable.",
+      "suggested_fix": "Either tune PASTA/SpotLight on GSM8K-Format separately (matching DIRECTER's parameter-free operation), or explicitly discuss the tuning asymmetry as a caveat and provide a per-task-tuned baseline comparison."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper depends on cleanly separable instruction spans (an assumption inherited from PASTA/SpotLight setup, requiring gpt-4o-mini rewrites of IFEval). The 'automatic span detection' extension is deferred to Appendix D.2 with no headline numbers, so real-world applicability under noisy span identification is under-evaluated.",
+      "suggested_fix": "Include at least one main-table result under automatic span detection to quantify how much of the gain survives when the instruction span is imperfectly identified."
+    },
+    {
+      "severity": "minor",
+      "issue": "Clarity: the extracted equations show garbled notation in several places (Eq. 1 uses 'pt, i t ≥ β · pt,i t' with tildes lost; Algorithm 1 has visible OCR-like breaks; the propagated-effect term in Eq. 2 is truncated 'from layer' with no subscript). Even accounting for transcription artifacts, the plausibility condition and the sensitivity decomposition would benefit from clearer prose.",
+      "suggested_fix": "Restate the plausibility acceptance rule (Eq. 1) and the direct/propagated decomposition of D_j(ℓ) using unambiguous notation and add a small worked example for the sensitivity computation."
+    },
+    {
+      "severity": "minor",
+      "issue": "Choice of α = 100 is claimed to work across 10^1–10^5 (Fig. 3b) because 'token change rate saturates' — but this saturation itself implies the α parameter is largely inert and that all fine-grained control comes from |L_cand|. The paper should more explicitly acknowledge that key-scaling is effectively a binary gate here, which reframes the method as 'layer subset selection with rejection sampling' rather than 'strength modulation via KV scaling.'",
+      "suggested_fix": "Reframe the contribution to make it explicit that the operative control knob is the steered layer set, and that α saturating means the KV-scaling framing is somewhat cosmetic once |L_cand| is doing the work."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the seed-to-seed variance of the main IFEval/LIFBench/GSM8K-Format numbers in Table 1 under a non-greedy decoding regime (e.g., temperature 0.7, 5 seeds)? Would the ranking of methods remain the same?",
+    "How does DIRECTER compare against a simple heuristic that rejects steered tokens whose top-1 rank is below a threshold in the raw distribution, without any layer ranking at all? Is the sensitivity ranking necessary or does the plausibility filter carry most of the gain?",
+    "In Figure 2b, when the plausibility filter is applied to PASTA/SpotLight, does the improvement primarily come from *rejecting* steered tokens (falling back to raw)? If so, what fraction of tokens end up un-steered under DIRECTER vs. PASTA+filter, and how does that fraction correlate with the accuracy gain?",
+    "The GSM8K-Format benchmark is newly proposed. Have you compared DIRECTER against baselines with per-benchmark tuning (rather than IFEval-tuned settings transferred), to rule out that DIRECTER's edge comes from its parameter-free nature rather than a fundamentally better mechanism?",
+    "The gating heuristic based on top-2 probabilities skips steering when p_{t,i_t^*} < β · p_{t,i_t}. What fraction of tokens hit this gate in practice, and can you show that the gain is not dominated by this skip logic being a good confidence estimator?",
+    "How sensitive is the method to the choice of cosine distance (vs. KL, L2, angular) in the sensitivity metric D_j(ℓ)?"
+  ],
+  "calibration_check": "Claims are generally scoped to the evidence, but the 6.5% headline gain and 'general mechanism' framing rest on single-seed greedy-decoding numbers and IFEval-tuned baselines transferred to a self-introduced benchmark — the paper stops short of overclaiming SOTA but should more explicitly caveat these design choices.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Instruction-following via activation steering is an active area, and a robust dynamic-strength mechanism is genuinely useful; impact is moderate rather than field-changing since gains are 4–6% on established benchmarks."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Coupling KV-cache steering with a plausibility-guided rejection loop and a one-time attention sensitivity ranking is a novel combination; each individual ingredient has precedent (plausibility guidance from contrastive decoding, KV scaling, sensitivity metrics) but their integration is new."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is clearly defined and controls are reasonable, but the sensitivity metric is admittedly heuristic and the KV-scaling framing is undercut by α being saturable, leaving layer subset selection as the true mechanism."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report point estimates from greedy decoding with no error bars or significance tests; only the random-layer/token ablations show ±std, and several head-to-head margins in Table 2 are within plausible noise."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (heuristic metric, span separability, tuning asymmetry acknowledged in appendix) are stated; claims are mostly scoped, though the 'general mechanism' framing is slightly stronger than the evidence warrants."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure and story are clear, but formal presentation is hurt by notation issues around Eq. 1–3 and Algorithm 1 (even discounting transcription artifacts), and the α-vs-|L| control story could be more explicit."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure with Intro, Related Work, Method, Experiments, Conclusion, appendices; length appears consistent with ICLR norms."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Method, hyperparameters (α=100, β=0.5), models, benchmarks, and evaluation procedure are described in enough detail that reimplementation is feasible from the manuscript alone; details of prompt rewriting and span detection are in appendices."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Prior activation steering methods (PASTA, SpotLight, contrastive decoding, steering vectors) are appropriately positioned; comparison to attention-head and residual-stream methods is fair and the contribution is clearly delineated."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Figure/table captions describe informative comparisons: overview figure, fixed-strength ablation, compatibility with other methods, hyperparameter robustness, and efficiency; captions support rather than decorate the claims."
+    },
+    "breadth_generality": {
+      "score": 7,
+      "justification": "Evaluation across three benchmark families and five model checkpoints (1B–14B, two families) supports generalization; still limited to English instruction-following and separable instruction spans."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Solid borderline-accept: useful contribution with clear empirical wins and thoughtful ablations, but held back by weak statistical reporting, a heuristic sensitivity metric, and a somewhat favorable evaluation setup."
+    }
+  },
+  "publishability_probability": 0.5
+}

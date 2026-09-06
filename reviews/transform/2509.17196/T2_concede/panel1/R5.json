@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper proposes adapting crosscoders—sparse autoencoder variants originally designed for cross-layer feature alignment—to the cross-snapshot setting, enabling direct tracking of feature evolution across LLM pre-training checkpoints. The core idea is novel and well-motivated, the mechanistic findings (initialization vs. emergent features, emergence hierarchy by complexity, a directional turning point around step 1,000, and a statistical-to-superposition phase transition) are interesting and largely coherent with prior theoretical frameworks. However, the experimental scope is narrow (one layer per model, two model sizes only), the LLM-based complexity scoring lacks validation, a key correlation is labeled 'moderate' when it explains under 10% of variance, and the paper contains a duplicate boilerplate limitations section that should be removed. These are fixable issues that do not undermine the core contribution, making this a borderline accept pending revisions.",
+  "strengths": [
+    "Genuinely novel application: adapting crosscoders to the cross-snapshot (training-dynamics) setting is a clean and well-motivated methodological contribution not previously explored.",
+    "Rich empirical findings: the initialization-vs-emergent feature dichotomy, the universal directional turning point around step 1,000, the emergence hierarchy from previous-token to induction to context-sensitive features, and the statistical-to-superposition phase transition are all concrete, falsifiable claims backed by multiple complementary analyses.",
+    "Circuit-tracing integration is well-executed: the attribution patching / integrated-gradient approach is correctly implemented, and the ablation experiments (top-k keep vs. top-k remove) on SVA, IOI, and induction tasks provide a principled causal link between microscopic feature formation and macroscopic task performance.",
+    "Thoughtful failure-mode analysis: the discussion of crosscoder misalignment and feature splitting is unusually careful for a paper of this type, and the empirical checks (linear probes, Appendix C; polysemanticity evaluation, Appendix A) partially close the gap.",
+    "Use of Pythia with publicly available checkpoints makes the experimental setup principally reproducible, and SlimPajama is a well-understood corpus."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Single-layer restriction substantially limits the generality of claims. Both Pythia-160M (Layer 6) and Pythia-6.9B (Layer 16) are analyzed at exactly one middle layer each. The paper's title and framing ('LLM Pre-Training') imply broader scope, but all quantitative findings—emergence timings, directional turning points, dimensionality dynamics—are conditioned on this single-layer choice. It is entirely plausible that early vs. late layers exhibit qualitatively different dynamics, and the paper provides no sensitivity analysis across layers.",
+      "suggested_fix": "Include at least a two-layer comparison (e.g., an early vs. a late layer) for Pythia-160M, or explicitly scope all claims to middle-layer activations and explain why the middle layer is representative."
+    },
+    {
+      "severity": "major",
+      "issue": "LLM-based complexity scoring (Claude Sonnet 4) for Figure 6a lacks any inter-rater reliability or human validation. Using an LLM to score features by 'complexity' (1–5) and then reporting a Pearson correlation against emergence timing as a scientific result is methodologically fragile: the scoring rubric, the LLM's own training data, and possible confounders (token frequency, feature type) are not controlled. The r = 0.309 result (explaining ~9.6% of variance in emergence timing) is additionally characterized as a 'moderate positive correlation' in both the figure caption and body, which is a calibration mismatch—r ≈ 0.31 is conventionally weak-to-moderate at best.",
+      "suggested_fix": "Provide human annotation on a sample (even 30–50 features) to validate the LLM scoring rubric. Clarify that r = 0.309 is a weak-to-moderate correlation explaining roughly 10% of variance, and adjust prose accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "The phase-transition claim (Section 6) relies on two indirect and not-yet-causally-linked signals: (1) KL divergence to unigram/bigram distributions converging early, and (2) total feature dimensionality compressing then expanding. The paper asserts these 'coincide' temporally, but no quantitative test of timing alignment is presented. Further, the dimensionality metric (Eq. 6) adapted from Elhage et al.'s toy-model setting is applied to crosscoder features without a formal justification that the metric retains its interpretation in high-dimensional, non-ground-truth feature settings.",
+      "suggested_fix": "Provide a scatter plot or statistical test showing the temporal co-occurrence of the KL-convergence and dimensionality-compression events across both models. Add a brief theoretical justification or empirical check (e.g., ground-truth toy model) that validates Eq. 6 in the crosscoder context."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper contains two separate 'LIMITATIONS' sections: one substantive section before the Conclusion (Section 7) and a second generic, template-like section after the Conclusion that begins 'Several limitations qualify the scope of these findings…' The second section is largely boilerplate and partially duplicates the first.",
+      "suggested_fix": "Remove the duplicate post-Conclusion limitations section; consolidate any unique content into the substantive Section 7."
+    },
+    {
+      "severity": "minor",
+      "issue": "No error bars, confidence intervals, or repeated-run variance are reported for any quantitative result. The crosscoder is trained once per configuration, and emergence timings, attribution scores, and feature lifetime distributions all lack uncertainty quantification.",
+      "suggested_fix": "Report at least two random-seed runs for the main crosscoder (or provide a sensitivity analysis over initialization) to bound the variance in the key quantitative findings."
+    },
+    {
+      "severity": "minor",
+      "issue": "The crosscoder alignment evaluation in Appendix A is referenced frequently in the main text as the primary evidence against failure modes, but the method (e.g., how faithfulness and completeness are operationalized) is not summarized anywhere in the main paper. Reviewers and readers cannot assess whether the checks are adequate without reading the appendix in full.",
+      "suggested_fix": "Add a 2–3 sentence inline summary of the alignment evaluation approach and key numerical results to the main text when failure modes are first discussed."
+    }
+  ],
+  "questions_for_authors": [
+    "Do the emergence timings, directional turning points, and dimensionality dynamics replicate qualitatively in early (Layer 1–2) and late (penultimate) layers of Pythia-160M? Even informal observation on one additional layer would significantly strengthen the generality claim.",
+    "How do the automated complexity scores (Claude Sonnet 4) compare to human annotator judgments on a shared held-out set? What is the inter-rater agreement between the LLM and human scorers, and between two human scorers?",
+    "The paper uses 32 out of 154 Pythia snapshots. Is the choice of 32 snapshots empirically validated? Would using, say, 64 snapshots change any of the qualitative findings—specifically the estimated emergence times and the apparent universality of the step-1,000 turning point?",
+    "The total feature dimensionality in Figure 8c reaches only ~70% of activation space dimensions even with 98,304 features. How much of this shortfall is attributable to crosscoder capacity constraints vs. genuine underutilization of representational space by the model?",
+    "Attribution scores in Section 5 are averaged across 1,000 examples but computed on a single checkpoint family. How sensitive are the identified 'critical features' to the specific snapshot used for gradient computation? Do the same features rank highly at early vs. late snapshots?"
+  ],
+  "calibration_check": "Claims are generally well-scoped to the evidence, with two notable exceptions: r = 0.309 is labeled 'moderate' when it explains under 10% of variance, and the phase-transition framing is presented with more confidence than the indirect (KL-divergence + dimensionality) evidence strictly supports.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Tracking feature evolution during pre-training fills a genuine gap in mechanistic interpretability and training dynamics research; the phase-transition framing and emergence-hierarchy findings are likely to generate follow-on work."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Adapting crosscoders to the cross-snapshot setting is a clean, previously unexplored idea; the empirical findings (directional turning point, complexity-emergence correlation, phase transition) are new, though individually incremental relative to the broader literature."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The methodology is largely sound and failure modes are explicitly considered, but single-layer restriction, no error bars on any result, and the unvalidated LLM complexity scorer are meaningful rigor gaps."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "No error bars or repeated runs appear anywhere; the main quantitative correlation (r = 0.309) is based on 100 features with LLM-assigned labels lacking human validation; significance testing is present only for that one correlation."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are stated more honestly than average for the venue, but r = 0.309 being called 'moderate' and the phase-transition claim being stated without direct temporal-alignment evidence represent mild overclaiming."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The paper is generally readable and the architecture/objective are clearly specified; the duplicate limitations section and reliance on appendices for critical validation details (alignment evaluation, linear probes) weaken overall clarity."
+    },
+    "structure_compliance": {
+      "score": 4,
+      "justification": "The paper has two limitations sections (one before and one after the conclusion), the second being generic boilerplate, which is a structural error not attributable to anonymization."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Pythia and SlimPajama are publicly available, the 32-snapshot selection strategy is described, and the crosscoder architecture and loss are given; however, critical hyperparameters (λ_sparsity, learning rates, batch sizes, feature dictionary sizes across all runs) appear primarily in appendices and are incompletely summarized in the main text."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Coverage of relevant mechanistic interpretability, SAE, crosscoder, and training dynamics literature is thorough and the contribution is fairly delineated; the anonymous placeholder '[Author] et al., 2025' is expected under double-blind review."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Based on captions, the figures appear well-chosen and informative—Figure 5c (directional turning point), Figure 6b (emergence hierarchy by feature type), and Figure 7 (attribution ablation) each directly support specific claims—though the Pareto curve figures (Figure 3c) could more clearly distinguish crosscoder vs. SAE operating points."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two model sizes, one layer per model, three simple downstream tasks, and no multi-layer validation leave the generality of all main findings (emergence timings, phase transition, emergence hierarchy) inadequately established; the acknowledged limitation does not fully offset the narrow experimental scope."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A borderline accept: the core idea is novel and the empirical program is coherent, but single-layer scope, absence of uncertainty quantification, and the unvalidated LLM complexity scorer need to be addressed before the claimed findings can be treated as robust."
+    }
+  },
+  "publishability_probability": 0.42
+}

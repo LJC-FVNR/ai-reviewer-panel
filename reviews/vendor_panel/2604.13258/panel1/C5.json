@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a well-motivated, three-component attribution framework (causal semantic flow + Hessian-based sensitivity + KL information loss) for decoder-only LLMs, evaluated against 9 baselines across 4 models and 4 datasets with ablations and robustness studies. The experimental breadth is above the typical ICLR submission, but the evaluation is undermined by a self-introduced metric/dataset that structurally may favor the method, an LLM-annotated 'ground truth' mislabeled as 'human annotation', only 3 seeds with no significance testing, and key algorithmic/theoretical details deferred to appendices. The contribution is promising but needs substantial added analysis and honesty fixes before acceptance.",
+  "strengths": [
+    "Well-motivated integration of three complementary perspectives (causal gating, second-order curvature, information-theoretic masking) addressing genuine limitations of first-order and attention-based attribution in autoregressive models.",
+    "Comprehensive baseline coverage (9 methods including recent ContextCite, TDD, PML, ReAgent, SEA-CoT) and evaluation across 4 decoder-only models spanning 3B-70B parameters.",
+    "Multiple datasets (LongRA, TellMeWhy, WikiBio + a new curated probe) plus ablations isolating each component and robustness studies under decoding hyperparameter sweeps, Gaussian perturbations, and active/passive rephrasings.",
+    "The motivation section gives a concrete, technically grounded argument for why first-order gradients fail in saturated/nonlinear regimes, and the causal-gating design correctly respects the decoder mask.",
+    "Practical scalability considerations (low-rank Hessian, windowing, last-6-layer sampling) are discussed, indicating awareness of the main cost bottleneck."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The abstract, Table 1 caption, and DSA description repeatedly claim 'alignment with human annotations' / 'human-annotated tokens', but the actual annotations are produced by GPT-4o and GPT-5 Thinking (inter-annotator agreement F1=0.91, kappa=0.89 is between two LLM annotators, not humans). This misrepresents the evaluation and inflates the apparent validity of the alignment results.",
+      "suggested_fix": "Correct all 'human annotation' claims to 'LLM-generated annotation' / 'distilled annotation', and ideally validate a subset with genuine human annotators, or at minimum explicitly discuss the risk that LLM annotators share biases with the attributed LLMs that could favor methods like HETA."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The curated dataset and the DSA metric are introduced by the authors and the DSA construction has a structural confound: the evidence-bearing segment (SciQ) is always the *second/recent* segment, while HETA's causal-gating toward the target inherently up-weights tokens with causal paths to the most recent positions. The metric may therefore favor HETA by construction rather than by genuine attribution quality.",
+      "suggested_fix": "Add a control where the evidence segment appears in the first position (or both positions contain plausible evidence), and report DSA under segment-order randomization; also evaluate on an independent third-party attribution benchmark to confirm gains are not an artifact of the self-introduced metric."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is weak: only 3 seeds, standard deviation reported only as an upper bound ('std < +/-0.06'), and no significance tests comparing HETA to the strongest baselines (ReAgent, SEA-CoT) despite sweeping SOTA claims. Large point gaps do not substitute for significance testing.",
+      "suggested_fix": "Increase seeds, report full std/CI per cell, and run paired significance tests (e.g., Wilcoxon/bootstrap) against at least ReAgent and SEA-CoT on every metric; report effect sizes."
+    },
+    {
+      "severity": "major",
+      "issue": "Key algorithmic and theoretical content is deferred to appendices (A1-A5) that are not in the main text: the full HETA algorithm, theoretical properties and error bounds, detailed ablations, and compute/memory tables. The main text is insufficient to evaluate the correctness and cost of the Hessian estimation (HVP count m, convergence, Fisher surrogate conditions, low-rank rank choice).",
+      "suggested_fix": "Bring the algorithm box, the error-bound statement, and a quantitative runtime/memory comparison table into the main paper; verify appendix content is complete and self-contained."
+    },
+    {
+      "severity": "major",
+      "issue": "No sensitivity analysis for the two combining weights beta and gamma (fixed at 0.5/0.5) and limited justification for their choice; results may not be robust to these weights, and the 'remarkable stability' claims rest on an unexamined hyperparameter.",
+      "suggested_fix": "Add a beta/gamma sweep and report metric variance; justify the 0.5/0.5 choice via held-out selection or show insensitivity across a reasonable range."
+    },
+    {
+      "severity": "major",
+      "issue": "Computational cost is not quantitatively reported in the main text relative to baselines, despite the method's central trade-off; the conclusion admits higher runtime/memory but gives no numbers, making the practical contribution hard to assess.",
+      "suggested_fix": "Add a table of wall-clock time, peak memory, and HVP count per method (especially vs ContextCite and ReAgent) on a fixed sequence length and model."
+    },
+    {
+      "severity": "minor",
+      "issue": "Overclaimed framing: 'establishing a new standard for interpretability' and 'new state-of-the-art' are not supported given the self-introduced metric, LLM annotations, and absent significance testing.",
+      "suggested_fix": "Scope claims to the specific metrics/datasets used and remove 'new standard' language until independent validation is provided."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 3 as extracted is hard to parse (ReAgent rows for GPT-J/Phi-3 appear missing and columns run together), making verification of the headline 2x-over-ReAgent claim difficult; formatting should be cleaned up regardless of extraction artifacts.",
+      "suggested_fix": "Reformat Table 3 with clear column separators and ensure all baseline rows (including ReAgent) are present for every model block."
+    }
+  ],
+  "questions_for_authors": [
+    "Were any genuine human annotators involved, and if not, why is the evaluation described as 'human annotation' throughout? Please clarify the annotation source.",
+    "How do DSA results change when the evidence-bearing (SciQ) segment is placed first instead of second, or when both segments contain plausible evidence?",
+    "What is the sensitivity of HETA's metrics to beta and gamma, and how were 0.5/0.5 chosen?",
+    "What are the wall-clock time and peak memory of HETA (and HETA-LR+WIN) versus ContextCite and ReAgent on a fixed 512-token sequence?",
+    "Can you provide significance tests (paired, with effect sizes) of HETA vs ReAgent and SEA-CoT on Soft-NC, Soft-NS, and DSA?",
+    "How robust are the Hessian estimates (HVP count m, Fisher surrogate) to numerical issues, and what error bounds are achieved in practice?"
+  ],
+  "calibration_check": "Claims are over-scoped: 'new standard'/'SOTA' and 'human annotation' language is not supported by the evidence (LLM-annotated, self-introduced metric, no significance testing), so the paper is currently miscalibrated relative to its evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs is an active, impactful area and HETA would likely be cited and built on, though the contribution is an integration of known ideas rather than a fundamentally new paradigm."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component (attention rollout, Hessian sensitivity, KL masking) is individually known; the integration and tailoring for decoder-only causal attribution is the novelty, which is legitimate but incremental."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method is internally sound and well-motivated, but the evaluation rests on a self-introduced metric/dataset with a structural confound and LLM-annotated 'ground truth', weakening the claim-evidence link."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds, standard deviation reported as an upper bound only, and no significance tests despite sweeping SOTA claims; improvements are large but not statistically validated."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "'Human annotation' is actually LLM-generated annotation, and 'new standard'/'state-of-the-art' claims are not supported by the evidence; limitations are only briefly stated in the conclusion."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Generally readable with a logical flow, but key algorithmic, theoretical, and cost details are deferred to appendices, leaving the main text insufficient to fully evaluate the method."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Intro, Motivation, Background, Method, Experiments, Related Work, Conclusion) is followed and length appears reasonable for ICLR."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters and datasets are mostly described, but the Hessian estimation specifics (HVP count, convergence, Fisher conditions) and curated dataset instances are in appendix or unspecified."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Prior work is fairly represented and the contribution is clearly delineated against recent generative-LLM attribution methods (ContextCite, TDD, PML, ReAgent), with accurate critique of their limitations."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions are informative and describe comparisons that support the claims (ablation bars, robustness curves, alignment F1), though they cannot be visually verified here."
+    },
+    "breadth_generality": {
+      "score": 7,
+      "justification": "Good breadth (9 baselines, 4 models, 4 datasets, ablations, robustness sweeps), but generality is under-supported because the strongest alignment result comes from a self-introduced metric with a structural confound."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: a promising, well-engineered contribution with strong experimental breadth, but honesty (LLM-vs-human annotation), a self-serving metric confound, absent significance testing, and deferred key details require substantial revision before acceptance."
+    }
+  },
+  "publishability_probability": 0.28
+}

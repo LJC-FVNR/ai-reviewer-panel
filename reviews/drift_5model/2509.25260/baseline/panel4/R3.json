@@ -1,0 +1,101 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes an information-theoretic pipeline that compresses transformer hidden states into discrete VQ-VAE codes and computes mutual information between them to characterize planning horizon, branch awareness, and the layer/position distribution of next-token decision information. The methodological framing (a probe-free, automated alternative to probing/circuit discovery) is genuinely interesting and the questions are well-motivated, but the central claim that MI between learned codes is 'confound-resistant' is under-justified, several empirical findings are mixed or weakly controlled, and experiments are confined to small from-scratch models, which limits the significance and generality claimed.",
+  "strengths": [
+    "Clear, well-motivated framing of two canonical planning aspects (forward-looking horizon and branch awareness) grounded in MPC/world-model literature, plus a useful layer/position localization diagnostic.",
+    "The VQ-VAE + count-based MI pipeline is a reasonably novel, automated approach to inspecting internal dynamics that sidesteps manual circuit engineering, and the authors thoughtfully argue against probing's confounds (with a supporting appendix diagnostic).",
+    "Uses controlled synthetic tasks (CFG, path-finding with tunable path length) that isolate short- vs long-horizon structure, and reports multiple seeds with error bars in Table 1.",
+    "Honest reporting of a null result (no consistent NTP vs MTP difference) and appropriate scoping of nMI as a relative, within-setting metric."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The core epistemic claim—that MI between VQ-VAE codes is 'confound-resistant' and free of probe artifacts—is overstated. The VQ-VAE is itself a learned model whose codebook size K, loss weights (Lcos, Lent, lambda_q), encoder capacity, and training determine the discrete codes and therefore the estimated MI. This substitutes one learned-model confound for another; the authors even acknowledge MI 'depends on how they are encoded to high-level codes,' which undercuts the confound-free framing.",
+      "suggested_fix": "Demonstrate robustness of the qualitative conclusions to VQ-VAE hyperparameters (K, codebook dim, loss weights, seeds of the VQ-VAE itself) and show the reported trends are invariant to these choices; soften 'confound-resistant' language to a comparative advantage over probing rather than an absolute property."
+    },
+    {
+      "severity": "major",
+      "issue": "The branch-awareness result (Table 1) is potentially confounded by shared endpoint tokens. The two correct paths share the fixed start (node 1) and goal (node 2), while the decoy is fully disjoint. Higher I(ZH;Zalt) vs I(ZH;Zdecoy) could partly reflect shared start/goal tokens rather than genuine encoding of an unchosen valid branch.",
+      "suggested_fix": "Add a control where the decoy also shares start/goal nodes (or where the alt path is matched to the decoy on endpoint overlap), so the ratio isolates path-interior structure rather than shared endpoints."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin for a claims-heavy analysis. Count-based MI from discrete codes is biased at finite samples (especially with larger alphabets), and while App. E is cited, the main results report no significance tests and unclear sample sizes for the MI estimates; Figure 3 error bars/variance are not clearly characterized.",
+      "suggested_fix": "Report the bias-corrected MI estimates in the main text, include confidence intervals from bootstrapping over data and VQ-VAE seeds, and add significance tests for the key comparisons (e.g., PF nMI-vs-tau trends, alt-vs-decoy ratios, NTP vs MTP)."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is under-supported relative to the paper's 'planning in language models' framing. All results use GPT-3 Small-scale architectures trained from scratch (with one 0.3B scaling check), so conclusions may not transfer to large pretrained LMs; the significance to the broader subfield is correspondingly limited.",
+      "suggested_fix": "Either scope the title/claims explicitly to small from-scratch models, or add experiments on at least one moderately sized pretrained LM to test whether the horizon/branch/recency findings persist."
+    },
+    {
+      "severity": "minor",
+      "issue": "Calibration inconsistency between abstract/Section 3 ('MTP loss modestly reduces purely myopic behavior') and the conclusion ('we find no consistent differences between NTP- and MTP-trained models'). This weakens the central motivating narrative (NTP vs MTP).",
+      "suggested_fix": "Reconcile the MTP claims across abstract, results, and conclusion; state precisely where MTP does and does not differ, with supporting statistics."
+    },
+    {
+      "severity": "minor",
+      "issue": "nMI is normalized only by the within-experiment maximum, so absolute magnitudes and cross-setting comparisons are not interpretable, and the reader cannot judge effect sizes (e.g., 'drops to one-fifth' relative to an arbitrary max).",
+      "suggested_fix": "Report raw MI (nats/bits) alongside nMI, plus the codebook-size-implied MI ceiling, so readers can gauge absolute effect magnitudes and estimator headroom."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive are the qualitative conclusions (fast CFG decay, sustained PF horizon, alt>decoy ratio, recency effect) to VQ-VAE codebook size K and the regularization weights? Do different VQ-VAE seeds change the trends?",
+    "Does the branch-awareness ratio survive a control where the decoy shares the start/goal tokens with the correct paths, isolating interior-path information?",
+    "What are the sample sizes and estimator variance behind the MI counts, and do the bias-corrected estimates (App. E) change any main-text conclusion?",
+    "Can you reconcile the MTP claims: is the horizon/myopia effect statistically significant anywhere, or should the NTP-vs-MTP question be reported as null throughout?"
+  ],
+  "calibration_check": "Claims are mostly scoped to relative within-setting trends, but the 'confound-resistant' methodological framing and the NTP/MTP characterization exceed the evidence, and the 'language models' framing outstrips the small-model experiments.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The questions and pipeline are of interest to interpretability researchers, but small from-scratch models and mixed/null findings limit how much practitioners would build on it as-is."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Using VQ-VAE discrete codes plus count-based MI as a probe-free lens on internal computation is a reasonably fresh methodological combination, though it builds directly on established VQ-VAE and information-theoretic-probing ideas."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Core validity rests on treating MI between learned codes as confound-free, yet the encoder is itself a learned model with impactful hyperparameters, and the branch-awareness comparison has an uncontrolled shared-endpoint confound."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Some seeds and std are reported, but count-based MI bias, unclear sample sizes, and absence of significance tests leave key comparisons statistically unverified."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Commendably reports a null NTP/MTP result and scopes nMI as relative, but 'confound-resistant' is overclaimed and the abstract/conclusion disagree on MTP's effect."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The motivation and pipeline steps are laid out with helpful figures, but the method section is notation-dense and the exposition of nMI normalization and confound arguments is hard to follow."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (abstract, intro, related work, method, analysis, conclusion) is present and appropriately organized within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, model architecture, and training objectives are described and appendices carry many details, but the many VQ-VAE design choices that critically shape results are not fully specified in the body."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Probing, mechanistic interpretability, and information-theoretic lenses are fairly and thoroughly positioned, with a clear delineation of how this method differs."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting displays (nMI-vs-tau curves, layer/block heatmaps, conditional nMI), though effect sizes are hard to gauge from relative-only nMI."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only small (~125M, one 0.3B) from-scratch models over three task families support broad claims about planning in 'language models,' leaving the asserted generality under-evidenced."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising, novel methodology with meaningful questions, but validity concerns about the MI-from-learned-codes claim, an uncontrolled branch confound, thin significance testing, and limited model scale place it at borderline reject."
+    }
+  },
+  "publishability_probability": 0.33
+}

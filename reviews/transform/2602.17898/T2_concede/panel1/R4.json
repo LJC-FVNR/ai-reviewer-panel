@@ -1,0 +1,115 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies the 'PCC plateau' that appears when attention-based regressors are trained with a joint MSE+PCC loss and offers a two-pronged theoretical account (gradient attenuation via 1/σ_ŷ and a convex-hull capacity ceiling), together with a three-component drop-in module (SRA, DATS, DNPL) that consistently improves PCC without hurting MSE across four settings. The theoretical framing is fresh and the improvements are consistent, but the theorems rest on restrictive assumptions and yield loose bounds, the empirical evaluation is thin on baselines and statistical rigor (few seeds/CIs on UCI, no comparison to established correlation-oriented alternatives like CCC, ranking losses, Spearman surrogates, or normalization/temperature attention variants), and several claims (e.g., 'first rigorous analysis', 'consistently breaks the plateau') are overreached relative to the evidence. With stronger baselines, seed variance, and more careful scoping of claims, this could become a solid contribution.",
+  "strengths": [
+    "The MSE = mean^2 + Δstd^2 + weighted-correlation decomposition (Proposition 2.1) together with the closed-form PCC-vs-attention-logit gradient (Theorem 2.1) is a genuinely useful lens for reasoning about joint MSE+PCC training, and the 1/σ_ŷ^{3/2} gradient-ratio corollary is a clean, testable prediction.",
+    "Each of ECA's three components (SRA, DATS, DNPL) is explicitly motivated by a specific piece of the theory rather than heuristically bolted on; the ablations largely support that the three components contribute non-overlapping gains.",
+    "The synthetic study is well designed: sweeping in-sample homogeneity σ ∈ {0.10, 0.24, 0.42, 0.73} and reporting the mean-pool baseline directly makes Theorem 2.2's convex-hull ceiling visually falsifiable.",
+    "Consistent improvements across four rather different regimes (UCI tabular, spatial transcriptomics with genuine homogeneity, MOSI MSA, synthetic) provide reasonable breadth for the specific claim of 'reduces PCC plateau under high homogeneity'.",
+    "The paper is honest that DNPL uses a StopGrad on σ_ŷ so stationary points are unchanged — a subtle but correct point that many correlation-reweighting proposals get wrong."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Theorem 2.2's convex-hull bound requires R < σ_0/‖w‖_2 and treats w as fixed, but in a jointly trained model w co-adapts with the aggregator; the theorem as stated therefore does not obviously imply a capacity limit on the *learned* system, only on the aggregator conditional on a frozen head. This weakens the 'capacity ceiling' story that motivates SRA.",
+      "suggested_fix": "State the theorem's precondition more prominently, discuss when R < σ_0/‖w‖_2 actually holds on the reported datasets (report the ratio empirically), and either (a) extend to jointly-learned w or (b) narrow the claim from 'model capacity' to 'aggregator capacity conditional on the linear head'."
+    },
+    {
+      "severity": "major",
+      "issue": "The empirical baselines are narrow relative to the claim of solving a general 'correlation learning failure mode'. There is no comparison to obvious alternatives that address the same symptom: CCC loss, Spearman/soft-rank surrogates, differentiable ranking losses, temperature/entmax/sparsemax attention variants, or simple per-batch standardization of predictions before PCC. Without these, it is unclear whether SRA/DATS/DNPL beat much simpler fixes.",
+      "suggested_fix": "Add at least (i) CCC loss, (ii) a soft-rank/Spearman surrogate loss, (iii) sparsemax or a learned-temperature softmax without SRA, and (iv) a control that just standardizes ŷ before the PCC term (which mimics DNPL's 1/σ_ŷ compensation cheaply). Report on the same four settings."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is uneven. Table 1 (UCI) has no error bars or seeds; Table 2 (MOSI) reports single numbers; only Table 3 shows ±std across three folds, and the improvements there (e.g., PCC@F 0.602±0.160 → 0.690±0.202) overlap substantially given the very large per-fold variance. The paper repeatedly says 'consistently improves' but does not demonstrate statistical significance.",
+      "suggested_fix": "Report mean±std over ≥5 seeds for UCI and MOSI, run a paired significance test (e.g., paired t-test across seeds/folds) for ECA vs. baseline, and explicitly acknowledge where 10xProteomic gains are within variance."
+    },
+    {
+      "severity": "major",
+      "issue": "Overclaiming. The abstract/intro assert 'the first rigorous theoretical analysis' of the plateau and that ECA 'consistently breaks' it. The related-work section is short and does not engage with prior analyses of correlation losses (CCC, canonical correlation objectives, ranking-loss theory), gradient conflict in multi-task learning (PCGrad, GradNorm, CAGrad — highly relevant since the paper's core mechanism is a gradient-scale conflict), or expressivity limits of convex/softmax aggregators (which the paper cites but only for expressivity, not capacity for correlation).",
+      "suggested_fix": "Soften 'first rigorous' claims, add a paragraph situating the analysis against multi-task gradient-conflict work (PCGrad, GradNorm, CAGrad, Uncertainty Weighting) and against correlation-loss literature (CCC, Spearman/Kendall surrogates), and explain concretely what the paper adds over these."
+    },
+    {
+      "severity": "minor",
+      "issue": "The gradient-ratio bound (Corollary 2.1) treats σ_ŷ as if it grows monotonically during training, but Figure 4 shows σ_ŷ approaches σ_y from below, meaning the 1/σ_ŷ^{3/2} attenuation is a modest constant near convergence rather than the runaway phenomenon the text suggests. The paper should quantify how much of the plateau this factor actually explains vs. the softmax-Jacobian/homogeneity term in Corollary 2.2.",
+      "suggested_fix": "Add an experiment decomposing the plateau: freeze σ_ŷ ≈ σ_y and separately zero out either the DNPL or DATS effect; show which limitation dominates when."
+    },
+    {
+      "severity": "minor",
+      "issue": "SRA introduces γ_s ≥ 1 (via Softplus) and is described as 'extrapolation beyond the convex hull', but this is functionally very close to a standard residual/skip-connection scaled attention or a learned gain on the pooled residual. Its distinct novelty over such variants is not established empirically.",
+      "suggested_fix": "Ablate SRA against (a) a fixed γ = 2 residual, (b) a learned scalar γ (not sample-conditional), (c) γ_s ∈ ℝ (allowing < 1) — to isolate whether the ≥1 constraint and the sample-conditional MLP are load-bearing."
+    },
+    {
+      "severity": "minor",
+      "issue": "The MOSI comparison ALMT+L_PCC vs. ALMT+L_PCC+ECA is fair, but the naked 'ALMT+ECA' setting (ECA without adding a PCC term to ALMT) is not reported. As a result we cannot tell whether the DNPL loss alone would have sufficed on MOSI.",
+      "suggested_fix": "Report ALMT+ECA without DNPL separately, matching the ablation pattern already used for UCI."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility: the paper does not specify λ_PCC, λ_γ, T_min, β, γ_max, MLP_θγ architecture, optimizer/lr, or batch size for any dataset in the main text. Even acknowledging anonymization, these numeric settings belong in the paper body or an appendix section pointer.",
+      "suggested_fix": "Add a compact table of all hyperparameters used per dataset, and specify the MLP_θγ architecture (width, depth, activation)."
+    }
+  ],
+  "questions_for_authors": [
+    "For each of the four experimental settings, what is the empirical ratio R/(σ_0/‖w‖_2) at the point in training where the baseline PCC plateaus? Does Theorem 2.2's bound actually bind, or does the model fail well before the bound?",
+    "How does ECA compare to (a) CCC loss, (b) a Spearman/soft-rank surrogate, (c) sparsemax/α-entmax attention with the same MSE+PCC objective, and (d) simply standardizing ŷ (removing the σ_ŷ scale) before the PCC term?",
+    "For UCI Table 1, what are mean±std over ≥5 seeds, and are the reported gains significant under a paired test? Similarly, for MOSI, please report seed variance rather than single numbers.",
+    "In the DNPL derivation, StopGrad(σ_ŷ) leaves stationary points unchanged only if σ_ŷ is treated as a constant scalar w.r.t. the loss; does this still hold when λ_PCC is large enough that the model can trade MSE for lower σ_ŷ to shrink LPCC — i.e., is there a degenerate low-σ_ŷ minimizer?",
+    "Can you decouple the contributions of the 1/σ_ŷ mechanism (Corollary 2.1) and the in-sample-homogeneity mechanism (Corollary 2.2) to the plateau empirically — e.g., by training on data where σ_y is fixed but σ_s varies, and vice versa?",
+    "SRA parameterizes γ_s through an MLP on the mean embedding s̄ — is γ_s in practice close to a constant across samples, or does it meaningfully vary? If nearly constant, does a single scalar γ suffice?",
+    "The convex-hull argument assumes a linear regression head w. If the head is a small MLP (common in practice), does Theorem 2.2 still apply, and does SRA still help?"
+  ],
+  "calibration_check": "The theoretical claims are broadly scoped correctly but the abstract's language ('first rigorous', 'consistently breaks', 'fundamental limitations') outruns the evidence — the bounds are loose, the plateau attribution is not experimentally decomposed, and error bars overlap on the most homogeneous dataset.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Addresses a real practical annoyance for a specific class of joint MSE+PCC pipelines (pathology, MSA, spatial transcriptomics), but the applicable subfield is narrower than the paper suggests and the mechanism is unlikely to change practice in mainstream regression."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The specific framing of the plateau as a coupling between MSE's std-matching term and the PCC gradient scale is novel, and Theorem 2.2's convex-hull PCC-gain bound is a nice observation; individually each ECA component has close cousins in prior literature."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Derivations look correct but rely on restrictive preconditions (R < σ_0/‖w‖_2, fixed head w, ρ ∈ [0,1] for the RMS bound), and the paper never quantifies how tightly these preconditions actually hold on the reported datasets."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "UCI Table 1 and MOSI Table 2 lack seed variance; Table 3's ±std shows overlap between EGN and EGN+ECA on several folds; no significance tests reported despite repeated 'consistent' language."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The Limitations section acknowledges scope and confounds, but the abstract/intro contain 'first rigorous' and 'consistently breaks' phrasing that outruns the presented evidence; the theory's dependence on strong preconditions is soft-pedaled."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall readable and logically organized; the theoretical narrative connects cleanly to the three ECA components, though the extracted text shows notation collisions (ŷ vs y, σ̂_y vs σ_y) that must be tightened in the final version."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure (Intro, Theory, Method, Related Work, Experiments, Conclusion, Limitations) and length appear appropriate; related work is unusually short."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The method is specified precisely enough to reimplement, but key hyperparameters (λ_PCC, λ_γ, T_min, β, γ_max, MLP_θγ architecture, optimizer settings) are not in the main text; nothing here is due to anonymization removals."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Related work is short and misses obviously relevant literature: multi-task gradient-conflict methods (PCGrad, GradNorm, CAGrad), CCC/soft-rank/Spearman correlation losses, and softmax alternatives (sparsemax, α-entmax) that directly address homogeneous-input attention collapse."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe purposeful, claim-supporting figures (gradient-ratio decay validation, σ_ŷ trajectory, per-σ synthetic curves, per-fold learning curves), though several figures (Fig 5, Fig 6) would carry more weight with seed shading and a mean-pool reference on every panel."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four settings is decent breadth for the specific homogeneity claim, but only one non-baseline correlation-oriented method is compared per setting (FT-Transformer / EGN / ALMT), and no correlation-loss alternatives (CCC, ranking) or attention-variant alternatives (sparsemax, learned temperature) are included."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: promising theoretical framing and consistent, coherent gains, but restricted theorems, thin baseline set, and weak statistical rigor put it below the ICLR bar as submitted; a revision addressing the four major concerns could plausibly clear it."
+    }
+  },
+  "publishability_probability": 0.28
+}

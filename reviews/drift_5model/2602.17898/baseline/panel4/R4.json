@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper offers a theoretically-motivated analysis of the 'PCC plateau' in attention-based regression trained with joint MSE+PCC loss, identifying (i) a 1/σ_y gradient attenuation and (ii) a convex-hull capacity bound. Motivated by these, it proposes ECA (SRA + DATS + DNPL) and reports consistent gains on a synthetic task, 3 UCI datasets, a spatial transcriptomics dataset, and MOSI. The theoretical contributions are useful framing but partially recover known scale-invariance intuitions, and the empirical evaluation lacks the statistical rigor and baseline breadth expected at ICLR (no significance tests, few seeds/folds, narrow baseline set for the multi-objective-optimization framing).",
+  "strengths": [
+    "Clear, useful characterization of the PCC plateau phenomenon and a tight coupling between each theoretical claim and each proposed component (SRA↔Thm 2.2; DNPL↔Thm 2.1; DATS↔Cor 2.2).",
+    "Theorem 2.2 (PCC gain bound for any convex aggregator in terms of convex-hull radius R and σ0/‖w‖) is a genuinely interesting capacity-side result that formalizes a real limitation of softmax pooling.",
+    "MSE = mean-match + std-match + weighted-correlation decomposition (Prop. 2.1) is a clean, actionable derivation that motivates DNPL through StopGrad rescaling in a principled way.",
+    "Evaluation spans four qualitatively different regimes (synthetic, tabular, pathology/spatial transcriptomics, multimodal video sentiment) with an ablation of each ECA component.",
+    "Consistent direction of improvement in both PCC and MSE across benchmarks, so the method is not obviously trading one against the other."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is thin: Table 1 and Table 2 report point estimates with no seeds, standard deviations, or significance tests, and only Table 3 shows ±, over just 3 folds. Several reported gains (e.g., Appliance +0.042 PCC, MOSI +0.023 PCC) are within the range where seed variance often dominates.",
+      "suggested_fix": "Report mean ± std over ≥5 seeds for every table, use paired significance tests (e.g., paired t-test or Wilcoxon across seeds/folds) against the strongest baseline, and add seed variance bands to the training curves in Figs. 5–6."
+    },
+    {
+      "severity": "major",
+      "issue": "The 1/σ_y attenuation and the O(1/σ_y^{3/2}) PCC/MSE gradient ratio are largely restatements of PCC's scale-invariance under affine transforms of the prediction (Lemma 2.1); the analysis is essentially model-agnostic for the σ_y part and does not really implicate attention. The paper frames this as a bottleneck 'of softmax attention', which oversells the attention-specific portion.",
+      "suggested_fix": "Separate cleanly which limitations are (a) PCC-loss-inherent, (b) convex-aggregator-inherent, and (c) truly softmax-attention-specific. Empirically demonstrate DNPL's benefit on a non-attention regressor to show the effect is real independent of attention."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline breadth is narrow given the paper's positioning as a joint-optimization contribution. The gradient conflict framing invites direct comparison to multi-task/gradient-conflict methods (PCGrad, GradNorm, uncertainty weighting, CAGrad) and to alternative correlation losses (CCC, differentiable Spearman, listwise ranking losses), none of which are compared.",
+      "suggested_fix": "Add at least 2 gradient-balancing baselines and 1 alternative correlation loss on the UCI and MOSI settings, so DNPL's gain over 'just rebalance the loss' is quantified."
+    },
+    {
+      "severity": "major",
+      "issue": "SRA can be viewed as a small, learnable, sample-conditioned scalar multiplier on the residual (γ_s ≥ 1), which is a straightforward non-convex-hull extension; the novelty of this component is limited and it is not clearly differentiated from prior 'gated residual' or 'skip attention' variants.",
+      "suggested_fix": "Position SRA against explicit prior art (gated/residual attention, output-scaling heads, non-convex readout mechanisms) and show a comparison that isolates whether γ_s > 1 is doing anything beyond a global learned scale on the head."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem 2.2 bound requires R < σ0/‖w‖_2, which is a nontrivial regime assumption; behavior when the assumption fails (arguably the more interesting regime in practice) is not discussed.",
+      "suggested_fix": "Report R vs σ0/‖w‖_2 on each real dataset used, and either extend the bound or clearly disclaim the regime of applicability."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility is incomplete: Tmin, β, γ_max, λ_γ, λ_PCC, optimizer, learning-rate schedule, and MLP_θ_γ architecture are not enumerated per benchmark. This is separate from the (permitted) anonymization of code/data links.",
+      "suggested_fix": "Provide a complete hyperparameter table per benchmark (including baselines' tuning grid) in the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work is unusually short (two paragraphs) and misses multi-objective / gradient-conflict literature and rank/correlation-based losses (e.g., Spearman-differentiable, CCC), which are directly relevant.",
+      "suggested_fix": "Expand Related Work to include multi-objective optimization, correlation-loss literature, and non-convex attention/pooling variants."
+    },
+    {
+      "severity": "minor",
+      "issue": "The paper's headline claim 'breaks the PCC plateau' is stronger than the evidence — curves in Fig. 5 and Fig. 6 still level off, just later and higher.",
+      "suggested_fix": "Soften phrasing to 'mitigates' or 'delays and raises the plateau' and quantify at what epoch/PCC the new plateau occurs."
+    }
+  ],
+  "questions_for_authors": [
+    "How does DNPL compare against simply sweeping λ_PCC or against principled gradient balancing methods (PCGrad, GradNorm, uncertainty weighting)? Is DNPL doing anything beyond a smart per-batch reweighting?",
+    "Is the O(1/σ_y^{3/2}) attenuation attention-specific in any way, or purely a consequence of PCC's affine invariance? If not attention-specific, why is the paper positioned as an attention-mechanism contribution?",
+    "For SRA, does γ_s systematically exceed 1 in practice, and does its per-sample variation matter, or would a single global learned scalar γ suffice?",
+    "On what fraction of samples/datasets does the Theorem 2.2 regime R < σ0/‖w‖ actually hold? What is the bound's slack empirically?",
+    "MOSI results: are the reported baselines (TFN, LMF, MulT, MISA, DLF, ALMT) rerun under identical splits/protocols to ALMT+ECA, and is the +0.023 PCC over ALMT statistically significant across seeds?",
+    "In Table 1, are baseline (FT-Transformer) and +ECA results averaged over identical seeds with identical tuning budgets? What variance would each row show?"
+  ],
+  "calibration_check": "Claims of 'breaking the plateau' and 'consistent improvements' modestly overstate what the evidence supports — the trends are real and directionally consistent, but small effect sizes without significance testing or seed variance make the strength of the conclusions loosely calibrated to the evidence.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "The PCC plateau is a real, practically annoying phenomenon in shape-sensitive regression, but the fix is a mid-sized methods contribution rather than a paradigm-changing result the broader ICLR audience is likely to build on."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The convex-hull capacity theorem is a genuine new framing, but the individual method components (residual scaling, temperature adaptation, StopGrad-rescaled loss) are incremental and overlap with existing ideas in gated attention and adaptive loss weighting."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Theorems are stated with clear assumptions and the method↔theory mapping is tight, but part of the 'gradient bottleneck' is essentially a consequence of PCC scale-invariance and is framed as attention-specific without adequate isolation."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Main tables omit standard deviations, seeds, and significance tests; several reported gains are small enough to plausibly fall inside seed noise, and only Table 3 reports variability, from just 3 folds."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The 'breaking the plateau' framing is stronger than the curves show, and generality-of-attention claims exceed what the analysis (much of which is loss-side) supports; limitations of Thm 2.2's regime assumption are not discussed."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "Overall structure is easy to follow and the theory-to-method arc is clean, but derivations are dense in places (Cor 2.1, gradient decomposition) and would benefit from a worked toy example and cleaner notation for centered/uncentered quantities."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows standard ICLR sectioning (Intro, Theory, Method, Related Work, Experiments, Conclusion) and appears to respect length norms; ordering of Related Work after Method is a minor stylistic point but common at ICLR."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "The method is described in enough detail to reimplement in principle, but critical hyperparameters (Tmin, β, γ_max, λ_γ, λ_PCC, MLP_θ_γ architecture, tuning protocol) and per-benchmark training settings are not fully specified in the body."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "Related work is unusually thin (two short paragraphs) and omits directly adjacent literatures — multi-objective/gradient-conflict methods and alternative correlation/rank losses — which are exactly the baselines a reader would want compared."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative figures that directly support the paper's claims (PCC plateau, gradient ratio decay, σ_y growth during training, per-fold curves); however most training curves appear to be single-run without variance bands."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Four benchmark families are covered, which is a strength, but per-benchmark baselines are narrow (mostly one attention baseline + ECA) and the paper claims generality it does not fully substantiate with diverse backbones or alternative aggregators."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: the theoretical framing and empirical direction are genuinely useful, but statistical rigor, baseline breadth against multi-objective-optimization alternatives, and separation of attention-specific vs loss-generic effects are below the ICLR bar; addressable with substantial added experiments."
+    }
+  },
+  "publishability_probability": 0.22
+}

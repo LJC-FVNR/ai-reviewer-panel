@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "DIRECTER proposes a plausibility-guided decoding loop that dynamically modulates KV-cache key-scaling strength by progressively pruning low-sensitivity layers, addressing the oversteering problem common to static activation-steering methods. The core idea is clean, evaluation spans multiple models and benchmarks, and the efficiency analysis is thorough. However, the novelty is incremental (plausibility check adapts contrastive decoding; layer ranking adapts KV-quantization logic), statistical rigor is insufficient for the main tables, and the baseline set is narrow for a 2026 submission. These are fixable but non-trivial gaps that prevent acceptance in the current form.",
+  "strengths": [
+    "Identifies and concretely demonstrates the oversteering failure mode with controlled ablations (Figure 2a), providing strong empirical motivation for dynamic control.",
+    "Hyperparameter robustness analysis (Figure 3a/3b) showing stability across many orders of magnitude for α and a wide range of β is unusually thorough and increases confidence in practical deployability.",
+    "Efficiency analysis (Figure 4) including the gating-skip mechanism and FlashAttention compatibility is a genuine practical contribution; the ≈16% throughput reduction vs. prior methods is well-documented.",
+    "Fixed hyperparameters (α=100, β=0.5) across all tasks and models without task-specific tuning strengthens the generalization claim.",
+    "Compatibility experiment showing the plausibility filter improves both PASTA and SpotLight as a drop-in gate (Figure 2b) is a useful ablation that broadens the contribution beyond DIRECTER itself.",
+    "Multi-benchmark design (IFEval programmatic, LIFBench long-context, custom GSM8K-Format reasoning) plus multi-family/scale evaluation (Llama, Qwen, 1B–14B) covers meaningful breadth."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No confidence intervals or statistical significance on main results (Tables 1, 2, 4). IFEval and LIFBench are evaluated on fixed datasets with greedy decoding, so per-run variance is absent, but evaluation-set variance (bootstrap CIs over examples) is standard and omitted. Table 4 (LLM-judge) has inherent response variance and reports only point estimates. The improvements over tuned SpotLight (≈4% on IFEval) may not be significant under bootstrap tests.",
+      "suggested_fix": "Report 95% bootstrap confidence intervals for all accuracy metrics in Tables 1–4. For LLM-judge scores, report mean ± std over at least 3 judge runs or different judge seeds."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Baseline coverage is insufficient for a 2026 submission. The steering landscape includes representation engineering (Zou et al. 2023), contrastive activation addition (Turner et al. 2023), and newer inference-time methods (e.g., ITI, ICV). Only PASTA and SpotLight are compared; both are tuned by the authors, which is fair but narrow. A reader cannot assess how DIRECTER fares against the broader class of steering methods.",
+      "suggested_fix": "Add at least two additional steering baselines (e.g., CAA/ITI-style vector addition, representation engineering), even if only on IFEval, to anchor the comparison."
+    },
+    {
+      "severity": "major",
+      "issue": "The attention sensitivity metric (Eq. 2–3) lacks theoretical justification. It is described as inverting KV-quantization logic but the formulation combines direct and propagated cosine-distance deviations additively without grounding in why this sum captures layer influence on the plausibility decision specifically. The paper acknowledges this but defers entirely to 'Appendix C,' whose content is unavailable for review.",
+      "suggested_fix": "Provide a brief theoretical or intuitive argument in the main text for why the additive sum of direct and propagated disturbance scores is a good proxy for steering influence on the final token distribution."
+    },
+    {
+      "severity": "major",
+      "issue": "The IFEval preprocessing uses gpt-4o-mini to rewrite prompts to separate tasks from instructions, and gpt-4o-mini is also used as the judge in Table 4. This dual use of the same model family for data preprocessing and evaluation risks systematic bias in favor of gpt-4o-mini-style output and undermines the independence of the evaluation.",
+      "suggested_fix": "Use a different judge model for Table 4 (e.g., a Llama-3-70B judge or GPT-4o) and report results with both to check consistency. Clarify that the IFEval rewriting procedure does not introduce distributional artifacts."
+    },
+    {
+      "severity": "major",
+      "issue": "The paper evaluates only Llama (1B, 8B) and Qwen-2.5 (3B, 7B, 14B) model families, and all within the ≤14B parameter range. Claims of architectural generality are overstated; Mistral, Gemma, Phi, or larger-scale models (≥30B) are absent.",
+      "suggested_fix": "Add at least one architecture from a third model family (e.g., Mistral-7B-Instruct or Gemma-2) to substantiate the model-agnostic claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "The boilerplate 'LIMITATIONS' section appended after the Conclusion reads as generic, template-inserted text ('we have not established that the conclusions transfer…', 'some comparisons are made against a limited set of alternatives') that does not engage substantively with DIRECTER-specific failure modes. The Conclusion section already states the real limitations more concretely.",
+      "suggested_fix": "Remove or replace the generic limitations appendix with a focused paragraph on DIRECTER-specific failure modes (e.g., failure under very short prompts, degradation when instruction span detection is noisy, behavior on multi-turn conversations)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The plausibility check compares only top-1 token indices (Eq. 1), which is coarse. For positions where the original distribution is peaked (low entropy), the gating fires rarely, but for high-entropy positions—where steering is arguably most useful—the check may accept poor interventions or reject useful ones based on a single rank comparison.",
+      "suggested_fix": "Report how often the gate fires as a function of original distribution entropy; if top-1 comparisons are unreliable at high entropy, a top-k or KL-based plausibility criterion could be tested as a sensitivity check."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 3 shows 'Steer random layers' achieves 80.2±0.7%, which is only 1.6% below the full method (81.8%). Given this gap, how much of DIRECTER's gain is attributable to the layer ranking specifically vs. the plausibility gate alone? Have the authors measured the plausibility gate in isolation with a random layer ordering across multiple seeds?",
+    "The key scaling factor α=100 is orders of magnitude above what would produce a controlled attention boost; at this scale, instruction-token keys effectively dominate all others. Is the mechanism genuinely 'KV cache scaling' or is it closer to a hard attention mask? Would an actual hard mask (zeroing non-instruction attention) achieve similar results without the sensitivity-to-α robustness concern?",
+    "The gating mechanism 'pre-determines when a steered forward pass can be safely skipped' based on the top-2 original probabilities. What fraction of tokens are actually steered vs. skipped in practice, and does this fraction vary meaningfully across benchmarks? This would clarify how often the plausibility loop is truly active.",
+    "For LIFBench MultiDoc (MD), DIRECTER scores 51.7% while the zero-shot baseline is 40.9% — a large gain — but the tuned SpotLight scores only 38.8% (below zero-shot), suggesting high sensitivity to the long-context distribution. Why does DIRECTER generalize better to MD than SpotLight, and is there an analysis of where in the generation the plausibility gate predominantly fires for long-context prompts?",
+    "The GSM8K-Format benchmark is introduced by the authors. Can the authors provide its release alongside the paper, along with validation that its formatting constraints have similar difficulty to real-world formatting instructions in IFEval?"
+  ],
+  "calibration_check": "Most claims are appropriately scoped to the evaluated settings; the '6.5% improvement over baseline' is reported as the maximum gain rather than the mean, and the paper is honest about hyperparameter sensitivity and attention-sensitivity metric limitations, but the architectural generality claim ('model-agnostic') is overstated given only two model families are tested.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Oversteering is a well-recognized practical problem, and DIRECTER's gating mechanism is useful, but improvements over tuned baselines are modest (~4%) and the work does not redefine the problem space for the instruction-following community."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The combination of KV-cache scaling with a plausibility rejection loop and attention-sensitivity layer ranking is novel as a system, but each component is straightforwardly adapted from contrastive decoding (Li et al. 2022), DoLa (Chuang et al. 2023), and KV-quantization (Ge et al. 2023), making the conceptual advance incremental."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is technically coherent, ablations isolate the main design choices (plausibility gate, layer ranking direction, random tokens), and the efficiency analysis is careful, but the attention-sensitivity metric lacks principled grounding and the instruction-span rewriting procedure introduces uncontrolled variability."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report point estimates only; no bootstrap CIs, significance tests, or judge-variance reporting; the core IFEval margin over tuned SpotLight (~4%) could plausibly be within noise, and this is not addressed."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Claims are mostly well-scoped; the paper reports honest failure modes (no formal theory for sensitivity metric, prompt-rewriting dependency) and acknowledges the static-vs-dynamic comparison fairly, though 'model-agnostic' and 'general mechanism' are somewhat overstated for two model families."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The method section is clearly organized with consistent notation, Algorithm 1 aids understanding, and the RQ-structured experiments section is easy to navigate; minor notational density in Section 3 (Eq. 2) could be simplified."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard conference structure is followed, but the generic boilerplate LIMITATIONS appendix after the Conclusion is inconsistent with good scientific writing and the paper would benefit from integrating substantive limitations into the Conclusion."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Core hyperparameters (α=100, β=0.5), model checkpoints (named publicly available), and evaluation datasets are specified; however, the gpt-4o-mini prompt-rewriting step for IFEval and the custom GSM8K-Format benchmark construction lack sufficient detail to reproduce exactly without the appendix."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "PASTA and SpotLight are well-covered, contrastive decoding antecedents are cited, and the oversteering literature is acknowledged; however, the broader activation-steering landscape (representation engineering, ICV, ITI) is not positioned against and some comparisons remain dated."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From captions, figures appear informative and targeted: Figure 1 (overview), Figure 2 (ablation bar charts), Figure 3 (robustness sweeps with change-rate overlay), Figure 4 (efficiency triple panel) all directly support specific claims and are not decorative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three benchmarks and two model families spanning 1B–14B are tested, which is reasonable but the absence of a third architecture family, of models above 14B, and of more than two steering baselines limits the support for the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper presents a useful, practically grounded contribution to inference-time instruction following, but the combination of missing statistical rigor on main results, narrow baseline coverage, and incremental novelty places it at the ICLR borderline-reject level in its current form."
+    }
+  },
+  "publishability_probability": 0.32
+}

@@ -1,0 +1,109 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper adapts crosscoders (originally designed for cross-layer feature alignment) to align features across pre-training snapshots of Pythia-160M and Pythia-6.9B, using decoder norms as a proxy for feature strength over training. It presents a coherent story: initialization vs. emergent features, a directional turning point around step ~1,000, a moderate correlation between feature complexity and emergence time, attribution-based circuit tracing on SVA/IOI/induction, and a proposed statistical-to-feature-learning phase transition supported by unigram/bigram KL and total feature dimensionality dynamics. The methodology is a sensible and novel adaptation of an existing technique, and results are internally consistent; however, generality is limited (only Pythia, one middle layer per model), some quantitative claims are weakly supported (r=0.309 correlation is called a 'non-trivial' effect), and there is little reporting of variance/seeds or comparisons to alternative attribution baselines.",
+  "strengths": [
+    "Novel and well-motivated adaptation of crosscoders from cross-layer to cross-snapshot analysis, with a clear theoretical argument that decoder norms track feature presence per snapshot.",
+    "Multi-pronged empirical study: crosscoder vs. per-snapshot SAE Pareto comparison, feature lifetime/steepness statistics, feature-direction turning point, complexity–emergence correlation, circuit-tracing ablations, KL and dimensionality dynamics.",
+    "Attribution patching + ablation experiments provide reasonable causal linkage between microscopic features and macroscopic task metrics (necessary/sufficient ablations across snapshots).",
+    "Two model scales (160M and 6.9B) are examined and show qualitatively consistent phase-transition-like behavior, and the paper's core observations (statistical → feature learning) are aligned with pre-existing IB predictions in a way that is empirically credible.",
+    "Sensible failure-mode discussion (misalignment and feature splitting) and a limitations section that names the main scope caveats."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Generality of the claims is thin: only Pythia is studied, only one middle layer per model, and the 'phase transition' evidence rests on two model scales in a single suite. The abstract/introduction frame conclusions about 'LLM pre-training' broadly, but no other model family, tokenizer, or data mixture is tested.",
+      "suggested_fix": "Replicate at least one of the phase-transition and turning-point findings on a second, independently trained checkpoint family (e.g., OLMo, LLM360/Amber, TinyLlama intermediate checkpoints, or Pythia deduped) and on at least one additional layer (early and late). If replication is infeasible, tone claims down explicitly to 'in Pythia' throughout."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical support is uneven. The complexity–emergence correlation is r=0.309 with n=100 auto-labeled samples, reported as 'moderate' but shown as a headline result; no confidence intervals, no bootstrap over feature samples, no inter-annotator (or LLM-annotator) reliability; ablation curves in Fig. 7 have no error bars over inputs/seeds; KL and dimensionality curves are shown as single trajectories.",
+      "suggested_fix": "Add CIs/bootstrap to the correlation, evaluate at least two auto-labellers or a human-labelled subset for reliability, report multiple SAE/crosscoder seeds for the reconstruction/L0/dimensionality curves, and add per-sample variability shading to attribution/ablation plots."
+    },
+    {
+      "severity": "major",
+      "issue": "Attribution/circuit analysis lacks a control comparison. Feature-level attribution + ablation is used to declare features 'necessary and sufficient', but there is no comparison to alternative decomposers (per-snapshot SAE features, PCA components, neurons) under the same ablation protocol.",
+      "suggested_fix": "Include an apples-to-apples ablation on top-k SAE features from a per-snapshot SAE (already trained in Sec. 3) and on top-k neurons; show that crosscoder features yield stronger metric recovery/disruption at equal k."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'statistical-to-superposition transition' argument conflates 'loss approaches unigram/bigram entropy' with 'model is only learning n-gram statistics'. A model can match marginal/bigram distributions while already forming features; the causal claim that early loss drop is *driven by* statistical fitting rather than feature formation is not directly established.",
+      "suggested_fix": "Add a control showing that (a) at pre-turning-point snapshots, ablating all crosscoder features leaves n-gram-matching largely intact, and (b) unigram/bigram fitting can be recovered by a simple linear/statistical baseline at the same loss level. Otherwise soften the causal claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "Presentation issues: figure numbering is inconsistent (Figure 2 vs. Figures 9a/9b/9c referenced for the same SAE-vs-crosscoder comparison), several equations/regularizer notations are typeset ambiguously (e.g., the sparsity penalty function is shown as '(·)' with the actual form deferred to Appendix), and there are prose artefacts (comma splices, 'and however', broken hyphenation).",
+      "suggested_fix": "Correct figure references, define the sparsity/regularization function inline, and copy-edit the manuscript for readability."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility details are incomplete in the body: crosscoder dictionary sizes appear (98,304 for 160M; 32,768 for 6.9B) but sparsity coefficient λ, activation function σ, exact snapshot IDs, token budgets, and optimizer settings for crosscoder/SAE training are pushed to the appendix and only alluded to.",
+      "suggested_fix": "Add a compact hyperparameter table in the main text (or a clearly labelled appendix block) covering both crosscoders and the per-snapshot SAE baselines used for comparison, plus tokens seen per crosscoder training."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work in learning dynamics cites IB, NTK, and SLT but does not engage with recent mechanistic work on developmental interpretability across checkpoints (which is directly related to the phase-transition claim) or with work that has probed features vs. checkpoints in SAE-style setups.",
+      "suggested_fix": "Add a paragraph situating this work against developmental-interpretability / stagewise-development lines and any SAE-across-checkpoints prior work, making clear what is new here (unified cross-snapshot feature space and per-feature decoder-norm trajectories)."
+    }
+  ],
+  "questions_for_authors": [
+    "Do the turning-point (~step 1,000) and total-dimensionality compression-then-expansion patterns replicate on at least one non-Pythia checkpointed model, and on layers other than the middle layer chosen for each model?",
+    "How robust is the complexity–emergence correlation to (a) the auto-labeller (try a second model), (b) the rubric, and (c) the sample of 100 features? Please provide bootstrap CIs.",
+    "In the attribution/ablation experiments, how do top-k crosscoder features compare, at equal k, against top-k features from an SAE trained only on the final snapshot and against top-k neurons?",
+    "Can the paper directly test the 'statistical learning phase' hypothesis by ablating all crosscoder features at pre-turning-point snapshots and showing that unigram/bigram KL is essentially preserved (i.e., that the statistical fit does not live in the crosscoder-identified feature directions)?",
+    "How sensitive are the decoder-norm-based lifetime/steepness statistics to the 0.3 threshold, and what happens under a range of thresholds or a threshold-free continuous formulation?",
+    "For the phase-transition claim: are the training losses at which unigram/bigram entropy is reached the same across scales, and does the turning-point step (~1,000) shift with model size, tokenizer, or data mixture?"
+  ],
+  "calibration_check": "Claims are mostly scoped reasonably (the limitations section names the Pythia-only scope), but the abstract/intro rhetoric about 'how LLMs actually develop their capabilities' and the 'statistical-to-feature-learning transition' outrun the evidence, which comes from one model suite and one layer per model.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Adds a concrete, mechanistically-flavored tool for studying pre-training dynamics; likely to be cited by the interpretability community, but the empirical claims are currently bounded to Pythia."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The cross-snapshot use of crosscoders is a genuinely new adaptation, though the underlying crosscoder machinery and much of the phase-transition framing come from existing work."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Methodology is largely sound and the failure-mode discussion is thoughtful, but several claims (causal role of features in early loss drop, 'necessary and sufficient' components) lack the controls needed to fully support them."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Few error bars/seeds; correlation r=0.309 (n=100 auto-labelled) is presented without CIs or labeller-robustness checks; ablation and KL/dimensionality plots are single-trajectory."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Has an explicit limitations section and acknowledges scope, but abstract/intro framing generalizes beyond Pythia in a way that outruns evidence."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall story is followable, but the prose has consistent copy-edit issues, figure/table numbering is inconsistent (Fig. 9 references appear where Figs. 2/3 are labelled), and key definitions are deferred to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure with abstract, intro, related work, method, experiments/analyses, limitations, and conclusion; length appears within norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Uses the public Pythia suite with named snapshots and dictionary sizes; core methodology is described, though key hyperparameters (λ, exact snapshot IDs, token budgets) are deferred to appendices rather than surfaced in the main text."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Solid coverage of NTK, IB, SLT, superposition, SAE/crosscoder literature; misses recent developmental-interpretability work that is directly comparable to the phase-transition claim."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative panels that plausibly support the claims (Pareto comparison, decoder-norm trajectories, KL/dimensionality curves, attribution/ablation), but figure numbering inconsistencies in the manuscript raise concerns about presentation quality."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only Pythia (two sizes), one layer per model, and relatively simple downstream tasks (SVA, IOI, induction). The generality of the 'phase transition' claim is under-supported by the current experimental breadth."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline: interesting, novel-in-application, empirically coherent, but experimentally narrow and statistically under-reported; sits on the accept/reject boundary at ICLR."
+    }
+  },
+  "publishability_probability": 0.4
+}

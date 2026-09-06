@@ -1,0 +1,116 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, which combines KV-cache key scaling on instruction tokens with a plausibility-guided decoding loop that progressively removes steered layers (ordered by a new attention-sensitivity score) whenever the steered top-1 token is implausible under the unsteered distribution. The empirical package is broad for a steering paper — three benchmarks, five models across two families, tuned PASTA/SpotLight baselines, fixed-strength and ranking ablations, efficiency measurements, and LLM-judge quality/fidelity evaluation — and the central claim that adaptive strength beats any fixed strength is reasonably supported on Llama-3.1-8B/IFEval. However, the core mechanism is largely a recombination of known ingredients (the plausibility constraint is the adaptive-plausibility filter from contrastive decoding, applied to steering strength), the main tables report no variance or significance anywhere, and the cross-model results in Table 2 do not actually support the \"consistent\", \"model-agnostic\" language used in the text (DIRECTER is not best on Qwen-3B or Qwen-7B, and is within noise of zero-shot on 1B). With significance analysis, scoped generality claims, and at least one comparison outside attention-level steering, this could become a solid accept.",
+  "strengths": [
+    "The oversteering problem is real and well motivated, and the proposed fix — reject the steered token when it is implausible under the raw distribution, then halve the steered-layer set — is simple, training-free, and requires no auxiliary dataset or grid search over layer/head combinations, which is a genuine practical advantage over PASTA.",
+    "The plausibility gate is shown to be modular: applying it to PASTA and SpotLight as a safety gate improves those methods (Figure 2b), which supports the broader claim that dynamic rejection is a general mechanism rather than a single-method trick.",
+    "Ablations isolate the two design choices reasonably well: Figure 2a compares against every fixed steering strength (including ST6 = all layers, i.e. the no-gate variant), and Table 3 tests reversed ranking, random layer ordering, and random token spans.",
+    "Baselines are tuned rather than run only at default settings, and the authors explicitly note that official PASTA/SpotLight settings caused oversteering — a fairer treatment than is common in this literature.",
+    "The evaluation goes beyond accuracy to include text quality and task fidelity (Table 4), efficiency (Figure 4), hyperparameter sweeps over beta and alpha, and prompt-format robustness, which addresses the standard objection that steering gains come at the cost of generation quality.",
+    "The gating derivation (skip the steered pass when the raw top-2 probability falls below beta times the top-1) is a correct and elegant way to bound the overhead of the double forward pass."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No variance, confidence intervals, or significance testing in any main result. Greedy decoding removes seed variance but not benchmark sampling variance, and several headline comparisons are within plausible noise: Table 2 shows 61.3 (zero-shot) vs 61.6 (DIRECTER) on 1B, and the Table 3 ablation gap (81.8 vs 80.2 +/- 0.7 for random layers) is only ~2 points against a reported standard deviation of 0.7.",
+      "suggested_fix": "Report paired bootstrap or McNemar tests per benchmark (all methods run on identical items, so paired tests are both available and much tighter than marginal CIs), and add binomial CIs to Tables 1, 2, and 4. State explicitly which improvements are significant and which are not."
+    },
+    {
+      "severity": "major",
+      "issue": "The generality claims exceed the evidence. The text states DIRECTER \"consistently outperforms all baselines\" and offers \"a more robust, model-agnostic improvement\", but Table 2 shows Few-shot ahead on Qwen-3B (67.8 vs 67.1) and SpotLight-tuned ahead on Qwen-7B (74.9 vs 74.4), with a negligible gain on Llama-3.2-1B. The large gains are concentrated on Llama-3.1-8B and Qwen-14B.",
+      "suggested_fix": "Rewrite the Table 2 discussion to acknowledge the cases where DIRECTER is second-best or on par with zero-shot, and investigate why (e.g. does the sensitivity ranking degrade at small scale, or does the gate almost never fire?). Scope the abstract's \"significantly enhances ... across diverse benchmarks\" accordingly."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty is limited to the composition. The plausibility criterion in Eq. 1 is the adaptive plausibility constraint of contrastive decoding / DoLa, reused as an accept-reject test on steering strength rather than as a token filter; KV scaling on a token span is a known intervention. The genuinely new component, the attention-sensitivity disturbance score in Eq. 2, is heuristic and its two terms (direct and propagated effect) are not justified beyond the ablation against reversed/random orderings.",
+      "suggested_fix": "Sharpen the delineation from contrastive decoding in Related Work (state precisely what is reused and what is new), and strengthen the sensitivity metric with an analysis of what it actually ranks — e.g. correlation with an oracle per-layer steering benefit computed by brute force on a small subset — rather than only the reversed/random contrasts."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage is confined to attention-level steering. Related Work discusses residual-stream steering-vector methods (CAA/ITI-style, contrastive-pair approaches), but none are evaluated. For GSM8K-Format and IFEval, constrained/grammar-guided decoding is the obvious competing family for format adherence and is neither discussed nor compared.",
+      "suggested_fix": "Add at least one steering-vector baseline and one constrained-decoding or self-check/re-prompting baseline, or explicitly justify the exclusion (e.g. inapplicability to open-ended constraints) in the text."
+    },
+    {
+      "severity": "minor",
+      "issue": "The IFEval prompts are rewritten by gpt-4o-mini to separate task from instruction span, which changes the benchmark and makes numbers incomparable to published IFEval results; it may also systematically favor span-based interventions such as DIRECTER, PASTA, and SpotLight over prompting baselines.",
+      "suggested_fix": "Report unmodified-IFEval numbers for at least the zero-shot and DIRECTER settings (using the automatic span detection from Appendix D.2), and release the rewritten prompt set specification so the transformation is auditable."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 4's quality/fidelity evaluation uses a single automated judge (gpt-4o-mini) with no inter-rater agreement, no CIs, and margins of 0.01-0.06 on the 1-5 quality scale; the claim of \"matching the text quality of non-intervention baselines\" rests on differences well inside judge noise, and the human evaluation is deferred entirely to an appendix.",
+      "suggested_fix": "Report judge variance and agreement with the human study, add CIs, and move the essential human-evaluation statistics (number of annotators, items, agreement) into the main text."
+    },
+    {
+      "severity": "minor",
+      "issue": "Efficiency numbers are internally inconsistent and the accounting is opaque: a ~20% increase in per-token decoding time is reported alongside only a ~16% throughput reduction, and PASTA is excluded from Figure 4 on the grounds of offline profiling cost, which removes the strongest efficiency competitor from the comparison.",
+      "suggested_fix": "Reconcile the two figures (state the generation lengths and whether prefill/ranking is amortized in each), and include PASTA's inference-time cost with its profiling cost reported separately."
+    },
+    {
+      "severity": "minor",
+      "issue": "The choice of alpha = 100 with reported stability from 10^1 to 10^5 implies the intervention saturates into near-hard attention on the instruction span, meaning the method is effectively a binary on/off attention mask modulated by the layer count. This is worth stating plainly, since it changes how readers should interpret 'steering strength'.",
+      "suggested_fix": "Add a short analysis of the post-softmax attention mass on instruction tokens as a function of alpha, and discuss the saturation regime explicitly rather than only reporting that accuracy is flat."
+    }
+  ],
+  "questions_for_authors": [
+    "For each benchmark, what fraction of decoding steps are skipped by the gate, accepted at full strength, and reduced to k layers? A distribution over the accepted |L_cand| would show how much of the gain comes from adaptivity versus from the gate simply reverting to raw decoding.",
+    "On Qwen-3B and Qwen-7B, where DIRECTER is not the best method, does the gate fire less often, or does the sensitivity ranking differ qualitatively from Llama? Is there a diagnostic that predicts when the method will help?",
+    "Are the reported differences in Table 1 statistically significant under a paired test on the same items, particularly the LIFBench List/OD columns and the GSM8K-Format task accuracy?",
+    "Were beta = 0.5 and alpha = 100 selected using the IFEval sweep in Figure 3, and if so, is Figure 3a reporting test-set selection? Do the same values remain optimal on LIFBench and GSM8K-Format?",
+    "How is the steered forward pass implemented relative to the raw pass — does the steered pass reuse the raw KV cache with keys scaled on the fly, and does the accepted token's cache entry get written unscaled? A precise statement matters for reproducibility.",
+    "In Table 3, the random-token variant still beats zero-shot; is this because the gate makes any intervention roughly harmless, and if so does that weaken the claim that gains come specifically from instruction-span amplification?",
+    "How does DIRECTER behave under sampling rather than greedy decoding, where the top-1 comparison in Eq. 1 is a less natural criterion?"
+  ],
+  "calibration_check": "Claims are only partly scoped to the evidence: the oversteering-mitigation and quality-preservation claims are reasonably supported on the main model, but \"consistently outperforms all baselines\" and \"model-agnostic improvement\" are contradicted by the paper's own Table 2, and no result anywhere is accompanied by a significance statement.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Mitigating oversteering with a training-free, dataset-free adaptive gate is a practically useful contribution that steering practitioners could adopt, and the transferability of the gate to PASTA/SpotLight raises its reach, but the impact is confined to the inference-time steering subfield."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The plausibility criterion is borrowed largely intact from contrastive decoding and applied to steering strength, and KV key scaling on an instruction span is an existing intervention; only the attention-sensitivity layer ranking is new, and it is a heuristic score."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The control experiments are well chosen (fixed-strength sweep isolates the gate, reversed/random ordering isolates the ranking, random tokens isolates the span) and the gating shortcut is derived correctly, but the ablations are run on a single model and benchmark and the sensitivity metric itself is validated only indirectly."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No error bars, confidence intervals, or significance tests appear in Tables 1, 2, or 4, and several claimed advantages — the 1B result, the Qwen-3B/7B rows, and the ~2-point ablation gap against a reported std of 0.7 — are plausibly within noise."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "A limitations section is present and honestly notes the separable-instruction assumption and the lack of theoretical grounding, but the main text's 'consistently outperforms all baselines' and 'model-agnostic' framing overstates results that Table 2 itself contradicts."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The method is explained in a followable order with an algorithm box and the gating logic is stated precisely, though the disturbance score in Eq. 2 and the notation distinguishing steered from raw distributions are dense, and key evidence (human evaluation, span detection, alternative metric formulations) is pushed into appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization with explicit research questions framing the experiments section, appropriate length, and a conclusion with limitations."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Models, decoding regime, key hyperparameters (alpha = 100, beta = 0.5), baseline tuned settings, benchmark subsets, and the full algorithm are specified; the main gaps are the custom GSM8K-Format construction and the gpt-4o-mini prompt rewriting, whose exact outputs would be needed to match numbers."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior steering work is described accurately with its specific costs (PASTA's grid search, SpotLight's doubled softmax) and the contrastive-decoding lineage is cited, but the relationship between Eq. 1 and that lineage is not delineated sharply enough, and constrained decoding is absent despite being the natural alternative for the format benchmarks."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that map directly onto the research questions — fixed-strength comparison, cross-method gate compatibility, beta/alpha/prompt robustness, three efficiency metrics — but none of the tables carry variance information and Table 1's bold/underline convention cannot substitute for it."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Five models across two families and three benchmarks is respectable coverage, but the baseline set omits residual-stream steering and constrained decoding entirely, evaluation is limited to English instruction following with pre-separated spans, and the cross-model results are uneven relative to the generality claimed."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competently executed, practically useful method with unusually thorough ablations for this subfield, held below the bar by modest conceptual novelty, absent statistical analysis in every main table, and generality claims the cross-model results do not support."
+    }
+  },
+  "publishability_probability": 0.35
+}

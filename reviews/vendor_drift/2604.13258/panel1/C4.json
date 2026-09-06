@@ -1,0 +1,92 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "This paper proposes Hessian-Enhanced Token Attribution (HETA), a post-hoc token attribution framework for decoder-only autoregressive language models that combines attention rollout semantic flow, Hessian-based second-order sensitivity, and KL-divergence information loss under token masking. The authors also introduce a 2,000-instance curated dataset combining NarrativeQA and SciQ contexts to evaluate attribution alignment using a proposed Dependent Sentence Attribution (DSA) metric. While the idea of unifying structural, geometric, and information-theoretic signals is conceptually interesting, the manuscript suffers from fundamental mathematical flaws in its Hessian formulation, unexplained order-of-magnitude empirical anomalies, and conceptual errors in its evaluation protocol.",
+  "strengths": [
+    "Combines structural attention rollout, second-order Hessian curvature, and information-theoretic KL divergence into a multi-faceted attribution score tailored for decoder-only autoregressive models.",
+    "Introduces a curated 2,000-instance evaluation dataset (NarrativeQA + SciQ) along with the Dependent Sentence Attribution (DSA) metric to evaluate attribution precision against distractor context.",
+    "Evaluates across multiple decoder-only model architectures and parameter scales (GPT-J 6B, Phi-3 14B, LLaMA-3.1 70B, Qwen2.5 3B) across established benchmarks (LongRA, TellMeWhy, WikiBio).",
+    "Includes detailed component ablations and stress tests for sensitivity and active/passive syntactic rephrasing robustness."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Mathematical flaw in Eq. 3 (Hessian Sensitivity): Eq. 3 samples Rademacher vectors r_k supported solely on block i (Π_i r_k = r_k) and projects back onto block i, which isolates the diagonal block H_{i,i} = ∇^2_{e_i, e_i} log P(x_T | x_{<T}). This measures only self-curvature of token i's embedding, NOT cross-token second-order interactions (H_{i,j}), directly contradicting claims throughout the paper that HETA captures second-order token-token interactions.",
+      "suggested_fix": "Correct the mathematical formulation and text: either revise Eq. 3 to explicitly measure off-diagonal cross-block curvature H_{i,j} (e.g., via joint HVPs between input token positions), or accurately re-scope all claims in the paper to state that Eq. 3 measures local self-curvature rather than inter-token interactions."
+    },
+    {
+      "severity": "major",
+      "issue": "Unexplained order-of-magnitude empirical anomalies in Table 3: On benchmark datasets, HETA achieves Soft-NC scores of 10.3 and 9.2 (GPT-J) and 9.9 (LLaMA-3.1), whereas all baseline methods range between 0.13 and 2.05. A 5x to 50x leap over all prior work without explanation suggests potential differences in attribution score normalization or metric evaluation code between HETA and baselines.",
+      "suggested_fix": "Provide a detailed analysis explaining the exact scale and magnitude of Soft-NC scores, verify that baseline attributions were normalized identically under the perturbation benchmark protocol, and release exact evaluation scripts for verification."
+    },
+    {
+      "severity": "major",
+      "issue": "Conceptual flaw in decoding hyperparameter sensitivity evaluation (Table 2): Evaluating post-hoc attribution sensitivity across decoding parameters (temperature, top-p, top-k, repetition penalty) is conceptually unclear because conditional log-probabilities P(x_T | x_{<T}) and model gradients on a fixed text sequence are independent of decoding parameters used during generation.",
+      "suggested_fix": "Clarify whether sequences were re-generated under each hyperparameter set (which alters the evaluation target text) or if attributions were evaluated on fixed text; if on fixed text, explain why decoding parameters would cause baseline attributions to fluctuate."
+    },
+    {
+      "severity": "major",
+      "issue": "Incomplete baseline reporting in Table 3 and missing computational cost analysis: In Table 3, ReAgent is reported for LLaMA-3.1 70B but omitted from GPT-J 6B and Phi-3 14B rows, despite being cited as the primary runner-up baseline in the text. Furthermore, the paper lacks wall-clock runtime, memory overhead, and backpropagation pass counts for computing Hutchinson HVPs and KL forward passes.",
+      "suggested_fix": "Include ReAgent across all models in Table 3 for consistency, and provide explicit runtime, memory, and FLOPS benchmarks comparing HETA (and its HETA-LR+WIN variant) against gradient and attention baselines."
+    }
+  ],
+  "questions_for_authors": [
+    "How does Eq. 3 isolate cross-token interaction H_{i,j} when the projection Π_i restricts both the vector perturbation r_k and the output to block i, yielding only the diagonal block H_{i,i}?",
+    "Why are HETA's Soft-NC values in Table 3 (e.g., 10.3 vs 1.54) an order of magnitude higher than all baselines across every dataset and model? Were attribution magnitudes normalized differently prior to applying input perturbations?",
+    "In Table 2, how were decoding hyperparameters applied during post-hoc attribution? If the sequence x_{1:T} is fixed, how do temperature or top-p affect gradients or attention weights of P(x_T | x_{<T})?",
+    "Why was ReAgent omitted from the GPT-J 6B and Phi-3 14B results in Table 3 while being included for LLaMA-3.1 70B and in Table 1?",
+    "What is the exact wall-clock time and memory overhead per sequence of computing m HVPs and T masked forward passes for HETA compared to Integrated Gradients and ContextCite?"
+  ],
+  "calibration_check": "The claims are significantly overscoped, as the paper claims to model second-order token-token interactions despite Eq. 3 computing only single-token diagonal self-curvature (H_{i,i}), and claims unprecedented SOTA attribution performance without accounting for metric scale discrepancies or computational overhead.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attributing outputs in decoder-only LLMs is an important problem for ICLR, but mathematical flaws and empirical anomalies reduce the immediate utility of the proposed method."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "Combining attention rollout, second-order Hessian sensitivity, and KL information loss is a novel unified concept, though individual components build on existing literature."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The mathematical formulation in Eq. 3 extracts only diagonal block self-curvature (H_{i,i}) rather than token-token interaction (H_{i,j}), invalidating core theoretical claims."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Results display unexplained order-of-magnitude jumps in Soft-NC scores (10.3 vs ~1.0) and rely on a conceptually ambiguous decoding hyperparameter experiment."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The paper overclaims modeling second-order token interactions when Eq. 3 computes self-curvature, and claims massive performance gains without addressing metric calibration or computational cost."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The manuscript is generally readable and structured well, but key mathematical equations are imprecise and critical experimental details are deferred to unprovided appendix sections."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "The paper strictly adheres to standard conference formatting and section organization (Abstract, Introduction, Motivation, Method, Experiments, Related Work, Conclusion)."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Essential implementation details such as Hutchinson estimator sample counts, low-rank approximation parameters, and exact KL masking protocols are insufficiently detailed in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "The paper provides a solid overview of feature attribution, attention rollout, and recent LLM attribution methods, though baseline comparisons in tables are inconsistently formatted."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Table captions and figure schematics clearly explain the proposed workflow and experimental setups, though Table 3 suffers from missing baseline rows."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Experiments cover four model families (GPT-J, Phi-3, LLaMA-3.1, Qwen2.5) across multiple tasks (LongRA, TellMeWhy, WikiBio, SciQ/NarrativeQA), offering reasonable coverage."
+    },
+    "overall_recommendation": {
+      "score": 3,
+      "justification": "Despite an ambitious goal and a useful curated dataset, fundamental mathematical errors in the Hessian formulation and severe empirical anomalies prevent acceptance in its current form."
+    }
+  },
+  "publishability_probability": 0.15
+}

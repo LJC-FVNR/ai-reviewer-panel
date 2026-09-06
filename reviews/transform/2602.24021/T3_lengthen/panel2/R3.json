@@ -1,0 +1,102 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD adapts a frozen multi-modal LLM to video anomaly detection by (1) selecting discriminative attention heads via an inter-to-intra scatter ratio (RSA) and (2) applying a learned, context-conditioned element-wise gating (HMC) to those head features, trained on 1% of labeled data. The method reports state-of-the-art results among tuning-free VAD approaches with an attractive data-efficiency story, but the improvements over the nearest competitor are marginal and lack significance testing, the 'manifold steering' framing substantially oversells what is mechanically a Fisher-ratio head selector plus FiLM-style channel gating, and generality is asserted for 'MLLMs' while only a single backbone is tested.",
+  "strengths": [
+    "Strong data-efficiency result: calibration on ~1% of training data (~16 videos) achieves nearly the same AUC as 100% (Table 4, +0.27% from 1%→100%), which is a genuinely useful and well-documented finding.",
+    "The RSA head-selection is validated against sensible baselines (random, positional heuristics) in Table 2B, and a 10-seed stability analysis (Table 3) shows identical LAE selection and σ≈0.04% AUC, addressing overfitting-to-split concerns.",
+    "The framework is lightweight and practical (logistic-regression scorer, low-rank adapters, single forward pass, single A6000), and component ablations (GSG, LGM, additive vs. multiplicative, static vs. dynamic) are reasonably complete for the method's own design.",
+    "Clear problem motivation (pre-training bias + contextual ambiguity) and a coherent narrative connecting head selection to targeted rectification."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Main-table gains over the closest tuning-free competitor are marginal (+0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence vs. HiProbeVAD) and reported without error bars or significance tests, while baselines have none either. The paper's own seed σ (0.04%) is far smaller than the claimed margins, but no paired comparison establishes the improvement is real.",
+      "suggested_fix": "Report mean±std over seeds for SteerVAD in Table 1 and, where possible, for re-run baselines; add a significance test (e.g., bootstrap over videos) for the head-to-head comparison with HiProbeVAD/VERA."
+    },
+    {
+      "severity": "major",
+      "issue": "Generality is claimed for MLLMs broadly ('powerful new direction', 'frozen foundation models'), but all experiments use a single backbone (InternVL3) on two datasets. The central claim that RSA finds intrinsic functional circuits cannot be assessed across architectures.",
+      "suggested_fix": "Add at least one additional MLLM backbone (e.g., a LLaVA/Qwen-VL variant) to show RSA/HMC transfer, or explicitly scope claims to InternVL3."
+    },
+    {
+      "severity": "major",
+      "issue": "The geometric/manifold framing overstates the mechanism. 'Anisotropic manifold scaling' is an element-wise residual gate h'_i = h_i(1 + s_global·g_i) (FiLM-like conditioning), and the 'rigorous topological analysis' is deferred to an unavailable appendix. The rhetoric ('steering manifolds', 'disentangling topology') is not matched by the operations shown.",
+      "suggested_fix": "Either provide the topological analysis and a formal statement of what geometric property is guaranteed, or reframe the method more modestly as learned head-selective feature gating."
+    },
+    {
+      "severity": "major",
+      "issue": "Claim–equation inconsistency: the abstract/overview state the HMC conditions 'jointly on global context and these LAE outputs', but Eqs. (2)-(3) show both GSG and LGM take only the global context vector c as input; LAE features enter only in the final scaling and scoring. The signal generation does not use LAE outputs as claimed.",
+      "suggested_fix": "Correct the text, or modify the controller to actually condition on {h_i} and ablate whether this helps."
+    },
+    {
+      "severity": "minor",
+      "issue": "Visual evidence is qualitatively circular: t-SNE of discriminatively trained features (Fig. 4) will look cleanly separated by construction, so it does not independently validate 'manifold rectification.' UMAP surfaces fit to point clouds (Fig. 2) can be misleading.",
+      "suggested_fix": "Provide a quantitative separability metric (e.g., RSA score before/after rectification on held-out data) rather than relying on t-SNE appearance."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: dmodel, dhead, r, hidden dims, exact token/feature extraction from each attention head, and the segmenting/scoring pipeline dimensions are unspecified; several 'detailed in Appendix' claims (A, B, G) cannot be checked.",
+      "suggested_fix": "Report all architectural dimensions and the precise head-feature extraction procedure in the main text."
+    }
+  ],
+  "questions_for_authors": [
+    "Do the GSG and LGM condition only on c (as in Eqs. 2-3), or also on the LAE features {h_i}? If only c, how do you reconcile this with the 'jointly conditioning on LAE outputs' claim?",
+    "Given σ≈0.04% for your method, is the +0.43% AUC / +0.87% AP gain over HiProbeVAD statistically significant? Can you provide a paired/bootstrap test?",
+    "Does RSA head selection and HMC gating transfer to other MLLM backbones, or is the result specific to InternVL3?",
+    "How exactly is a single feature vector obtained per attention head per segment (which token position(s), pooling, and at which layer output)?",
+    "Since the RSA centroids require labeled normal/anomalous samples, how sensitive is head selection to label noise or class imbalance in the 1% subset beyond the seed analysis already reported?"
+  ],
+  "calibration_check": "Claims are partially over-scoped: 'tuning-free/without any fine-tuning' is a field-norm stretch (a controller and scorer are trained), 'state-of-the-art' is technically supported but by marginal, untested margins, and 'manifold steering' rhetoric exceeds the demonstrated element-wise gating mechanism.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "VAD with data-efficient adaptation of frozen MLLMs is a relevant problem and the 1%-data result is appealing, but the accuracy gain over prior tuning-free methods is small."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combines a classic Fisher-style separability ratio for head selection with FiLM-like learned gating in a new VAD context—competent but a moderate, recombinative contribution rather than a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Ablations for the method's own components are reasonable, but the manifold/geometry claims are unsupported by the shown operations, key evidence (t-SNE) is circular, and a stated claim contradicts the equations."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Own-method seed variance is reported, but the head-to-head SOTA comparison lacks error bars and significance testing while margins are within a fraction of a percent."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Several claims (tuning-free, SOTA, manifold steering, cross-model generality) are broader than the evidence, though the data-efficiency and stability claims are well-scoped."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The overall pipeline is followable and well-motivated, but the prose is dense and rhetorical and contains a controller-input inconsistency with the equations."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Abstract, Intro, Related Work, Method, Experiments, Conclusion) is applied appropriately and within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Optimizer, epochs, K, F, backbone, and smoothing are given, but architectural dimensions and the exact per-head feature-extraction procedure are missing and much detail is deferred to unavailable appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers traditional, MLLM-based, and interpretability/model-editing lines adequately and positions the contribution against tuning-free methods, though comparison to activation-steering/representation-engineering baselines is thin."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Captions are informative and support the narrative, but the key visualizations (t-SNE of trained features, UMAP surfaces) are qualitative and partly circular as evidence."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Single backbone and two datasets do not support the paper's broad claims about frozen MLLMs generally; no cross-model evidence."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, practical method with a strong data-efficiency story but marginal, untested gains, single-backbone evidence, and overstated geometric framing—borderline reject needing added experiments and reframing."
+    }
+  },
+  "publishability_probability": 0.3
+}

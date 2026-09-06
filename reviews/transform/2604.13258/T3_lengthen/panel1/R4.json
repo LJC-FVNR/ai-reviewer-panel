@@ -1,0 +1,120 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes HETA, a token-attribution method for decoder-only LLMs that combines target-conditioned attention rollout, Hessian-vector-product curvature, and KL-based masking. The direction is reasonable and the evaluation spans four models plus a new curated benchmark, but the reported improvements are implausibly large (often 2x the strongest baseline on Soft-NC and DSA) without adequate diagnostic controls, the DSA metric and dataset are authored by the same group that they favor, several approximations to the Hessian (Hutchinson + Pearlmutter + low-rank + windowing + layer sampling) are stacked without an error/faithfulness analysis, and the writing/math has numerous formatting problems (broken equations, missing symbols) that obscure the core method. Novelty is limited to a specific combination of previously known ingredients.",
+  "strengths": [
+    "Targets a genuine gap: encoder-oriented attribution methods do not straightforwardly transfer to decoder-only autoregressive generation, and the paper positions clearly against ContextCite, TDD, Peering (PML), and ReAgent.",
+    "Method is principled at a high level: causal gate via masked attention rollout, second-order sensitivity via HVPs, and information contribution via KL under token masking are each individually motivated by the limitations of first-order/attention-only methods.",
+    "Reasonable breadth: four decoder-only models spanning ~3B to 70B, three public benchmarks (LongRA, TellMeWhy, WikiBio) plus a curated dataset, and an ablation over the three components.",
+    "Includes decoding-hyperparameter stress tests (temperature, top-p, top-k, repetition penalty over three seeds) and syntactic-rephrasing robustness tests, which are more thorough than typical attribution papers.",
+    "Practical scalability engineering (low-rank Hutchinson, windowing, layer-sampling for the 70B model) is described and characterized qualitatively as matching full HETA."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The magnitude of the reported gains is not credibly diagnosed. On Table 3, HETA's Soft-NC scores (e.g., 10.3 on LongRA / GPT-J vs. next best ~2) and Soft-NS values are on scales that are not defined anywhere in the text; typical Soft-NC/Soft-NS values in Zhao & Shan (2024) are bounded and much smaller. Either the metric is renormalized/rescaled in a nonstandard way or the numbers reflect different implementations of the baselines than the original works — this needs to be pinned down before the results are believable.",
+      "suggested_fix": "Provide the exact definitions used for Soft-NC/Soft-NS (with equations), verify baselines against original authors' reference implementations or reported numbers, and include per-instance distributions (violin/box plots) rather than only means, plus paired significance tests (e.g., paired bootstrap or Wilcoxon) across instances."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The DSA metric and the 2,000-instance curated dataset are both introduced by the authors and used as headline evidence. The construction — concatenating unrelated NarrativeQA text with an answer-bearing SciQ segment plus a SciQ question — is a highly artificial setup that plausibly favors methods with strong causal gating over question tokens, independent of true attribution quality. Baselines with negative DSA (IG, ContextCite, PML, Attention Rollout) suggest the metric is measuring something these methods systematically fail on by construction rather than a real faithfulness deficit.",
+      "suggested_fix": "Validate DSA on an external human-annotated attribution benchmark, show correlation between DSA and standard perturbation-faithfulness metrics on the same instances, and add an ablation where the NarrativeQA distractor is replaced by (i) an equally-semantic-but-unrelated passage of matched length and (ii) empty context, to check DSA is not simply rewarding masking-out unrelated tokens."
+    },
+    {
+      "severity": "major",
+      "issue": "The Hessian pipeline stacks many approximations — Hutchinson stochastic estimation with m samples, Pearlmutter HVPs, an optional Gauss–Newton/Fisher surrogate, rank-64 blockwise low-rank estimator, 512-token windows with 50% overlap, and last-6-layer restriction for the 70B model — without quantifying the approximation error on the attribution scores. It is unclear whether the reported gains would survive at higher fidelity, or conversely whether the low-fidelity variant is the one actually doing the work.",
+      "suggested_fix": "Report m, rank, window size, and per-layer restriction as an axis of ablation; measure Spearman rank correlation between attributions under full HVP vs. each approximation on a small model where full computation is feasible; report Frobenius-norm error of the low-rank surrogate on a sample of tokens."
+    },
+    {
+      "severity": "major",
+      "issue": "Novelty of the core method is modest. Attention rollout terminated at the target position (Abnar & Zuidema), Hessian/curvature-based sensitivity (Dhamdhere et al., Alvarez-Melis & Jaakkola), and KL-under-masking are each pre-existing; the contribution is the specific weighted product in equation (5). The paper does not justify the multiplicative gating + additive (β,γ) combination vs. alternatives (e.g., additive, log-linear), nor perform a sweep over β,γ.",
+      "suggested_fix": "Position the contribution as an integration rather than a new primitive, and add a (β,γ) sensitivity plot plus a comparison to at least one alternative combining function to show the specific form matters."
+    },
+    {
+      "severity": "major",
+      "issue": "Claims are overreached. The abstract calls HETA 'a new standard for interpretability in autoregressive language models' and text repeatedly asserts SOTA and 'faithful and semantically aligned attributions' from mostly self-designed evaluations. The Limitations section only discusses compute cost, not the well-known problem that faithfulness metrics themselves may not agree with each other or with human ground truth.",
+      "suggested_fix": "Soften the claims to what the evidence supports, add a limitations paragraph acknowledging metric-choice sensitivity, absence of an independent evaluator/annotator (annotators are GPT-4o and GPT-5, not humans), and the artificial nature of the DSA setup."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'human alignment' claim in the abstract is not backed by human annotations. Ground-truth tokens in the curated dataset are produced by GPT-4o and GPT-5 with their intersection, then F1 is measured against those same LLM-produced labels. This is model-vs-model alignment, not human alignment; inter-annotator agreement (F1=0.91, κ=0.89) is between two LLMs, not between humans.",
+      "suggested_fix": "Either replace the 'human alignment' framing with 'LLM-judge alignment', or add a genuine human-annotated subset (even a few hundred instances) and re-report alignment there."
+    },
+    {
+      "severity": "major",
+      "issue": "Presentation quality is well below the bar for a main-track conference paper. Equations run into prose (e.g., MT[i] equation and Z normalizer), symbols are dropped (\"for some > 0\" is missing the ε), the derivation of the second-order Taylor argument is informal, and Table 3's numbers are not annotated with units or metric ranges. Several sentences begin with 'and additionally' or 'and in contrast'. Even correcting for the extraction, the math typesetting will not compile cleanly in the source.",
+      "suggested_fix": "Rewrite the Method section with clean LaTeX equations, define notation once in a table, and add explicit ranges/units for every metric column in every table."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: β,γ set to 0.5 without justification; m (Hutchinson samples), stopping criterion, exact Rademacher batching, and value-projection W_O treatment are not fully specified; the mixture across layers/heads is only summarized. Windowing/low-rank details ('closely matches full HETA') are asserted, not shown in the main text.",
+      "suggested_fix": "Add a compact table of all HETA hyperparameters, cite tables in the main text (currently only mentioned as Appendix Tables 8, 9), and provide pseudocode with tensor shapes."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related work discussion is broadly reasonable but reads as a laundry list; there is no direct comparison between HETA's causal gate and the target-conditioned variant of attention rollout in Abnar & Zuidema, nor a clear differentiation from Hessian-based influence work (Dhamdhere; Alvarez-Melis & Jaakkola) beyond citation.",
+      "suggested_fix": "Add a comparison table with rows = prior methods and columns = (causal gating, order of sensitivity, output-aware, autoregressive-native, scalability) so the delta is explicit."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the numeric ranges of Soft-NC and Soft-NS as you define them, and are the baseline numbers in Table 3 recomputed by you or reproduced from Zhao & Shan (2024)? If recomputed, do they match the originals within reasonable tolerance?",
+    "How sensitive are the results to (β, γ)? Please show a sweep or heatmap on at least one benchmark.",
+    "For the low-rank + windowed variant used at 70B, what is the Spearman rank correlation of the resulting attributions with the exact-Hessian variant on a smaller model where the latter is tractable?",
+    "The DSA metric mixes attribution on 'model-selected important tokens' on the SciQ side with the full first-part mass on the NarrativeQA side. Why is the treatment asymmetric, and how does DSA change if both sides are restricted to the annotated tokens?",
+    "The dataset labels come from GPT-4o and GPT-5 with intersection at the subword level. Have you measured agreement against any human annotators on even a small subset?",
+    "Attention rollout under causal masks and low temperature can already sharply concentrate mass on a few tokens. To what extent is the gate MT[i] alone responsible for the DSA gains, i.e., how does 'Transition Only' compare to full HETA on DSA specifically (not only Soft-NC)?",
+    "Why should the KL under masking be output-aware if the mask is applied at the input embedding? A single-token embedding mask is not information-theoretically clean — please justify or replace with a marginalization."
+  ],
+  "calibration_check": "Claims of 'a new standard for interpretability', 'human alignment', and consistently 2x-or-better faithfulness are not supported by the evidence provided: metrics are partly self-designed on a self-constructed benchmark, 'human' annotations are actually LLM annotations, and the Hessian pipeline uses stacked approximations without an error analysis.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Attribution for decoder-only LMs is a live problem, but this work is one of several concurrent efforts and would not clearly change practice without stronger validation."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "All three components (causal-terminated rollout, HVP-based curvature, KL-under-masking) exist in prior work; the contribution is a specific weighted combination without theoretical justification for that form."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Stacked Hessian approximations (Hutchinson + Pearlmutter + low-rank + windowing + layer sampling) are used but never validated against exact computation; the (β,γ) weights are set to 0.5 with no sensitivity study."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Reports mean of 3 seeds and small stds, but no paired significance tests, no per-instance distributions, and the gap sizes (often 2x-5x) are so large without diagnostics that they raise more doubt than confidence."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Abstract claims 'new standard' and 'human alignment'; annotations are LLM-derived; limitations section only discusses compute, not metric or benchmark validity."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "Even discounting extraction artifacts, equations are typeset poorly, symbols are dropped (e.g., missing ε), notation is inconsistent between the semantic-flow formula and its normalizer, and tables lack units/ranges."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard sections are present (Intro, Motivation, Background, Method, Experiments, Related Work, Conclusion) and length is appropriate; content is dispersed to appendices somewhat aggressively."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Main procedures are described but m, Rademacher batching, output-projection handling, and (β,γ) selection procedure are not fully specified; code/data links are appropriately anonymized so not penalized here, but the described methodology alone leaves gaps."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "ContextCite, TDD, PML, ReAgent, attention rollout, IG are all discussed with reasonable critique, though the delta between HETA and target-conditioned rollout / prior Hessian attribution is not made precise."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Judging from captions: Figure 1 is a schematic overview, Figures 2-3 are ablation/robustness bar plots plus qualitative importance displays; captions describe supportive content but do not compensate for the metric-definition gaps in the tables."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models across scales, three public benchmarks plus a curated set, robustness under decoding hyperparameters and syntactic rephrasings — decent breadth, but all tasks are English QA/narrative and DSA is a single artificial construction."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Borderline reject at ICLR: reasonable direction and engineering, but implausibly large gains on self-designed metrics with stacked approximations and overclaimed alignment/SOTA framing prevent acceptance without substantial revision."
+    }
+  },
+  "publishability_probability": 0.2
+}

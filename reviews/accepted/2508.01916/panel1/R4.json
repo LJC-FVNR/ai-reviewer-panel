@@ -1,0 +1,117 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes Neighbor Distance Minimization (NDM), an unsupervised method that learns an orthogonal rotation and dimension partition of a model's residual stream so that projected activations minimize nearest-neighbor distances within subspaces, motivated by a feature-group/mutual-exclusivity view and a total-correlation-reduction argument. The method is validated on a toy superposition model, on subspace patching of known GPT-2 Small circuits (IOI and Greater-than) against several unsupervised baselines using Gini-coefficient concentration, and qualitatively with InversionView, plus a preliminary demonstration on 2B models via knowledge-conflict prompts. The idea is genuinely novel relative to DAS-style supervised subspace discovery and the results are interesting, but the quantitative story rests on a single small model, a bespoke and lightly justified concentration metric, no seed variance / significance testing, and a 2B-scale evaluation without ground truth — enough to warrant meaningful additional experiments before publication.",
+  "strengths": [
+    "Genuinely novel angle: unsupervised, non-basis-aligned subspace discovery via a neighbor-distance objective, in contrast to prior supervised DAS-style methods that require a hypothesized abstract causal model.",
+    "Two complementary theoretical justifications (feature-group mutual exclusivity in the superposition toy model, and a total-correlation / MI-reduction argument) that make the objective interpretable beyond a heuristic.",
+    "Toy-model validation cleanly recovers ground-truth feature groups from Wx alone, providing a controlled sanity check.",
+    "Reasonable set of unsupervised baselines (Identity, Random, PCA in two orderings, SAE-feature clustering) using the same dimension configuration as NDM, which controls for a common confound.",
+    "Combines quantitative causal evidence (subspace patching on IOI + Greater-than) with qualitative preimage-based interpretation (InversionView) and a 2B-model application to context-vs-parametric knowledge routing, giving a multi-angle argument.",
+    "Includes an automatic mechanism (MI-threshold merging) to select the number and size of subspaces, addressing a real practical difficulty."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin: no seed variance, error bars, or significance testing for any of the Table 1 numbers or the 2B knowledge-routing effects, and the Gini-based test suite has only 5 tests on one 124M model, so it is unclear which differences to baselines are robust.",
+      "suggested_fix": "Run NDM and each baseline over multiple random seeds (both for R initialization and for activation sampling), report mean ± std for every cell of Table 1 and every bar in Fig. 5, and add a paired significance test (e.g., paired bootstrap) versus the strongest baseline (SAE-feature clustering)."
+    },
+    {
+      "severity": "major",
+      "issue": "Gini coefficient over subspace patching effects is an unconventional metric; the paper argues Gini > 0.6 is 'satisfactory' based on an appendix but that threshold is not calibrated against anything independent, and normalization by dimension / variance flips several rankings (e.g., PCA 2 exceeds NDM on some Vars columns), which is not addressed in the main text.",
+      "suggested_fix": "Justify Gini either theoretically (link to a well-defined concentration quantity) or via a controlled ground-truth simulation where the correct subspace is known; report additional standard concentration measures (top-1 mass, entropy of the effect distribution), and directly discuss the cases where PCA 2 or Feature baselines match/exceed NDM under Vars-normalization."
+    },
+    {
+      "severity": "major",
+      "issue": "Scaling claim to 2B models is weaker than framed: with no ground-truth circuit, the evidence that a particular subspace 'mediates' parametric vs context knowledge relies on a decorrelation of patching effects under two counterfactuals, which the paper itself notes has caveats; this is closer to a case study than to quantitative validation of scalability.",
+      "suggested_fix": "Report the same decorrelation metric for all baselines head-to-head (not just in appendix figures), quantify how many subspaces show a clean single-role effect vs. mixed, and either soften the 'scalability to 2B' claim or add a task where a partial ground truth is available (e.g., known factual-recall circuits in Gemma-2-2B)."
+    },
+    {
+      "severity": "major",
+      "issue": "Sensitivity to key design choices is underexplored in the main text: the MI merging threshold, the choice of KSG estimator, initial subspace size (32-dim floor is mentioned as a limitation), the Euclidean vs cosine distance choice ('cosine performed worse in preliminary experiments'), and the choice of activation site are all consequential; the reader cannot tell how robust NDM is to these.",
+      "suggested_fix": "Move ablations from App. D.5/G.4 into a main-text summary table showing NDM performance across (a) MI thresholds, (b) initial min subspace size, (c) distance metric, (d) activation dataset (MiniPile vs. task-specific), and identify which hyperparameters have to be tuned per model."
+    },
+    {
+      "severity": "major",
+      "issue": "Related-work positioning versus concurrent unsupervised subspace / feature-group work is short and mostly a list; specifically, the relationship to Multi-Dimensional Superposition (Engels et al., 2024) and to feature-clustering baselines is not delineated crisply, even though 'clustered SAE features' is the strongest baseline in Table 1.",
+      "suggested_fix": "Add a paragraph explicitly contrasting NDM's contribution vs. (i) DAS/supervised subspace discovery, (ii) SAE-feature clustering (which is your own baseline), and (iii) the multi-dimensional feature literature, stating what NDM buys that these do not."
+    },
+    {
+      "severity": "minor",
+      "issue": "Some subspaces are uninterpretable and the paper's own Test 4-ds Gini is 0.38 for NDM, which contradicts the 'strong concentration' framing.",
+      "suggested_fix": "Report per-test success/failure rates rather than averaging into a single headline number, and explicitly discuss the failure modes in the main text."
+    },
+    {
+      "severity": "minor",
+      "issue": "Method equations in Sec. 3 are hard to parse as extracted (indexing of h(s)_n and the arg min notation), and the algorithm is deferred to the appendix; a reader following only the main text may struggle to reimplement.",
+      "suggested_fix": "Tighten Eqs. 2–4, define notation explicitly (in particular the tilde-h vs h split), and inline a compact algorithm box in Sec. 3 rather than only in appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility depends on the MI-based merging schedule and the InversionView-style preimage retrieval, both of which have multiple free choices (KSG k, threshold, retrieval pool size, cosine threshold 0.85) that are only lightly justified.",
+      "suggested_fix": "Provide a compact hyperparameter table in the main text with default values, ranges tried, and the criterion used to pick them, and state which numbers in Table 1 were selected on which split."
+    }
+  ],
+  "questions_for_authors": [
+    "How stable are the Table 1 numbers across random seeds for R initialization and activation sampling? Can you provide std or bootstrap CIs?",
+    "Under Vars-normalized Gini, PCA 2 and the SAE-feature baseline sometimes match or exceed NDM; how do you interpret this, and does it change the qualitative claim of concentration?",
+    "How was the MI threshold for subspace merging selected, and how sensitive are the resulting dimension configurations (and Table 1 scores) to it?",
+    "For the 2B knowledge-conflict experiment, what fraction of NDM subspaces show a cleanly single-role patching effect (parametric-only or context-only), and how does that fraction compare to each baseline under the same statistic?",
+    "The 32-dim minimum initial subspace is flagged as a limitation. Can you provide any evidence — even preliminary — that smaller subspaces (e.g., days-of-week type variables) can be recovered, or is NDM currently unable to find them?",
+    "Why was cosine similarity worse than Euclidean distance in the NDM objective? Is this consistent across model sizes and activation sites?",
+    "The qualitative interpretations are subjective; have you run any inter-rater agreement or automated interpretability metric (e.g., LLM-graded) on the preimages?",
+    "How does NDM behave when the mutual-exclusivity / feature-group assumption is only partially satisfied — is there a regime where the total-correlation view predicts failure, and do you see it empirically?"
+  ],
+  "calibration_check": "The abstract and framing are mostly appropriately scoped (the paper uses 'evidence', 'promising', and 'preliminary' language and states limitations), but the '2B scalability' claim is somewhat stronger than the evidence supports and the 'clearly outperform baselines' phrasing overstates results that are mixed once normalization is applied and no variance is reported.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Unsupervised discovery of interpretable, causally-relevant subspaces is a genuinely useful capability for mech interp and could plausibly influence how circuits are built if the method generalizes; impact is limited by the current evaluation scope."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The neighbor-distance objective as an unsupervised route to non-basis-aligned subspaces is a real departure from DAS-style supervised methods and from SAE feature discovery, and the total-correlation framing ties it to a principled objective."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The core method is well-motivated with two consistent theoretical framings and a clean toy verification, but several design choices (Gini threshold, distance metric, MI merging) are justified more heuristically than rigorously."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "No seed variance, no error bars, no significance tests across the main quantitative table; the test suite is 5 tests on one small model, which is thin for the strength of the comparative claims."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (uninterpretable small subspaces, Linear Representation Hypothesis dependence, 32-dim floor, ambiguity of 2B results) are acknowledged; still, some Table 1 losses under normalization and the 'scalability' framing are underplayed."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative is followable and the intuition figure is helpful, but the formal method section has awkward notation, the algorithm is offloaded to the appendix, and several key definitions (preimages, Gini calibration) rely on appendix material."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Intro, Motivation, Method, Toy, Language-model experiments, Related work, Conclusion) with appropriate use of appendices; length appears within ICLR norms."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "The method is described in enough detail that a determined reader could reimplement, but the number of hyperparameters (MI threshold, KSG k, cosine thresholds, initial min dim, activation sampling) and their selection criteria are only partially stated in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of subspace, SAE, and multi-dimensional feature work is present but list-like; the contrast against SAE-feature clustering (the strongest baseline) and against concurrent unsupervised approaches is not sharply drawn."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figs. 1–5 and Table 1 are informative and directly tied to claims (toy WᵀW, preimage examples, patching-effect bars); the pieces support rather than decorate the argument, though headline figures do not report uncertainty."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Quantitative causal evaluation is confined to GPT-2 Small on two hand-picked circuit types; the 2B extension is a case study without ground truth. This is insufficient to support broad 'works on real language models' generality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Interesting, novel unsupervised subspace-discovery method with plausible utility and multiple evaluation angles, but statistical rigor, metric justification, and breadth of validation fall short of a clear accept as written — borderline reject in current form."
+    }
+  },
+  "publishability_probability": 0.35
+}

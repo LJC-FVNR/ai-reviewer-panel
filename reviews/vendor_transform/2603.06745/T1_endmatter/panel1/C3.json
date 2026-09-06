@@ -1,0 +1,104 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER proposes a plausibility-guided decoding loop that dynamically modulates KV-cache steering strength per decoding step, using a one-time attention-sensitivity layer ranking to progressively weaken steering when the steered distribution deviates from the raw one. The problem (oversteering in static activation steering) is real and well-motivated, the method is simple and practical, and the empirical package is broad: three benchmarks, five models across two families, sensible ablations (fixed strength, reversed/random ranking, random tokens), robustness sweeps over β and α, efficiency analysis, and LLM- plus human-judged quality evaluation. The main weaknesses are statistical (no seeds/error bars on the headline tables), a baseline-tuning protocol that selects PASTA/SpotLight hyperparameters on IFEval only, a non-standard gpt-4o-mini-rewritten IFEval that complicates comparability, and no empirical comparison to recent dynamic/adaptive steering methods that the paper itself cites as motivation.",
+  "strengths": [
+    "Well-motivated and clearly articulated problem: static steering strength is shown empirically (Figure 2a) to be suboptimal at every fixed setting, directly justifying the dynamic mechanism.",
+    "Simple, training-free, data-free method with a clean accept/reject rule (Eq. 1) and a principled layer-removal order via a one-time sensitivity analysis (Eq. 2-3), with each component ablated (Table 3, Figure 2).",
+    "Broad evaluation for this subfield: IFEval, LIFBench, and a new GSM8K-Format, plus cross-family/cross-scale generalization (Llama-3.2-1B, Qwen-2.5 3B/7B/14B) and a quality/fidelity evaluation showing the gains do not come from degraded text.",
+    "The plausibility filter is shown to transfer as a drop-in safety gate that improves PASTA and SpotLight (Figure 2b), supporting the claim of a general anti-oversteering mechanism.",
+    "Honest treatment of costs and limitations: throughput/memory overhead quantified (Figure 4), limitations section explicitly notes the heuristic nature of the sensitivity metric and the clean-span assumption."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No statistical rigor on the main results: Tables 1, 2, and 4 report single greedy-decoding runs with no seeds, error bars, or significance tests; standard deviations appear only for the random-layer/token ablations. Several headline margins (e.g., 81.8 vs 80.2 in Table 3; +1-2 points on some Table 2 cells) are within plausible run-to-run and prompt-rewrite variance on ~500-prompt benchmarks.",
+      "suggested_fix": "Report mean ± std over multiple runs (e.g., multiple prompt rewrites/seeds and sampling decoding) or at least bootstrap confidence intervals on IFEval/LIFBench, and add significance tests for the key comparisons vs SpotLight* and PASTA*."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline tuning protocol is asymmetric and potentially unfair: PASTA/SpotLight are tuned on IFEval only and the single chosen setting is applied everywhere, while the catastrophic default-setting numbers (e.g., PASTA T.Acc 48.1) anchor the narrative; DIRECTER's own 'fixed' α=100, β=0.5 were presumably also selected somehow, but the selection procedure is not disclosed, so the 'no task-specific tuning' claim is hard to verify.",
+      "suggested_fix": "Disclose how α and β were chosen (and on what data), tune baselines per-benchmark or on a held-out validation set, and report the full baseline sweep in an appendix so readers can verify the tuned configs are near-optimal for the baselines, not just convenient."
+    },
+    {
+      "severity": "major",
+      "issue": "IFEval prompts are rewritten with gpt-4o-mini to separate instruction from task, a non-standard preprocessing that breaks comparability with published IFEval numbers and could shift difficulty; no validation is provided that the rewritten prompts preserve the original constraint semantics, and the same model family (gpt-4o-mini) is later used as the quality judge, creating mild circularity.",
+      "suggested_fix": "Report results on the original IFEval prompts (with automatic span detection, which the authors already describe in Appendix D.2), verify rewrite fidelity on a human-audited subset, and use a different judge model or cross-check with the human evaluation in the main text."
+    },
+    {
+      "severity": "minor",
+      "issue": "No empirical comparison to recent dynamic/adaptive steering or activation-control methods (the paper cites Lee et al. 2024, Wang et al. 2025, Postmus & Abreu 2024 as identifying the same static-steering limitation) — the strongest claimed baselines remain PASTA and SpotLight.",
+      "suggested_fix": "Add at least one recent adaptive steering baseline, or clearly scope the contribution as orthogonal and demonstrate complementarity as done for PASTA/SpotLight."
+    },
+    {
+      "severity": "minor",
+      "issue": "The gating 'guarantee' (skipping steering when p_t,i2 < β·p_t,i1) is stated as a guarantee but is only a heuristic: with α=100 key scaling, a steered pass can in principle elevate a low-probability token above the threshold, so the skipped-step equivalence is not formally established.",
+      "suggested_fix": "Soften the claim to an empirical one and quantify the mismatch rate (fraction of skipped steps where steering would have changed the token) in an appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "GSM8K-Format is a new author-designed benchmark whose formatting component is only loosely specified in the main text; author-designed benchmarks carry a risk of inadvertently favoring the proposed method.",
+      "suggested_fix": "Fully specify the format constraints and prompt templates in the appendix, and include a baseline human/LLM audit showing the benchmark is not trivially aligned with key-scaling interventions."
+    }
+  ],
+  "questions_for_authors": [
+    "How exactly were α=100 and β=0.5 selected, and on which data? Were they tuned on IFEval like the baseline hyperparameters?",
+    "What is the run-to-run variance of the Table 1/Table 2 numbers across prompt rewrites or decoding seeds, and are the margins over SpotLight* statistically significant?",
+    "Why does the gating rule constitute a guarantee rather than a heuristic? What fraction of gated steps would have produced an accepted steered token?",
+    "Does DIRECTER still improve over zero-shot on the original, un-rewritten IFEval using your automatic span detection (Appendix D.2), and by how much?",
+    "The sensitivity ranking is computed per prompt after prefill — what is its wall-clock cost as a function of prompt length and layer count, and how does it scale to 70B-class models?",
+    "For the human evaluation (Appendix E.3): how many annotators, how many samples, and what was inter-annotator agreement?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped — the 6.5% average gain, ≈16% throughput cost, and ≈92% fidelity are all tied to specific tables, and limitations are explicitly stated — but the 'no task-specific tuning' framing and the 'guarantee' language for the gating rule slightly overstate what the evidence shows.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Reliable inference-time instruction following is an active, well-attended problem, and a training-free, model-agnostic anti-oversteering mechanism that also improves other steering methods would plausibly be used and cited by the community."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The components — KV-cache/attention steering (PASTA, SpotLight) and plausibility/contrastive decoding (DoLa-style) — are known, but coupling them into a per-step rejection loop with sensitivity-ranked progressive layer removal is a genuinely new and non-obvious combination."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is sound and each design choice is ablated, but the gating 'guarantee' is heuristic, the sensitivity metric is admittedly unprincipled, and the baseline-tuning protocol weakens the causal claim that dynamic control (rather than tuning asymmetry) drives the gains."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Headline results are single greedy runs with no seeds, error bars, or significance tests; standard deviations appear only in two ablation cells, leaving several key margins statistically unestablished."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (heuristic metric, clean-span assumption) are stated, overheads are quantified rather than hidden, and claims are mostly tied to evidence, with only mild overstatement around 'no tuning' and the gating guarantee."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well organized with a clear algorithm, equations, and RQ-driven experiments, though some extraction artifacts and reliance on appendices for key details (metric simplification, tuning process) hurt self-containedness."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure (intro, related work, method with preliminaries, RQ-framed experiments, analysis, conclusion with limitations) at an appropriate length."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Algorithm, equations, fixed hyperparameters (α=100, β=0.5), models, and decoding settings are specified and appendices are referenced for details; the gpt-4o-mini rewrite pipeline and GSM8K-Format construction would need the (redacted) artifacts to fully reproduce."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Prior steering and instruction-following work is fairly and accurately characterized with clear delineation, but recent adaptive-steering works cited as motivation are not empirically compared against."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative, claim-supporting displays: a method overview, fixed-strength and compatibility ablations, β/α/prompt robustness sweeps, and efficiency measurements — all load-bearing rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Three benchmarks and five models across two families is reasonable, but the full benchmark suite is run only on Llama-3.1-8B, generalization beyond IFEval is untested, and the strongest recent adaptive baselines are absent."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A solid, useful, well-ablated inference-time method whose acceptance case is held back by missing statistical rigor, an asymmetric baseline-tuning protocol, and a non-standard IFEval preprocessing — fixable issues that place it at borderline accept."
+    }
+  },
+  "publishability_probability": 0.5
+}

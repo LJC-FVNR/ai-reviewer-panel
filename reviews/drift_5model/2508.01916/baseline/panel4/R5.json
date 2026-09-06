@@ -1,0 +1,103 @@
+{
+  "grade": "Minor Revision",
+  "summary": "This paper introduces Neighbor Distance Minimization (NDM), an unsupervised method for decomposing a neural network's representation space into interpretable, approximately independent subspaces. The core motivation — that mutually exclusive features naturally form orthogonal subspaces, and that minimizing intra-subspace nearest-neighbor distances recovers such structure — is coherent and novel. Toy-model validation is clean, quantitative evaluation on known GPT-2 circuits is methodologically sound, and qualitative results are compelling. The main weaknesses are the absence of Independent Subspace Analysis (ISA/MICA) as a natural algorithmic baseline, insufficient statistical reporting (no error bars, unclear seed counts), and an underspecified hyperparameter-selection procedure that raises overfitting concerns for Table 1.",
+  "strengths": [
+    "Genuinely novel framing: the mutual-exclusiveness → intra-group superposition → orthogonal subspace chain is a fresh perspective, clearly distinct from DAS (supervised) and SAE (feature-level) approaches.",
+    "The NDM objective has a principled information-theoretic justification as total-correlation minimization between subspaces, which extends the motivation beyond the toy-model intuition.",
+    "Quantitative evaluation via Gini-coefficient concentration on known GPT-2 circuits is a solid, well-motivated design; the 5-test suite with three normalized variants is more rigorous than purely qualitative assessments common in interpretability work.",
+    "The knowledge-conflict experiment on 1.5B/2B models is a well-designed test that does not require pre-known circuit labels, and the use of two separate counterfactual corruption types is methodologically careful.",
+    "The qualitative preimage results (Fig. 3) vividly illustrate that different subspaces of the same layer capture categorically distinct aspects (current token, prior token, position, topic), which is the most persuasive evidence for the method's utility."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No comparison against Independent Subspace Analysis (ISA) or its multi-dimensional variants (e.g., Hyvärinen & Hoyer 2000 MICA). ISA is the canonical algorithmic approach to finding statistically independent linear subspaces from data, making it the most direct competitor to NDM. The paper's related-work section does not mention it at all. Without this baseline it is impossible to assess what NDM adds beyond classical unsupervised decomposition.",
+      "suggested_fix": "Add ISA (or a modern variant such as GroupICA or MISCA) as a baseline in Table 1. If computational scaling prevents this, at minimum provide a theoretical comparison explaining why NDM's KNN-based objective differs from ISA's non-Gaussianity/kurtosis criterion and what advantages this brings for the LLM-activation regime."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 reports single point estimates with no error bars, confidence intervals, or seed counts. NDM trains a non-convex orthogonal matrix; local minima and initialization sensitivity could produce high variance. The claim that NDM 'significantly' outperforms baselines with an average of 0.71 vs. the 0.6 threshold is made without any significance test.",
+      "suggested_fix": "Report mean ± std over at least 3–5 random seeds for NDM. Add a simple significance test (e.g., paired t-test or bootstrap) comparing NDM vs. the best baseline on each test."
+    },
+    {
+      "severity": "major",
+      "issue": "Section 5.1 states results are shown 'using the best hyperparameters.' If the 5-test GPT-2 suite was used to select hyperparameters, Table 1 overestimates generalization performance. The paper does not describe how hyperparameters were chosen or whether any held-out criterion was used.",
+      "suggested_fix": "Clarify the hyperparameter selection protocol. Ideally, select hyperparameters on a held-out set of circuits or via a criterion that does not use the test suite, or at minimum report performance across the full hyperparameter grid to show robustness."
+    },
+    {
+      "severity": "major",
+      "issue": "The MI-based merging procedure uses a fixed threshold and a minimum initial subspace dimension of 32. The paper acknowledges this precludes finding fine-grained subspaces (e.g., sentiment), but no ablation characterizes how sensitive the final Gini scores or qualitative interpretability are to this minimum dimension or to the MI threshold value.",
+      "suggested_fix": "Add an ablation in App. D.5 varying (a) the minimum subspace size and (b) the MI-threshold, reporting Gini score and qualitative interpretability changes. This is important for users wishing to apply NDM to different model sizes or tasks."
+    },
+    {
+      "severity": "minor",
+      "issue": "The qualitative preimage evaluation relies on a fixed retrieval corpus of only ~4000 sequences (2000 MiniPile + 2000 task sequences). This narrow coverage may cause preimages to appear more interpretable than they would be over a diverse open-ended corpus.",
+      "suggested_fix": "Discuss how preimage quality might change with a larger or more diverse retrieval corpus, or add a small experiment varying corpus size."
+    },
+    {
+      "severity": "minor",
+      "issue": "The distance function choice (Euclidean over cosine) is justified only by a brief remark ('cosine similarity performs worse in preliminary experiments') with no ablation reported, despite this being a design decision that directly affects the optimization.",
+      "suggested_fix": "Add a brief ablation table or figure in the appendix comparing Euclidean vs. cosine vs. (e.g.) Mahalanobis distance for at least the toy and GPT-2 settings."
+    }
+  ],
+  "questions_for_authors": [
+    "How exactly were hyperparameters for Table 1 selected? Was the 5-test GPT-2 suite used at any point in that selection, or was a separate criterion (e.g., toy-model recovery accuracy, held-out MI) employed?",
+    "Have you compared NDM against Independent Subspace Analysis (Hyvärinen & Hoyer 2000) or any ICA-based method in your experiments? If ISA was considered and rejected for scalability reasons, please explain why it is not a fair baseline.",
+    "What is the variance across random seeds for the Gini coefficient values in Table 1? Are the differences between NDM and the Feature baseline (which appears close in some tests) statistically reliable?",
+    "The minimum subspace dimension of 32 is described as a computational constraint. For residual streams with d=768 (GPT-2) and d=1536/2048 (2B models), how many subspaces does NDM typically discover, and how does the count change if the minimum is relaxed to 16?",
+    "In the 2B-model knowledge-conflict experiment, patching is applied uniformly across all token positions. Have you checked whether a more targeted patch (e.g., only the entity token position) gives sharper dissociation, or whether the reported dissociation is driven largely by a single position?"
+  ],
+  "calibration_check": "Claims are generally well-scoped: the authors explicitly acknowledge limitations (coarse partition, reliance on Linear Representation Hypothesis, unknown 2B circuits), and the quantitative GPT-2 claims are backed by a concrete test suite; the main calibration risk is the unsupported 'significantly higher than 0.6' claim in the absence of error bars.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Unsupervised subspace discovery that aligns with known circuit variables is a practically useful addition to mechanistic interpretability, and the 'input-independent subspace circuit' framing is a meaningful new research direction, though empirical impact on downstream circuit-building tasks remains to be shown."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The mutual-exclusiveness → orthogonal-subspace motivation and the KNN-distance training objective are genuinely new in the LLM-interpretability context, but the broader idea of finding independent subspaces via information-theoretic objectives is classical (ISA/MICA), which the paper overlooks."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method and toy-model validation are sound; the GPT-2 circuit evaluation design is careful; but the non-convex optimization's sensitivity to initialization, the ad-hoc MI-threshold merge procedure, and the unspecified hyperparameter-selection protocol introduce methodological uncertainty."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Table 1 reports single point estimates with no variance measures or significance tests across any of the 15 reported values, making it impossible to assess whether improvements over baselines are statistically real."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "The paper explicitly lists limitations (coarse partition, reliance on Linear Representation Hypothesis, unknown 2B circuits, interpretability not always clear for small subspaces) and the caveats in App. D.6 for the knowledge-conflict experiment are appropriate."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is generally readable and well-organized; Equations 2–4 are dense but workable; the intuition figures (Figs. 1b, 3) are well-motivated from their captions."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure is followed; related work is woven into Discussion (acceptable); content appears within typical ICLR length with heavy use of appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Algorithm 1 and the KSG-based MI estimation are described, and hyperparameter ranges appear in appendices; however, the hyperparameter-selection protocol for Table 1 is unclear, and the central qualitative evaluation tool (InversionView, anonymized as [Author] et al.) cannot be assessed."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of interpretability-focused subspace work (DAS, SAEs, Engels et al.) is thorough, but the classical unsupervised independent-subspace literature (ISA, MICA, GroupICA) is entirely absent despite being directly competitive."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions for Figs. 1, 3, and 5 describe informative content that directly supports the claims; Fig. 3's four-panel preimage comparison is particularly well-designed for the interpretability argument."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Quantitative evaluation covers only GPT-2 Small with 5 tests from two circuits; 2B-model evaluation is qualitative/weak-quantitative with acknowledged unknown circuits; the absence of an ISA baseline and the coarse minimum-dimension constraint limit the claimed generality."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A novel and well-motivated contribution to unsupervised representation analysis that clears the ICLR interest bar, held back from clear accept by missing ISA comparison, absent error bars, and underspecified hyperparameter selection."
+    }
+  },
+  "publishability_probability": 0.42
+}

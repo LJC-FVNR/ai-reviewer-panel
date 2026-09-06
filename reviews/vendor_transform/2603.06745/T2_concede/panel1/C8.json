@@ -1,0 +1,122 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time steering method that scales the keys of instruction tokens in the KV cache and wraps this intervention in a plausibility-guided accept/reject loop that progressively halves the set of steered layers (ordered by a one-time attention-sensitivity ranking) whenever the steered top-1 token is judged implausible under the raw distribution. The evaluation is broader than is typical for steering papers — IFEval, LIFBench, a new GSM8K-Format benchmark, four additional models, tuned versions of PASTA and SpotLight, ablations on ranking/strength/tokens, β and α sweeps, prompt-format robustness, efficiency measurements, and an LLM-judge quality/fidelity study — and the oversteering problem it targets is real and well motivated. However, the core mechanism is a fairly direct transplant of the contrastive-decoding plausibility constraint into a steering-acceptance test, no result in the paper carries seeds, error bars, or significance tests, and the generality claims are undercut by the paper's own Table 2, where few-shot prompting beats DIRECTER at 3B and SpotLight* beats it at 7B. As submitted this sits at borderline reject: the idea is worth publishing, but the evidentiary standard for the \"consistent, model-agnostic improvement\" narrative is not yet met.",
+  "strengths": [
+    "The problem framing is sound and concrete: oversteering in attention/activation steering is a real failure mode, and the paper demonstrates it convincingly (PASTA and SpotLight at default settings collapse GSM8K-Format task accuracy from 82.7 to 48.1 and 38.0 respectively) rather than merely asserting it.",
+    "Baseline treatment is unusually fair for this literature. The authors run PASTA and SpotLight at both official and hyperparameter-searched settings, and select the tuned configuration on IFEval before transferring it unchanged to other benchmarks, which avoids the common trick of comparing a tuned proposal against untuned prior work.",
+    "The efficiency gating rule is a genuinely nice contribution: using the raw top-2 probabilities to prove a priori that no steered distribution can satisfy Eq. 1 (except when the top-1 token is unchanged) makes the skip decision exact rather than heuristic, and it is what makes the multi-pass loop practical (~16% throughput reduction).",
+    "The ablation suite isolates most of the important design choices: fixed-strength variants (ST1–ST6, Figure 2a), reversed ranking, random layer ordering, random token spans (Table 3), β and α sweeps (Figure 3a,b), and prompt-format variation (Figure 3c).",
+    "The compatibility experiment (Figure 2b), showing the plausibility filter improves PASTA and SpotLight when bolted on as a safety gate, supports the paper's secondary and more interesting claim that the mechanism is general rather than method-specific.",
+    "The paper checks the trade-off it claims to avoid, reporting both formatting and task accuracy on GSM8K-Format and both text quality and task fidelity under an LLM judge (Table 4), with a human study referenced in the appendix."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No measure of variance or statistical significance anywhere in the main results. All experiments use greedy decoding, so single-run determinism is reported as if it were precision, but the relevant variance — over benchmark items, over prompt phrasings, over the GPT-4o-mini rewriting of IFEval, over the LLM judge — is never quantified. Only two rows in Table 3 carry a standard deviation (80.2±0.7, 79.2±1.1), and against those the headline ablation gap (81.8 vs 80.2) is roughly two standard deviations at best, while many Table 2 deltas (61.3 to 61.6 at 1B; 74.9 vs 74.4 at 7B) are far smaller than that. Without confidence intervals on accuracy the reader cannot tell which of the paper's claimed wins are real.",
+      "suggested_fix": "Report bootstrap confidence intervals over benchmark items for every accuracy number in Tables 1–4, run the full pipeline over multiple prompt-rewriting seeds and multiple sampling seeds (not only greedy), and apply paired significance tests (e.g., McNemar or paired bootstrap) for DIRECTER vs the strongest baseline on each benchmark. State explicitly which differences are not significant."
+    },
+    {
+      "severity": "major",
+      "issue": "The generality claim is contradicted by the paper's own scaling table. The text asserts \"DIRECTER offers a more robust, model-agnostic improvement\" and \"consistently outperforms all baselines,\" but in Table 2 few-shot prompting beats DIRECTER at 3B (67.8 vs 67.1) and at 14B is nearly tied (81.9 vs 83.5 favors DIRECTER, but Few-shot exceeds most steering baselines), SpotLight* beats DIRECTER at 7B (74.9 vs 74.4), and the 1B gain over zero-shot is 0.3 points. Similarly in Table 1, few-shot matches DIRECTER on GSM8K-Format task accuracy (87.1 vs 86.9). The honest reading is that DIRECTER is the most reliable method on average but not uniformly best, and that a cheap prompting baseline is competitive at several scales.",
+      "suggested_fix": "Rewrite the Section 4.2 claims to match the table: report average rank or win rate across settings with intervals, explicitly acknowledge the cases where few-shot or SpotLight* wins, and drop \"consistently outperforms all baselines\" and \"model-agnostic\" unless supported by significance-tested per-model results."
+    },
+    {
+      "severity": "major",
+      "issue": "The novelty of the core mechanism is thin. The acceptance rule in Eq. 1 (accept the steered token only if its raw probability is at least β times the raw top-1 probability) is the adaptive-plausibility constraint from contrastive decoding, which the paper itself cites (Li et al., 2022; Chuang et al., 2023); KV-cache key scaling is a known steering primitive; and the layer ranking is presented as an inversion of KV-cache quantization saliency criteria. The paper does not clearly articulate what is technically new beyond the composition, and it does not compare against the obvious cheaper alternatives to its loop.",
+      "suggested_fix": "Add baselines that isolate the contribution of the loop specifically: (i) steering gated by a simple confidence/entropy threshold on the raw distribution, (ii) steering applied only at a fixed token-position schedule, (iii) a top-k membership test instead of the β-ratio test, and (iv) contrastive decoding / DoLa applied to the same task without steering. Sharpen the technical-novelty paragraph in Section 2 to name precisely what differs from the cited plausibility-decoding work."
+    },
+    {
+      "severity": "major",
+      "issue": "The IFEval results are not on IFEval. The prompts are rewritten with gpt-4o-mini to separate task from instruction so that the instruction span can be scaled. This is a benchmark modification that (a) makes the numbers incomparable to published IFEval results, (b) introduces a confound because the rewriting model may itself normalize or clarify constraints, and (c) is the substrate for essentially every analysis in Section 4.3. Following prior work (Venkateswaran & Contractor, 2025) explains the choice but does not remove the confound.",
+      "suggested_fix": "Report unmodified IFEval alongside the rewritten version for at least the main model, quantify how much the rewriting alone shifts zero-shot accuracy, and release the rewritten prompt set (post-anonymization) with the rewriting prompt so the transformation is auditable. If DIRECTER's automatic span detection (Appendix D.2) works, run the main table under it rather than under oracle spans."
+    },
+    {
+      "severity": "major",
+      "issue": "The method presupposes an annotated instruction span I, which is the setting's hardest practical assumption, and this is relegated to the limitations paragraph and an appendix. The random-token ablation shows performance still above baseline under a wrong span, which is reassuring, but it does not establish behavior under realistic partially-correct automatic span detection on prompts where instructions are interleaved with the task — precisely the real-world case the paper names.",
+      "suggested_fix": "Promote the automatic-span-detection results into the main paper and report the full Table 1 under automatic spans, including the span-detection accuracy and a sensitivity curve of end-task accuracy vs span precision/recall."
+    },
+    {
+      "severity": "minor",
+      "issue": "With α = 100 (and stability reported through α = 10^5), the key scaling is far into saturation, which means the intervention is effectively hard-routing attention onto instruction tokens rather than performing graded steering. The paper observes the saturation (Figure 3b) and uses it to justify modulating L instead of α, but never states the mechanistic consequence, which affects how the reader should interpret \"steering strength\" and the attention-sensitivity ranking.",
+      "suggested_fix": "Add analysis of the induced attention distribution at α = 100 (e.g., attention mass on instruction tokens vs α) and discuss explicitly whether DIRECTER is best understood as plausibility-gated hard attention masking; compare against an explicit hard-mask variant as a baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "The generation-quality and task-fidelity evidence rests on a single automated judge (gpt-4o-mini) with no inter-rater agreement, no position/verbosity-bias controls, and no confidence intervals; the differences involved are small (4.24–4.43 on a 1–5 scale). The human evaluation that would anchor this is described only qualitatively in the main text with no numbers, sample size, or annotator count.",
+      "suggested_fix": "Report judge agreement with human annotations, include a second judge model, add CIs on the quality scores, and surface the human-study numbers (n, annotators, agreement, effect sizes) in the main paper."
+    },
+    {
+      "severity": "minor",
+      "issue": "The efficiency claims are reported for one configuration and are internally somewhat in tension: a worst case of up to log2(32)≈5 additional steered forward passes per token is described as a ~16% throughput reduction and ~20% per-token latency increase, but the acceptance/skip statistics that determine this (fraction of tokens gated out, mean number of halvings per non-gated token) are never reported.",
+      "suggested_fix": "Report the gating skip rate and the distribution of loop iterations per token across benchmarks and model scales, and give throughput/latency for at least two output-length regimes so the amortization of the one-time ranking is visible."
+    },
+    {
+      "severity": "minor",
+      "issue": "Positioning omits the most direct competitor class for the flagship benchmark: IFEval-style format constraints can often be enforced by constrained/grammar-based decoding, and instruction-following can be improved by lightweight fine-tuning. Neither family is discussed or compared, so the reader cannot judge whether steering is the right tool for these tasks.",
+      "suggested_fix": "Add a related-work paragraph on constrained decoding and a comparison (or an explicit argument for why it is out of scope) on the subset of IFEval constraints that are mechanically enforceable."
+    }
+  ],
+  "questions_for_authors": [
+    "What are the confidence intervals on the Table 1 and Table 2 numbers? Specifically, is the 1B result (61.3 to 61.6) or the 7B gap against SpotLight* (74.4 vs 74.9) distinguishable from noise under a paired bootstrap over items?",
+    "How much of the reported IFEval improvement survives on unmodified IFEval prompts, and what is the zero-shot accuracy difference between original and gpt-4o-mini-rewritten prompts?",
+    "At α = 100, what fraction of attention mass lands on instruction tokens in the steered layers? Would an explicit hard mask over the instruction span, wrapped in the same plausibility loop, reproduce the results?",
+    "What fraction of decoding steps are skipped by the top-2 gate, and what is the mean number of halving iterations for the remaining steps? How do these vary between IFEval and long-context LIFBench?",
+    "Eq. 1 as extracted is ambiguous. Is the accepted condition p_t[ĩ_t] ≥ β · p_t[i_t], i.e., the raw probability of the steered top-1 token relative to the raw top-1 probability? Please state it unambiguously.",
+    "How does DIRECTER perform under automatic instruction-span detection on the full main table, and how does end-task accuracy degrade as span detection precision drops?",
+    "Does the plausibility loop interact with sampling-based decoding, or is it restricted to greedy decoding? All experiments appear to be greedy.",
+    "For the human evaluation referenced in Section 4.3, how many annotators, how many items, and what was inter-annotator agreement?"
+  ],
+  "calibration_check": "Claims are partly over-scoped: the limitations section is candid about the instruction-span assumption and the ad hoc sensitivity metric, but the main-text assertions of \"consistently outperforms all baselines\" and \"robust, model-agnostic improvement\" are contradicted by Table 2 (few-shot wins at 3B, SpotLight* wins at 7B, a 0.3-point gain at 1B), and no claimed improvement is supported by variance estimates or significance tests.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Oversteering is a genuine obstacle for inference-time steering and the plausibility gate is a reusable idea that others could bolt onto existing methods, but the absolute gains are modest and a simple few-shot prompt remains competitive at several model scales, limiting how much practice would change."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The acceptance rule is the plausibility constraint from contrastive decoding applied to steering acceptance, KV-key scaling is an existing steering primitive, and the layer ranking is framed as an inversion of KV-quantization saliency, so the contribution is a competent composition of known parts rather than a new mechanism."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The experimental design is thoughtful — tuned baselines, a proven-correct gating rule, reversed-ranking and random-token controls that target the right alternative explanations — but the flagship benchmark is an LLM-rewritten variant of IFEval whose confound is never measured, oracle instruction spans are assumed throughout, and the mechanistic interpretation of α = 100 saturation is left unexamined."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Single greedy runs with no seeds, no confidence intervals, and no significance tests anywhere in the main tables, while several headline differences (0.3–1.6 points) are comparable to the only two standard deviations the paper does report (±0.7, ±1.1), so the reader cannot separate real effects from noise."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The limitations paragraph is genuinely useful and negative results for baselines are reported openly, but \"consistently outperforms all baselines\" and \"robust, model-agnostic improvement\" overstate what Table 2 shows, and the ambiguous \"improving accuracy by up to 6.5%\" conflates an absolute average-point gain with a relative improvement."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall narrative, algorithm box, and research-question framing make the method easy to follow, but the central plausibility criterion in Eq. 1 and the disturbance score in Eq. 2 are stated with enough notational slippage that a reader must reconstruct the intended condition."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure is followed cleanly with an explicit RQ-to-table mapping at the start of the experiments section, appropriate length, and a conclusion that includes limitations, though a substantial amount of load-bearing evidence (automatic span detection, human evaluation, metric variants) is deferred to appendices."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Models, decoding regime, key hyperparameters (α = 100, β = 0.5, tuned baseline settings α = 0.1 and ψ_target = 0.1), and the full algorithm are specified, so a careful reimplementation is feasible; the main obstacles are the gpt-4o-mini-rewritten IFEval prompts and the newly constructed GSM8K-Format benchmark, whose exact construction would need to be reproduced from appendix descriptions."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of activation and attention-level steering is accurate and the contrast with PASTA and SpotLight is specific and fair, but constrained/grammar-based decoding — arguably the most direct alternative for IFEval-style format constraints — and the broader plausibility-decoding literature beyond two citations go undiscussed."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The display items are well chosen and each maps to a stated research question (Figure 2 for the loop and cross-method compatibility, Figure 3 for hyperparameter and prompt robustness, Figure 4 for efficiency, Table 4 for the quality/fidelity trade-off), but the captions describe no error bars on any panel and Table 5 offers a single cherry-picked qualitative pair."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three benchmarks and five models is respectable breadth for this subfield, but the main table rests on one model, all Section 4.3 analyses rest on one benchmark, and the cross-model table shows the method losing to a prompting baseline and to SpotLight* at two of four scales, so the claimed generality outruns the evidence."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A well-executed, well-ablated engineering contribution on a real problem that falls just below the bar because of absent statistical reporting, generality claims contradicted by its own tables, and a core mechanism that is largely a transplant of an existing decoding constraint; adding significance testing, unmodified-IFEval results, automatic-span main results, and the missing gating-style baselines would plausibly move it above the line."
+    }
+  },
+  "publishability_probability": 0.3
+}

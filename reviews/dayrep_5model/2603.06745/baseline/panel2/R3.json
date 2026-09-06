@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "DIRECTER proposes a dynamic, plausibility-guided activation steering method that modulates steering strength by adaptively reducing the number of steered layers when the steered top-1 token is deemed implausible relative to the raw distribution, guided by a one-time attention-sensitivity layer ranking. The experimental package is reasonably comprehensive (multiple benchmarks, model scales, ablations, robustness, efficiency, and quality/fidelity evals), and the core idea of coupling KV-cache steering with a plausibility gate to mitigate oversteering is sensible and practically useful. However, the core novelty is an incremental combination of known components (contrastive/DoLa-style plausibility constraints + KV steering + a sensitivity heuristic), main results lack any variance/significance reporting, and some generalization claims are over-stated relative to the mixed cross-scale numbers.",
+  "strengths": [
+    "Addresses a real and well-motivated problem (oversteering in activation steering) with an adaptive, per-step control loop rather than static hyperparameters.",
+    "Good experimental breadth: IFEval, LIFBench, and a formatting-reasoning benchmark; scales from 1B–14B; ablations on ranking (reversed, random layers, random tokens); robustness sweeps over β and α; and efficiency + LLM/human quality evaluations.",
+    "The plausibility filter is shown to generalize as a modular 'safety gate' that improves other steering methods (Figure 2b), which is a nice transferable finding.",
+    "Practical framing: gating mechanism to skip steering, FlashAttention compatibility of KV-cache steering, and a documented ~16% throughput cost with negligible memory overhead."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Main results (Tables 1, 2, 4) report single point estimates with no seeds, error bars, or significance tests, so the headline '6.5% over baseline' and '~4% over prior steering' gains cannot be judged as statistically real. Only the random-variant ablations carry stddev (±0.7, ±1.1), which are comparable in scale to some reported gains.",
+      "suggested_fix": "Report variance across multiple runs (e.g., prompt-rewrite seeds, sampling seeds where applicable, judge re-runs) and paired significance tests for the key comparisons; note that greedy decoding removes some but not all sources of variance."
+    },
+    {
+      "severity": "major",
+      "issue": "Generalization claims are over-scoped relative to the evidence. Table 2 shows DIRECTER is not consistently best: on 1B it is essentially tied with zero-shot (61.6 vs 61.3), on 3B Few-shot (67.8) beats it (67.1), and on 7B tuned SpotLight (74.9) beats it (74.4). Yet the text asserts a 'robust, model-agnostic improvement.'",
+      "suggested_fix": "Rescope the generalization claim to reflect that DIRECTER is competitive and rarely degrades, rather than uniformly best; discuss the weak 1B/3B/7B cases explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "Core novelty is an incremental combination: the plausibility constraint is directly adapted from contrastive decoding / DoLa (both cited), KV-cache steering exists, and the sensitivity ranking is a heuristic inversion of KV-quantization logic. The distinct conceptual advance beyond 'gate an existing steering method by an existing plausibility test' is modest.",
+      "suggested_fix": "Sharpen the delineation of what is genuinely new (the progressive layer-count reduction as the strength knob, and the sensitivity metric), and quantify each component's marginal contribution."
+    },
+    {
+      "severity": "minor",
+      "issue": "GSM8K-Format is a self-designed benchmark; the strong contrast where competitors collapse on task accuracy (e.g., PASTA 82.7→62.7) is central to the oversteering narrative but is measured on the authors' own benchmark, raising a mild cherry-picking risk.",
+      "suggested_fix": "Report an established formatting-constrained reasoning benchmark or provide the benchmark construction details and inter-rater/verification checks so readers can trust the format/task split."
+    },
+    {
+      "severity": "minor",
+      "issue": "The very large key-scaling factor (α=100, stable to 10^5) effectively hard-attends to instruction tokens; the paper asserts α is not a useful control knob but does not deeply analyze why layer-count is preferable to a moderate α, beyond an appendix pointer.",
+      "suggested_fix": "Bring the α-vs-L control comparison from the appendix into the main text with a direct head-to-head to justify the design choice."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you provide variance/error bars and significance tests for Table 1 and Table 2, given that ablation stddevs (±0.7–±1.1) are comparable to some claimed gains?",
+    "On 1B/3B/7B where DIRECTER is not the top method, how do you reconcile this with the 'model-agnostic improvement' claim?",
+    "What is the worst-case and average number of steered forward passes per token (given progressive halving over 32 layers), and how often does the gating mechanism trigger a skip?",
+    "How sensitive are the GSM8K-Format results to the benchmark's own construction/verification, and would the oversteering contrast hold on an external formatting benchmark?",
+    "The task-fidelity and text-quality scores rely on gpt-4o-mini as judge; how robust are these to judge choice, and does the human evaluation (Appendix E.3) show the same ranking with reported agreement statistics?"
+  ],
+  "calibration_check": "Claims are mostly scoped to the evidence and limitations are acknowledged, but the 'robust, model-agnostic' generalization framing and the reliance on a self-built benchmark for the strongest contrasts modestly exceed what the mixed cross-scale numbers and single-run results support.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A practically useful, transferable oversteering-mitigation mechanism that steering researchers could adopt, though the absolute gains over tuned baselines (~4%) are moderate."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Incremental combination of established plausibility-constrained decoding, KV-cache steering, and a sensitivity-ranking heuristic rather than a fundamentally new mechanism."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is sound with reasonable ablation controls (reversed/random layers, random tokens), but some causal/generality claims outrun the presented evidence."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report single point estimates with no seeds, error bars, or significance tests, and ablation variances are comparable to some claimed improvements."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "Limitations are stated, but 'robust, model-agnostic improvement' is over-claimed given DIRECTER is second-best or marginal at 1B/3B/7B."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Method and RQ-structured experiments are followable and the algorithm/notation are defined, though the intervention math is dense and some justifications are deferred to appendices."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard, well-organized conference structure with clear abstract, related work, method, experiments, and conclusion at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key hyperparameters (α=100, β=0.5), models, decoding, and metrics are specified, but many formulation and setup details are pushed into appendices."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Positions clearly against PASTA, SpotLight, early steering-vector methods, and contrastive/DoLa decoding, with fair characterization of their costs and failure modes."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting comparisons (fixed-strength ablation, compatibility, robustness, efficiency), though several rely on appendix detail to interpret."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Good coverage of benchmarks, scales, and ablations, but the mixed cross-scale results and a self-designed benchmark leave the claimed generality only partially supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, useful, but incremental contribution whose borderline status is driven by missing statistical rigor and over-scoped generalization claims; promising with substantial added analysis."
+    }
+  },
+  "publishability_probability": 0.38
+}

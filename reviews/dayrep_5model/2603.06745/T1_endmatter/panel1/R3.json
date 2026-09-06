@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper introduces DIRECTER, an inference-time activation-steering method that scales KV-cache keys of instruction tokens and modulates steering strength via a plausibility-guided decoding loop and an attention-sensitivity layer ranking. The core idea—adaptively weakening steering when the steered top token is implausible under the raw distribution—is sensible, practical, and well-motivated by the oversteering problem, and the paper includes a reasonable spread of benchmarks, model scales, ablations, and efficiency/quality analyses. However, the gains are modest and inconsistent (DIRECTER is not the best method on the 3B and 7B models in Table 2, and only +0.3 over zero-shot at 1B), there is no statistical-significance treatment, the evaluation relies on a self-designed benchmark and a gpt-4o-mini-rewritten IFEval, and several justifications are deferred entirely to appendices. Novelty is moderate: the plausibility gate is adapted from contrastive/DoLa-style decoding and combined with KV steering.",
+  "strengths": [
+    "Addresses a genuine and well-articulated problem (oversteering) with a dynamic, per-step control mechanism rather than static hyperparameters, and requires no extra profiling dataset unlike PASTA.",
+    "Good ablation coverage isolating the key design choices: fixed vs. adaptive strength, reversed ranking, random layers, and random-token steering, several with reported standard deviations.",
+    "Practical framing: efficiency analysis (throughput, per-token latency, memory), a gating shortcut to skip unnecessary steered passes, and compatibility with FlashAttention are concrete advantages over attention-level interventions.",
+    "The plausibility filter is shown to be modular—it improves PASTA and SpotLight when added as a safety gate—supporting the generality claim for that component.",
+    "Generation-quality and task-fidelity evaluation (LLM-judge plus a corroborating human eval in the appendix) directly probes the claimed no-trade-off property."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is weak. Results use greedy decoding (deterministic), but there is no significance testing and most main numbers are single runs; several improvements are small (e.g., 1B: 61.3→61.6; 14B differences of ~1-2 points), making it unclear whether the wins are real.",
+      "suggested_fix": "Report variance across multiple prompt rewrites/paraphrases or bootstrap confidence intervals over benchmark items, and add significance tests (e.g., paired bootstrap) for the headline comparisons against tuned baselines."
+    },
+    {
+      "severity": "major",
+      "issue": "The generalization claim is overstated. Table 2 shows DIRECTER is NOT the best method on 3B (67.1 vs Few-shot 67.8) or 7B (74.4 vs SpotLight* 74.9), yet the text asserts a 'more robust, model-agnostic improvement.' This is a calibration problem.",
+      "suggested_fix": "Rescope the claim to 'consistently improves over zero-shot' (which the data support) and explicitly acknowledge where competing methods match or exceed DIRECTER, rather than implying uniform superiority."
+    },
+    {
+      "severity": "major",
+      "issue": "Evaluation setup raises confound/cherry-picking concerns: IFEval prompts are rewritten with gpt-4o-mini to separate instructions from tasks, and GSM8K-Format is a self-designed benchmark. Both deviate from standard protocols and could favor the proposed method, and neither can be cross-checked against literature numbers.",
+      "suggested_fix": "Report results on unmodified IFEval alongside the rewritten version, and justify that the rewriting is applied identically and fairly to all baselines; provide inter-annotator/judge reliability for the new benchmark."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is incremental: the plausibility constraint is essentially borrowed from contrastive-decoding/DoLa (cited Li et al. 2022; Chuang et al. 2023), and the contribution is its combination with KV-cache key scaling plus an ad hoc sensitivity metric that the authors themselves note lacks theoretical grounding.",
+      "suggested_fix": "Sharpen the delineation of what is genuinely new versus adapted, and either theoretically motivate the disturbance-score metric or empirically compare it against simpler layer-selection heuristics beyond random/reversed."
+    },
+    {
+      "severity": "minor",
+      "issue": "Baseline breadth is limited to two attention-level steering methods (PASTA, SpotLight); residual-stream steering approaches (ITI/RepE/ActAdd-style) are discussed but not compared empirically.",
+      "suggested_fix": "Add at least one residual-stream steering baseline, or explicitly argue why such comparison is out of scope."
+    },
+    {
+      "severity": "minor",
+      "issue": "Core justifications (metric formulation, why modulate L rather than α, key vs. value scaling) are deferred entirely to appendices not present here, so the main text alone under-supports central design decisions.",
+      "suggested_fix": "Move at least a compact version of the metric justification and the L-vs-α argument into the main body."
+    }
+  ],
+  "questions_for_authors": [
+    "On 3B and 7B (Table 2), DIRECTER underperforms Few-shot and SpotLight* respectively—can you explain why, and does this affect the 'model-agnostic' claim?",
+    "How do results change on the unmodified IFEval (without gpt-4o-mini rewriting), and is the rewriting applied identically to all baselines?",
+    "What is the variance/significance of the headline 6.5% and ~4% gains? Are they robust to prompt paraphrases and item-level bootstrapping?",
+    "How sensitive is the sensitivity-ranking (and thus performance) to the single-layer steering probe used to compute the disturbance score?",
+    "α=100 key scaling is large; can you characterize what this does mechanistically to attention mass after renormalization, and why performance saturates by α≈100?"
+  ],
+  "calibration_check": "Claims are mostly supported for the improve-over-zero-shot and no-quality-trade-off findings, but the 'robust, model-agnostic' generalization framing is overstated given DIRECTER is beaten by baselines at 3B/7B, and small gains lack significance testing.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "A practical, dataset-free mechanism for mitigating oversteering that the steering subcommunity could adopt, though impact is bounded by modest gains."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Combines a contrastive/DoLa-style plausibility gate with KV-cache key scaling and an ad hoc sensitivity ranking—useful but largely a recombination of existing ideas."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is sound and controls (random layers/tokens, reversed ranking) are present, but some central design choices are justified only in absent appendices and the causal story for key scaling is thin."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Greedy decoding gives determinism but there is no significance testing and mostly single-run numbers; several reported gains are small enough to plausibly be noise."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "A limitations section exists, but 'robust, model-agnostic improvement' overstates results that lose to baselines on 3B/7B; SOTA-style framing outruns the evidence."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Method and algorithm are explained clearly overall, though the notation is dense and several key justifications are pushed to appendices."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, conclusion, limitations) at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Public models/benchmarks and key hyperparameters (α=100, β=0.5) are given, but a new benchmark, rewritten IFEval, and appendix-only details would complicate exact replication."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Steering and instruction-following literature is fairly represented and the contribution is positioned against PASTA/SpotLight, though residual-stream steering is discussed but not compared empirically."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting display items (ablations, robustness sweeps, efficiency), adequate for judging the evidence."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Multiple models (1B-14B) and three benchmarks, but only two steering baselines, a self-designed benchmark, and a modified IFEval limit support for the broad generality claimed."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Competent, useful work with solid engineering but borderline due to modest/inconsistent gains, weak significance treatment, and evaluation-setup confounds."
+    }
+  },
+  "publishability_probability": 0.4
+}

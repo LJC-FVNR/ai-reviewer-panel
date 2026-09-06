@@ -1,0 +1,98 @@
+{
+  "grade": "Minor Revision",
+  "summary": "DIRECTER introduces a well-motivated, novel activation steering method that addresses the oversteering problem via a plausibility-guided decoding loop coupled with attention-sensitivity-based layer ranking. The experimental coverage is reasonably broad (multiple benchmarks, model scales 1B–14B, two model families) and the ablations isolate the key design choices well. The main weaknesses are the absence of variance/significance reporting on the main results tables, evaluation limited to greedy decoding, and a sensitivity metric that lacks formal grounding; these are fixable issues that prevent a clear accept.",
+  "strengths": [
+    "Novel and well-motivated core idea: coupling KV cache steering with a plausibility-guided rejection loop that dynamically modulates steering strength per decoding step directly targets the oversteering problem that prior static methods suffer from.",
+    "Strong ablation design: the paper isolates the plausibility guidance (Fig 2a), layer ranking strategy (Table 3: reversed/random layers, random tokens), and hyperparameter robustness (Fig 3), making the contribution of each component clear.",
+    "Demonstrates the plausibility filter as a general, modular mechanism that improves other steering baselines (Fig 2b), which adds impact beyond the single proposed method.",
+    "Practical efficiency analysis (throughput, per-token latency, memory) and a quality/fidelity evaluation combining LLM-judge and human annotation go beyond the typical accuracy-only reporting in this area.",
+    "The attention-sensitivity ranking cleverly inverts the logic of KV cache quantization to identify influential layers, and the paper empirically validates this choice against random/reversed alternatives."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Main results in Tables 1 and 2 report no variance, error bars, or significance tests. While greedy decoding is deterministic, the ablation table (Table 3) reports ±std for random variants, showing the authors can compute variance — its absence on the headline tables makes it hard to assess whether the ~4 pp gain over SpotLight-tuned is reliably real or within run-to-run noise from prompt sampling / API rewriting.",
+      "suggested_fix": "Report mean ± std over multiple seeds (and/or over the IFEval prompt subsets) for all main-table entries, and add pairwise significance tests (e.g., bootstrap or paired t-test) against the strongest steering baseline."
+    },
+    {
+      "severity": "major",
+      "issue": "All experiments use greedy decoding only. The plausibility-guided loop is designed around top-1/top-2 token probabilities, so its behavior under temperature sampling or top-p/nucleus decoding — the regime most real LLM deployments use — is entirely uncharacterized.",
+      "suggested_fix": "Add at least one experiment with sampling-based decoding (e.g., temperature 0.7, top-p 0.9) and report whether the plausibility gate still mitigates oversteering and preserves quality."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-sensitivity metric (Eq. 2–3) is introduced heuristically and the authors acknowledge it lacks a formal theoretical framework; the decomposition into 'direct' and 'propagated' effects is stated but not formally derived.",
+      "suggested_fix": "Provide a clearer derivation of why cosine distance of pre/post-attention hidden states is the right proxy for steering influence, or at least empirically compare against alternative influence measures (e.g., gradient-based, logit-based) beyond the appendix ablations."
+    },
+    {
+      "severity": "minor",
+      "issue": "The headline '6.5% improvement over baselines' is measured against the zero-shot baseline; the improvement over the strongest tuned steering baseline (SpotLight-tuned, 72.1 → 76.5) is ~4.4 pp, which is more modest and not foregrounded.",
+      "suggested_fix": "State gains relative to the strongest steering baseline prominently in the abstract and introduction to avoid overclaiming."
+    },
+    {
+      "severity": "minor",
+      "issue": "IFEval is rewritten with gpt-4o-mini to separate task and instruction spans; this introduces an API dependency and potential non-determinism in the evaluation set itself, but reproducibility of this rewriting step is not discussed.",
+      "suggested_fix": "Release the rewritten IFEval prompts or describe the rewriting procedure precisely enough to reproduce them deterministically (seed, exact prompt, model version)."
+    }
+  ],
+  "questions_for_authors": [
+    "What is the run-to-run variance of the Table 1 and Table 2 numbers, and is the gap to SpotLight-tuned statistically significant under a paired test?",
+    "How does DIRECTER behave under sampling-based decoding (temperature > 0, top-p)? Does the plausibility gate still help, or does the top-1/top-2 logic break down when the model is already stochastic?",
+    "How was the fixed α=100 chosen, and is the saturation at α≈10^2 (Fig 3b) consistent across model scales other than Llama-3.1-8B?",
+    "For the compatibility experiment (Fig 2b), what is the added latency of applying the plausibility filter on top of PASTA/SpotLight, and does it preserve their respective efficiency characteristics?",
+    "The layer ranking is computed once after prefill — how does its cost scale with prompt length, and does the ranking remain stable across very long contexts (LIFBench MD setting)?"
+  ],
+  "calibration_check": "Claims are mostly well-scoped and limitations are honestly stated, but the abstract's '6.5% over baselines' is calibrated against the zero-shot baseline rather than the strongest steering competitor, slightly overstating the marginal gain.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Oversteering is a recognized problem in activation steering and a general, modular mitigation mechanism would plausibly be cited and built on by the steering/controllable-generation community."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Combining KV-cache key scaling with a per-step plausibility-gated rejection loop and an attention-sensitivity layer ranking is a genuinely new composition not present in prior steering work."
+    },
+    "rigor": {
+      "score": 7,
+      "justification": "The method is sound and ablations isolate each component, but the sensitivity metric is heuristic and lacks formal derivation, which slightly weakens the mechanistic claims."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Main tables report point estimates only with no variance or significance tests, and only greedy decoding is evaluated, leaving the reliability and generality of the gains under-characterized for a typical borderline ICLR submission."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations are openly discussed and most claims are scoped to the evidence, though the headline improvement is framed against the weaker zero-shot baseline rather than the strongest steering competitor."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well written and the method is explained precisely with a helpful algorithm and overview figure; minor notational clutter in the preliminaries does not impede understanding."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure with abstract, intro, related work, method, experiments, conclusion, and limitations is followed cleanly and length is appropriate for ICLR."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Models, key hyperparameters (α=100, β=0.5), decoding settings, and benchmark choices are described, but the gpt-4o-mini IFEval rewriting step and some sensitivity-computation details are deferred to the appendix, slightly limiting exact reproduction."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Prior activation-steering methods (PASTA, SpotLight, contrastive steering) are fairly described and contrasted, and the positioning against static/hyperparameter-sensitive methods is accurate and current."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions describe informative ablation, robustness, and efficiency comparisons that directly support the paper's claims rather than decorating them."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Coverage spans three benchmarks, two model families, and scales from 1B to 14B, but main results rest on a single model (Llama-3.1-8B) with greedy decoding only, under-supporting the 'general-purpose' framing."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A sound, novel, and well-ablated contribution that sits at the ICLR borderline-accept line; adding variance/significance reporting and at least one sampling-decoding experiment would make it a clear accept."
+    }
+  },
+  "publishability_probability": 0.5
+}

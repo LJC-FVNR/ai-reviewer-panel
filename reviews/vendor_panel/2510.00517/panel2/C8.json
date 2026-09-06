@@ -1,0 +1,140 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper asks a timely and worthwhile question—whether the subtractive structure of Differential Attention (DA) trades clean-input selectivity for adversarial fragility—and assembles a reasonably broad empirical program (ViT/DiffViT and CLIP/DiffCLIP, five datasets, PGD/AA/CW, depth and λ sweeps). However, the theory is essentially the law of cosines restated across four numbered results, the load-bearing causal claim (that DA *structurally induces* negative gradient alignment) is asserted rather than derived or empirically isolated, and Corollary 1 as written is mathematically vacuous. The empirical case lacks the one control that would make it convincing—an additive two-branch attention baseline—and reports no seeds, error bars, or significance tests, while Table 1 contains a large non-monotonic effect that directly contradicts the paper's own Theorem 1 and is dismissed with a one-word explanation. The core observation may well be real and useful to the community, but the current evidence does not separate 'subtraction causes fragility' from 'this particular DA model has lower margins and larger output scale.'",
+  "strengths": [
+    "Timely and well-motivated question: Differential Transformer variants are being adopted quickly, and a systematic robustness audit of the mechanism is a genuinely useful service to the community, especially as a negative/cautionary result.",
+    "The empirical program has reasonable surface breadth: two model families (trained-from-scratch ViT/DiffViT and pretrained CLIP/DiffCLIP), five datasets, three standard attacks including AutoAttack and CW (which mitigates the most naive gradient-masking concern), plus both ℓ∞ examples and patch attacks.",
+    "Three distinct measurement axes are used rather than ASR alone—attack success rate, empirical local Lipschitz estimates, and per-layer frequency of negative gradient alignment—which is the right instinct for connecting a structural hypothesis to observable behavior.",
+    "The depth sweep and the λ_init sweep are good design choices: they test the mechanism as a continuous knob rather than as a binary architecture swap.",
+    "Calibration is better than average for this kind of paper: there is an explicit limitations subsection inside the theory section (Section 4.3) as well as in the discussion, and the authors report the ImageNet patch-attack result where CLIP is marginally *worse* than DiffCLIP rather than suppressing it.",
+    "The scope statement in Section 5 (no robustness-enhancing training, only generic attacks) is a defensible and clearly argued experimental-design decision rather than an unexamined omission."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The central causal claim is never established. The theory shows only the conditional 'if cos θ < 0, then the subtraction amplifies the gradient norm'—which is the law of cosines. The claim that DA *induces* cos θ < 0 rests entirely on the prose argument in Section 4.1 that effective subtraction requires A1 and A2 to have 'opposing intensities' on overlapping regions. This conflates the attention *values* (A1 large, A2 small on informative regions) with the *input gradients* ∇ξA1 and ∇ξA2, which are different objects; nothing in the argument implies the Jacobians are anti-aligned. Since the title, abstract, and contribution list all assert that DA structurally induces negative alignment, this is the load-bearing step of the paper.",
+      "suggested_fix": "Either derive the induced anti-alignment (e.g., analyze the training gradient of the DA loss and show the stationary points bias cos(∇ξA1, ∇ξA2) negative), or demote the claim to an empirical finding and support it properly. Empirically, the frequency of cos < 0 must be compared against the chance baseline (two unrelated high-dimensional directions give cos < 0 half the time) and against a matched control—e.g., a two-branch model trained with A1 + λA2, or with a frozen/randomly-initialized second branch. Reporting the full cosine distribution rather than just P(cos < 0) would also help."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The key architectural control is missing. Every comparison is DA vs. standard single-branch attention, so DA differs from the baseline in at least three ways at once: (i) the minus sign, (ii) having two query/key branches at all, and (iii) the resulting change in effective capacity and output scale. Attributing the ASR and Lipschitz gaps specifically to *subtraction* requires holding (ii) and (iii) fixed.",
+      "suggested_fix": "Add an additive two-branch control (A1 + λA2) and a λ = 0 control (which reduces DA to single-branch attention with the extra parameters still present), trained identically. If ASR and local Lipschitz values track the sign of λ rather than the two-branch parameterization, the paper's thesis is established; if not, the interpretation must change."
+    },
+    {
+      "severity": "major",
+      "issue": "Corollary 1 is mathematically incorrect as stated. It asserts the existence of a depth threshold D* satisfying (ᾱ·L_DA)^D = (L̄_base)^D. For fixed positive bases a ≠ b, a^D = b^D has no solution for D > 0; the equation holds for all D if a = b and for none otherwise. The claimed crossover therefore does not follow from Eq. (5) and Theorem 4 as written. Relatedly, Theorem 4 asserts α(d) ≈ 1 for standard attention (i.e., no cancellation whatsoever) with no justification, and both statements compare *upper bounds*, which cannot establish that one architecture is actually more sensitive than the other.",
+      "suggested_fix": "Restate the crossover with depth-dependent quantities (e.g., allow L_DA(D) and L_base(D) to vary with D, or compare additive log-sensitivity with a depth-independent offset) and prove existence of the threshold under stated conditions. Justify or drop α(d) ≈ 1 for standard attention. Throughout, be explicit that Lemma 2 and Eqs. (5) give upper bounds and therefore cannot by themselves order the two architectures' true sensitivities."
+    },
+    {
+      "severity": "major",
+      "issue": "No seeds, error bars, variance, or significance testing appear anywhere. The paper nonetheless leans on fine-grained comparisons—'slightly more vulnerable', 'CLIP marginally outperforms DiffCLIP, though the difference is small', and the entire depth-crossover narrative in Figure 3—that cannot be distinguished from run-to-run noise without them. Training small ViTs on CIFAR is inexpensive, so this is readily fixable.",
+      "suggested_fix": "Report at least 3–5 training seeds per configuration with mean ± std (or CIs) for every ASR, Lipschitz, and cosine-frequency number, and apply an appropriate test to the DA-vs-baseline gaps. Where a gap is within noise, say so explicitly."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 1 contradicts the paper's own theory and the contradiction is not addressed. Theorem 1 predicts amplification ∝ (1 + λρ), monotonically increasing in λ, yet ASR peaks sharply at λ_init = 0.8 (0.8498) and falls to 0.4164 at 0.95—a factor-of-two swing while clean accuracy moves only ~2 points. 'Suggesting over-cancellation' is not an explanation, and it is unexplained why the maximum coincides exactly with the default λ_init recommended by the original DA paper. A single unseeded run makes this pattern hard to interpret at all.",
+      "suggested_fix": "Repeat the λ sweep over multiple seeds, report the learned final λ per layer (not just the initialization), and either extend the theory to explain the non-monotonicity (e.g., via the λ-dependence of ρ and of α) or state plainly that the theory fails to predict the observed λ dependence."
+    },
+    {
+      "severity": "major",
+      "issue": "The DA-vs-baseline Lipschitz and ASR comparisons are confounded by output scale and decision margin. The map A1 − λA2 has a different output magnitude than A, and a local Lipschitz constant is not scale-invariant, so part of the reported gap in Figure 4 may be pure rescaling. Similarly, untargeted ASR (prediction changes relative to the clean prediction) is highly sensitive to clean margins and calibration; two models with different clean accuracies and logit scales are not directly comparable on ASR. Table 1 gives DiffViT clean accuracies but the corresponding ViT baseline numbers are never stated in the text.",
+      "suggested_fix": "Report a scale-normalized sensitivity (e.g., Lipschitz constant divided by clean output norm, or the Jacobian norm of the final logits) alongside the raw values; report robust accuracy and clean accuracy side-by-side for every model pair; and confirm that ViT and DiffViT are matched on clean accuracy and parameter count before attributing ASR gaps to architecture."
+    },
+    {
+      "severity": "major",
+      "issue": "Internal inconsistency in the depth story. Figure 3(d) reports that mean local Lipschitz estimates *rise* with depth, while Figures 3(a)–(c) report that deeper DiffViTs are *more* robust at small budgets. Under the paper's own framework (Eq. 5) these are in tension, and the only reconciliation offered is a passing remark that later layers show lower sensitivity. The unmeasured factor α is introduced precisely to absorb whatever depth trend is observed, which makes the depth theory close to unfalsifiable.",
+      "suggested_fix": "Estimate α(d) directly from the trained models (e.g., measure the per-layer perturbation attenuation ‖δ(d)‖/‖δ(d−1)‖) and check quantitatively whether ᾱ·L̄_DA < L̄_base at the depths where the crossover is observed. Reconcile Figure 3(d) with Figures 3(a)–(c) explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The local Lipschitz constant is a supremum, but it is estimated by uniform sampling of ξ from an ℓ∞ ball. Random sampling is a badly biased estimator of a supremum in high dimensions, the bias depends on input dimension and on the geometry of the loss surface, and the number of samples is not reported—so cross-architecture comparisons of this quantity are on shaky ground.",
+      "suggested_fix": "Use a gradient-ascent (maximizing) estimator of the local Lipschitz constant, report the number of samples/restarts and the estimator's variance, and verify that the DA-vs-baseline ordering is unchanged under both estimators."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps in the described methodology, independent of any removed links. The ViT/DiffViT architecture is described only as 'lightweight transformers' with no width, head count, patch size, MLP ratio, optimizer, schedule, or epoch count; attack hyperparameters (PGD steps and step size, CW steps/confidence/binary-search settings, AutoAttack version, patch sizes w) are absent; and the DiffCLIP evaluation protocol on COCO (an 80-category multi-label set used for a classification-style ASR) is underspecified.",
+      "suggested_fix": "Add a settings table covering architecture, training, and every attack hyperparameter, and specify precisely how a 'prediction' and hence a 'successful attack' is defined for CLIP/DiffCLIP on COCO."
+    },
+    {
+      "severity": "minor",
+      "issue": "Theorem statements are imprecise. Eq. (2) labels the cos θ = ±1 cases 'asymptotically' when they are exact endpoints; the cos θ = +1 branch should be |1 − λρ| (as written it is negative whenever λρ > 1); ∇ξA is a Jacobian of a matrix-valued map, so the 'angle between gradients' requires an explicit flattening/vectorization convention that is never given; and in Theorem 3 the quantities ρ, θ, and γ all depend on ξ, so the 'there exists ξ such that ... if and only if cos θ < ...' quantifier structure does not parse as an existence result.",
+      "suggested_fix": "Fix the absolute value, define the vectorization and the norm used, restate Theorem 3 with the ξ-dependence made explicit, and drop 'asymptotically' where the results are exact."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim that 'ρ and θ can be adversarially controlled' (Section 4.1) is used to convert a conditional inequality into a security-relevant vulnerability, but no attack that steers gradient alignment is constructed or evaluated, and no threat model is stated.",
+      "suggested_fix": "Either demonstrate an alignment-targeting attack that outperforms generic PGD/AA on DA models—which would substantially strengthen the paper—or soften the claim to an observation about typical alignment statistics."
+    },
+    {
+      "severity": "minor",
+      "issue": "Positioning omits directly relevant literature. There is no discussion of gradient obfuscation/masking as an alternative explanation for cross-architecture ASR differences (Athalye-style sanity checks), no black-box or transfer attack to rule it out, and no engagement with work on the robustness of multi-branch, gated, or mixture-style attention, which is the closest architectural analogue to DA.",
+      "suggested_fix": "Add a gradient-masking sanity check (black-box/transfer attack, and ASR vs. attack-iteration curves) and situate DA among other multi-branch attention designs in the related work."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you derive, rather than assert, that training DA biases cos(∇ξA1, ∇ξA2) negative? The Section 4.1 argument concerns attention *values* on overlapping regions; what connects that to the sign of the inner product of the two input-space Jacobians?",
+    "What is the measured frequency of cos < 0 relative to the 50% chance baseline, and what does the full cosine distribution look like (not just the sign frequency) at each layer?",
+    "How do ASR, local Lipschitz, and cosine statistics change for an additive two-branch control (A1 + λA2) and for λ = 0, trained identically? This seems like the decisive experiment.",
+    "What are the clean accuracies and parameter counts of ViT vs. DiffViT in every comparison, and do the ASR gaps persist when reported as robust accuracy on a margin-matched pair?",
+    "Corollary 1 requires (ᾱ L_DA)^D = (L̄_base)^D to have a solution in D. Since a^D = b^D has no positive solution for a ≠ b, what is the intended statement, and under what conditions does the crossover provably exist?",
+    "Theorem 1 predicts sensitivity increasing in λ, but Table 1 shows ASR halving between λ_init = 0.8 and 0.95. How do you reconcile these, and what are the learned final λ values in each case?",
+    "How many seeds back each reported number, and which of the DA-vs-baseline gaps (particularly the ImageNet ones and the depth crossover) survive a significance test?",
+    "Are the Lipschitz comparisons in Figure 4 normalized for output scale? A1 − λA2 and A have different output magnitudes, so how much of the reported gap is rescaling rather than sensitivity?",
+    "How many samples are used for the local Lipschitz estimate, and does a maximizing (gradient-ascent) estimator preserve the DA-vs-baseline ordering?",
+    "Figure 3(d) shows Lipschitz estimates rising with depth while Figures 3(a)–(c) show deeper DA models being more robust at small budgets. Can you measure α(d) directly and show the two are quantitatively consistent?",
+    "Have you run any black-box or transfer attack to rule out that the ASR gap reflects differences in gradient quality rather than true robustness?"
+  ],
+  "calibration_check": "Calibration is mixed: the limitations sections and the honest reporting of the ImageNet patch result are genuinely good practice, but the title, abstract, and contribution list assert that DA *induces* negative gradient alignment and that this is a 'fundamental trade-off,' whereas the theory only establishes the conditional 'if anti-aligned, then amplified' and the experiments never isolate subtraction from the two-branch parameterization.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Auditing the robustness of a rapidly adopted attention variant is a worthwhile and timely service, and a credible negative result here would change practice, but the current evidence is too confounded to shift how anyone deploys or designs DA."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Being first to examine DA through an adversarial-robustness lens is a legitimate gap to fill, but the analytical machinery is the law of cosines applied to a difference of two vectors, and the empirical protocol is standard PGD/AA/CW evaluation, so the originality lies almost entirely in the target of study rather than in method or insight."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The paper's causal thesis is asserted via a values-versus-gradients conflation rather than derived, Corollary 1 is mathematically vacuous as stated, Theorem 4 assumes α ≈ 1 for standard attention without argument, upper bounds are used to order architectures, and the decisive additive-branch control that would isolate subtraction is absent."
+    },
+    "statistical_soundness": {
+      "score": 2,
+      "justification": "There are no seeds, error bars, variance estimates, or significance tests anywhere, yet the paper's conclusions rest on differences described as 'slight' and 'marginal', on a single-run non-monotonic λ sweep, and on a depth crossover that could plausibly be run-to-run variation; the cos < 0 frequencies are also never compared against the 50% chance baseline."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Two explicit limitations discussions, a clear scope statement, and honest reporting of the case where the baseline loses are all above average, but the title and abstract still promise a causal, 'fundamental' trade-off that the conditional theory and confounded experiments do not deliver."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The narrative arc is easy to follow and the theory-to-experiment mapping is signposted, but several theorem statements are imprecise (missing absolute value, undefined Jacobian norm/vectorization, muddled quantifiers in Theorem 3, 'asymptotically' for exact endpoints) and the Figure 3(d) sensitivity trend is left in unexplained tension with the depth-robustness claim."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard and well-executed conference organization—abstract, introduction with an explicit contribution list, related work, preliminaries, theory with its own limitations subsection, experiments, discussion, conclusion—at an appropriate length with proofs deferred to an appendix."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "Judged purely on described methodology, the core protocol is understandable but under-specified: the ViT/DiffViT architecture and training recipe are given only as 'lightweight transformers', no attack hyperparameters (PGD steps/step size, CW settings, AutoAttack version, patch sizes) are stated, the Lipschitz estimator's sample count is missing, and the CLIP-on-COCO prediction/success criterion is unclear."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attention robustness, interpretability, and Lipschitz analysis is broad and the contribution is clearly delineated as mechanism analysis rather than defense design, but the discussion omits gradient-masking/obfuscated-gradients concerns that bear directly on the paper's central measurement and does not engage with the robustness of other multi-branch or gated attention designs."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that are well matched to the claims—ASR across attacks and budgets, per-layer Lipschitz and cosine statistics, depth and λ sweeps—but they convey point estimates with no variance, and Table 1's headline non-monotonic result is presented with an explanatory caption ('suggesting over-cancellation') that the paper never substantiates."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Five datasets, two model families, three attacks, and both example and patch threat models give respectable surface coverage, but breadth along the wrong axis cannot substitute for the missing additive-branch and λ = 0 controls, and every conclusion about 'subtraction' generalizes only as far as that unaddressed confound allows."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "A promising and useful question with a plausible finding, undermined by near-trivial theory containing at least one incorrect result, a central causal claim that is asserted rather than shown, a missing decisive control, and a complete absence of seeds or significance testing; the work is salvageable with substantial added experiments but is below the ICLR bar as submitted."
+    }
+  },
+  "publishability_probability": 0.15
+}

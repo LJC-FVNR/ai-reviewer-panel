@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "HETA proposes a three-component token attribution framework for decoder-only LLMs, combining attention-rollout-based causal gating, Hessian-based curvature sensitivity, and KL-divergence masking. The motivation is sound and the evaluation breadth is respectable. However, the claimed performance margins are implausibly large (up to 5× improvement over the next-best method in Soft-NC) with no statistical significance tests, ReAgent is inexplicably absent from GPT-J and Phi-3 tables, the DSA metric relies on LLM-generated rather than human annotations yet is described ambiguously, and the novelty is incremental given that each constituent component is individually well-established. These issues collectively prevent confident acceptance.",
+  "strengths": [
+    "Clearly identifies the gap between encoder-focused attribution methods and the causal, autoregressive structure of decoder-only LLMs, with a well-constructed second-order Taylor expansion argument motivating Hessian terms.",
+    "Evaluation covers four architecturally diverse models (GPT-J 6B, Phi-3 14B, LLaMA 3.1 70B, Qwen2.5 3B), three standard benchmarks plus a newly curated dataset, and ten baselines including very recent methods (SEA-CoT, fAML, Progressive Inference).",
+    "Robustness-to-decoding-hyperparameter evaluation (Table 2) is an underexplored dimension in attribution work and the <1% worst-case variation claim, if correct, is a meaningful practical advantage.",
+    "The curated NarrativeQA+SciQ mashup dataset with the DSA metric is a creative controlled evaluation setup that targets a specific failure mode (distractor attribution) in a verifiable way.",
+    "Ablation study covers six distinct configurations across both benchmark and curated datasets, providing reasonable component-level evidence."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Implausibly large performance margins without significance testing: HETA achieves Soft-NC = 10.3 on GPT-J/LongRA versus the next-best baseline at ≈2.05 — a ~5× improvement. Such margins are extraordinary for attribution benchmarks and invite suspicion about baseline implementation quality or metric gaming. No p-values, confidence intervals, or significance tests are provided; only 3-seed standard deviations are reported and only as 'std < ±0.06', which hides per-method variance.",
+      "suggested_fix": "Provide per-method standard deviations across all 3 seeds in every table. Add statistical significance tests (e.g., bootstrap or permutation tests with FDR correction) comparing HETA against the top two baselines on every metric. Audit and report whether baselines were run with their authors' recommended hyperparameters and reconfirm the large margins under those conditions."
+    },
+    {
+      "severity": "blocking",
+      "issue": "ReAgent is conspicuously absent from the GPT-J 6B and Phi-3 14B rows in Table 3 (the primary faithfulness results table), even though it appears as the strongest non-HETA baseline in Table 1 and is present for LLaMA 3.1 70B. This selective reporting makes it impossible to assess whether HETA's advantage holds across model scales, which is a core claim of the paper.",
+      "suggested_fix": "Include ReAgent results for all three models in Table 3, or provide a transparent explanation of why these evaluations could not be run (e.g., prohibitive compute), with a bound or estimate."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric's annotation procedure uses GPT-4o and GPT-5 Thinking as annotators, not humans, yet the inter-annotator agreement is described in terms that imply human validation ('F1 = 0.91, Cohen's κ = 0.89'). High agreement between two closely related autoregressive LLMs does not validate that the annotations capture human causal judgment, and creates a circularity risk if HETA's design is more aligned with LLM saliency patterns.",
+      "suggested_fix": "Either conduct a human annotation study on a subset (≥200 instances) to validate the LLM-generated labels, or explicitly frame DSA as an LLM-alignment metric and not a human-alignment metric throughout the paper."
+    },
+    {
+      "severity": "major",
+      "issue": "The DSA metric formula in Section 5.1 is inconsistent: the inline formula written is 'DSA = Σ_{j∈SNarrQA} fsj' (summing over NarrQA tokens), but the surrounding text says higher values mean better concentration on SciQ evidence. The sign convention and the complete formula are never stated unambiguously in the main text, making the metric unreproducible from the body alone.",
+      "suggested_fix": "Restate the full, unambiguous formula: DSA = Σ_{i∈SSciQ} ss_i − Σ_{j∈SNarrQA} fs_j and confirm the sign convention with a worked toy example."
+    },
+    {
+      "severity": "major",
+      "issue": "The hyperparameter β and γ (both fixed at 0.5) are not ablated. Given that these directly control the relative weight of Hessian sensitivity and KL information in the final score, their sensitivity could explain a large fraction of HETA's gains. The current ablation varies the presence/absence of components but not their weights.",
+      "suggested_fix": "Add a 2D grid search over β, γ ∈ {0.1, 0.25, 0.5, 0.75, 0.9} and report how performance varies; this will also clarify whether β = γ = 0.5 is genuinely optimal or just convenient."
+    },
+    {
+      "severity": "minor",
+      "issue": "The number of Hutchinson samples m used in Equation 3 is not reported in the main text, only deferred to an appendix. This is a critical reproducibility parameter for the Hessian estimator, since m controls the bias-variance trade-off in the curvature estimate.",
+      "suggested_fix": "Report the default m in the Experimental Setup section, along with a brief sensitivity analysis showing how attribution quality varies with m."
+    },
+    {
+      "severity": "minor",
+      "issue": "Qwen2.5 results are entirely relegated to the appendix 'due to space constraints,' while the paper explicitly lists Qwen as one of four models in its contributions. Moving a full model's results out of the main paper weakens the primary comparison and is an unusual choice.",
+      "suggested_fix": "Condense the current tables to accommodate at least summary Qwen results in Table 3, or explain why Qwen is substantively different enough to exclude."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you verify that all baselines (especially ReAgent, ContextCite, and SEA-CoT) were run using their original published hyperparameters and not default or suboptimal configurations? The ~5× improvement in Soft-NC over the best baseline is atypical for attribution research; please provide per-baseline configuration details.",
+    "The causal gate MT[i] multiplies the (β·S + γ·I) term, meaning that any token outside the attention rollout path receives zero credit regardless of its Hessian or KL contribution. Was this hard zeroing validated as better than soft-weighting? What happens if a semantically important token happens to lie on a weak rollout path?",
+    "For the KL term (Equation 4), what masking scheme is used — zero-embedding, UNK replacement, or mean embedding? Prior work has shown that the masking choice can strongly affect attribution faithfulness; please specify and provide a short comparison.",
+    "Why does Table 1 show that standard methods like Integrated Gradients achieve strongly negative DSA scores (e.g., −0.41 for Phi-3)? A negative DSA means the method systematically assigns more mass to the distractor segment than to the relevant one, which seems like a surprisingly severe failure. Is this an artifact of the concatenation construction or a genuine failure mode?",
+    "The Gauss–Newton/Fisher surrogate is mentioned as an option for numerical stability in the Hessian estimator but is not specified as the default. Which surrogate is actually used in the reported experiments, and how do results change between the true Hessian and the GN/Fisher approximation?"
+  ],
+  "calibration_check": "The abstract claims HETA establishes 'a new standard for interpretability in autoregressive language models,' which is overclaimed given that evaluation is limited to four models, three task types, and metrics whose construct validity has not been externally validated; the body is somewhat more measured but still presents the DSA improvement without adequate statistical grounding.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Attribution for decoder-only LLMs is a timely and practically relevant problem, but the contribution is a principled combination of existing techniques rather than a fundamental methodological advance, limiting its transformative impact."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component (attention rollout, Hessian HVPs, KL masking) is individually well-established; the novelty lies in their integration and the causal gating design for decoder-only models, which is a useful but incremental contribution."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The method derivation is technically coherent and the causal gating is appropriately motivated, but the multiplication-based combination of components lacks theoretical justification and the Hessian estimation choices (low-rank, windowing, layer sampling) are validated empirically rather than theoretically."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "Only 3 seeds are used, per-method standard deviations are reported as aggregate upper bounds rather than individually, no significance tests are present, and the reported 5× improvements over strong baselines are not verified statistically, making it impossible to confirm the improvements are real."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The abstract overclaims ('new standard'); LLM-generated annotations are presented in terms implying human validation; Qwen results are buried in the appendix; and the absence of ReAgent from two of three model comparisons in Table 3 is not disclosed as a limitation."
+    },
+    "clarity": {
+      "score": 5,
+      "justification": "The high-level narrative is readable and the motivation section is well-organized, but the DSA metric formula is inconsistently stated, equation typesetting is garbled in places, and the handling of which results appear in the main text vs. appendix is confusing."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard ICLR structure (Introduction, Motivation, Background, Method, Experiments, Related Work, Conclusion) and is within normal length bounds."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Key hyperparameters (β, γ, batch size, sequence length) are stated, but the Hutchinson sample count m is not given in the main text, the masking scheme for KL is unspecified, and the DSA metric formula is ambiguous — these omissions would hinder independent reproduction."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Major attribution methods and recent decoder-only-specific approaches are covered fairly, but engagement with mechanistic interpretability and circuit-level analysis literature is thin, and the positioning against ContextCite, TDD, and PML in the motivation section is occasionally imprecise."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative comparisons (ablation bar plots, sensitivity/robustness panels, qualitative attribution visualizations) that appear well-targeted to the paper's claims, though the DSA formula presentation in Table 1's caption and the incomplete Table 3 structure reduce the information value."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Four models spanning 3B–70B parameters and three benchmark datasets plus a curated set provide reasonable breadth, but selective omission of ReAgent from two model comparisons and the absence of Qwen from the main results table undermine the claimed generality across model scales."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The paper addresses a real problem with a principled method and broad evaluation, but the combination of statistically unsupported 5× margins, missing baseline entries, ambiguous metrics, and incremental novelty places it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.18
+}

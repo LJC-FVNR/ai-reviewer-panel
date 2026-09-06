@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies the adversarial robustness of Differential Attention (DA) and argues that its subtractive structure induces a 'Fragile Principle': negative gradient alignment between the two attention branches amplifies input sensitivity, yielding higher attack success rates and larger local Lipschitz estimates than standard attention. It combines a short theoretical analysis with empirical evaluations on ViT/DiffViT and CLIP/DiffCLIP under PGD/AutoAttack/CW, and reports an interesting depth-dependent crossover effect. The question is timely and the empirical trends are directionally supportive, but the theoretical content is essentially an elementary expansion of ||a-λb||^2 rebranded across four theorems, the causal chain from single-layer gradient norms to full-model ASR is not rigorously established, and the experiments lack seeds, error bars, and adequately controlled baselines.",
+  "strengths": [
+    "Timely and well-motivated question: DA has received growing attention (Differential Transformer, DiffCLIP, DiffViT), and its robustness is genuinely underexplored.",
+    "The 'negative gradient alignment' framing is a memorable and testable hypothesis, and the empirical section directly measures cos(∇A1, ∇A2) frequencies, which is the right diagnostic.",
+    "The depth-dependent crossover (fragility at shallow depth, partial robustness at deeper stacks for small epsilon, disappearing under stronger attacks) is a non-trivial empirical finding that goes beyond a one-line 'DA is fragile' claim.",
+    "The λ_init ablation (Table 1) shows non-monotonic ASR peaking near the default λ_init=0.8, which is a useful sanity check that ties the vulnerability to the subtraction mechanism rather than to unrelated capacity effects.",
+    "Limitations section honestly flags local linearization, layer isolation, and the restriction to gradient-based attacks."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "The theoretical contribution is thin: Lemma 1 is the elementary identity ||∇A1 - λ∇A2||^2 = ||∇A1||^2 + λ^2||∇A2||^2 - 2λ||∇A1||||∇A2||cosθ, and Theorems 1–3 are algebraic rearrangements/asymptotes of the same identity. Theorem 3 in particular reduces to solving for cosθ in a quadratic and is trivially true. This is presented as a substantive theoretical framework but does not actually prove that DA-based models are more adversarially fragile than standard-attention models — only that, conditional on adversarially chosen ρ and θ and on ignoring downstream nonlinearities, the gradient norm of the attention map can be larger.",
+      "suggested_fix": "Either (a) tighten the theoretical claim to explicitly a per-layer, first-order sensitivity statement and drop the 'Fragile Principle' framing, or (b) extend the analysis end-to-end (through the value projection, MLP, and cross-entropy/CLIP loss) so that the amplification claim is genuinely about model output, not just the attention map. Also prove (or empirically demonstrate under a well-defined training setup) that DA training *systematically* drives cosθ<0 rather than asserting this as a heuristic 'functional necessity'."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is insufficient for ICLR. No seed information, no error bars, no significance tests are reported for ASR, Lipschitz estimates, or negative-alignment frequencies. Table 1 reports single-decimal ASR values (e.g., 0.8498 vs 0.7531) with no indication of run-to-run variance, and the ImageNet result for DiffCLIP patch attacks is described as 'small' without quantification. Given that many of the reported gaps between DA and standard attention are moderate, the reader cannot tell whether the effect is real or within seed noise.",
+      "suggested_fix": "Report mean ± std over ≥3 seeds for every ASR, Lipschitz, and cos<0-frequency number; add paired significance tests (e.g., paired bootstrap on per-example success indicators) for DA vs baseline within each dataset/attack; and mark non-significant differences explicitly rather than describing them qualitatively."
+    },
+    {
+      "severity": "major",
+      "issue": "The Corollary 1 depth crossover leans on α, which the paper itself concedes is 'an emergent factor... not a deterministic function of λ' and is not estimated from data. As a result, the empirically observed crossover in Fig. 3 is framed as validating theory that is essentially unfalsifiable (any α<1 that works can be invoked post hoc). Combined with the fact that Fig. 3(d) reports Lipschitz *rising* with depth while ASR at small ε falls with depth, the theoretical narrative and the measurements are not obviously self-consistent.",
+      "suggested_fix": "Estimate α(d) directly from activations (e.g., ratio of shared-component energy attenuated by each DA layer) and check whether the measured (αLDA)^D vs Lbase^D crossover point matches the empirical depth D* at which DiffViT overtakes ViT. If the estimated α does not produce a numerically matching crossover, retract the corollary or reframe as a phenomenological observation."
+    },
+    {
+      "severity": "major",
+      "issue": "Baseline coverage and controls are narrow relative to the generality claimed. All ViT/DiffViT models are trained from scratch on CIFAR/Tiny-ImageNet at small depth; there is no comparison against other robustness-relevant attention variants (sparse attention, structured attention, entropy-stabilized attention discussed in Related Work) that also modify the standard softmax output, so it is unclear whether 'subtraction' specifically, or any deviation from vanilla attention, causes the fragility. There is also no matched-capacity control (DiffViT has two Q/K projections and thus more parameters than ViT).",
+      "suggested_fix": "Add at least (i) a parameter-matched ViT baseline (e.g., wider heads or two-branch ViT with additive combination A1 + λA2 instead of subtraction), and (ii) one alternative attention modification from the Related Work section, evaluated under identical training and attack protocols. This is the minimum needed to attribute the effect to subtraction rather than to two-branch capacity or non-standard attention in general."
+    },
+    {
+      "severity": "minor",
+      "issue": "Claims of 'first theoretical investigation of DA from the perspective of adversarial robustness' and 'fundamental trade-off' are stronger than the evidence. The trade-off is demonstrated on specific attacks and small models, and the ImageNet result already shows the gap narrowing/reversing for patch attacks — a fact acknowledged in prose but not reflected in the framing of the abstract or contributions.",
+      "suggested_fix": "Soften abstract/contribution language to 'we present a first sensitivity analysis of DA under standard gradient-based attacks', and explicitly state in the abstract that on larger-scale data (ImageNet, patch attacks) the DA-vs-baseline gap can vanish or invert."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: training hyperparameters, optimizer, epochs, patch size w in patch attacks, PGD step count/step size, and how the local Lipschitz constant is estimated (number of ξ samples, sampling distribution beyond the ε-ball, how the sup is approximated) are only partially described. Anonymization does not excuse missing hyperparameters in the body/appendix.",
+      "suggested_fix": "Add a compact 'Experimental protocol' table (per model: depth, heads, hidden dim, epochs, LR schedule, augmentation; per attack: steps, step size, restarts, patch size; per Lipschitz estimator: sample count, ξ distribution, aggregation). Anonymized code is not required to spell these out."
+    },
+    {
+      "severity": "minor",
+      "issue": "The gradient-alignment measurement (Fig. 5) reports the *frequency* of cos<0 but not the *magnitude* of alignment. Since Theorem 1's amplification factor depends on both cosθ and ρ = ||∇A2||/||∇A1||, a high frequency of cos<0 with cos≈-0.05 would produce negligible amplification.",
+      "suggested_fix": "Add the joint distribution (or at least the mean/median) of (cosθ, ρ) at each layer, and show whether the empirical (cosθ, ρ) mass lies in the region where Theorem 3 predicts strict amplification over standard attention."
+    }
+  ],
+  "questions_for_authors": [
+    "Can you show, either analytically or via a small controlled training run, that gradient descent on the DA objective *drives* cosθ toward -1 (rather than just permitting it)? The 'functional necessity' argument in Sec. 4.1 is intuitive but not a proof.",
+    "For the depth-crossover claim (Corollary 1), can you provide a measurement of α(d) per layer and check whether the predicted crossover depth from (αLDA)^D = Lbase^D matches the empirically observed depth at which DiffViT surpasses ViT?",
+    "How does DiffViT compare to a parameter-matched additive two-branch variant (A1 + λA2) trained identically? This would isolate 'subtraction' from 'two-branch capacity'.",
+    "Table 1 shows ASR peaking at λ_init=0.8 and then declining. Does this reflect the training dynamics of λ (final learned λ) or the initialization only? Please report final learned λ per row.",
+    "On ImageNet, DiffCLIP is only marginally more vulnerable under adversarial examples and slightly *less* vulnerable than CLIP under patch attacks. Does this weaken the 'Fragile Principle' at scale, and if so, how should readers interpret the theoretical claims when applied to production-scale DA models?",
+    "How are the ASR numbers in Fig. 2 and Table 1 aggregated over seeds, and can you provide confidence intervals for the DA-vs-baseline gaps you claim are meaningful?"
+  ],
+  "calibration_check": "Claims are partially scoped — limitations are acknowledged in prose — but abstract/contribution language ('Fragile Principle', 'fundamental trade-off', 'first theoretical investigation') outruns what the elementary theory and small-scale experiments actually establish, especially given the ImageNet results that already push back on the narrative.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Timely question about a mechanism that is being adopted downstream (DiffCLIP, DiffViT); a robustness caveat would be useful to the community if firmly established, but the current evidence is not strong enough to change practice."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "First adversarial-robustness lens on DA specifically, which is genuinely new; however, the analytical machinery (local Lipschitz of an attention map, gradient-alignment decomposition) is standard and the empirical framing is a direct application of PGD/AA/CW."
+    },
+    "rigor": {
+      "score": 4,
+      "justification": "Theorems 1–3 are algebraic identities dressed as separate results, the crucial 'DA drives cosθ<0' claim is not proven, and the leap from per-layer gradient norms of the attention map to end-to-end model ASR is not established."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, or significance tests are reported for ASR, Lipschitz estimates, or alignment frequencies; several claimed gaps (especially on ImageNet) are described as 'small' without quantification."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section and the ImageNet caveat are commendably honest, but the abstract, 'Fragile Principle' branding, and 'first theoretical investigation' framing overstate what is actually shown."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level narrative is easy to follow and the theorem-then-experiment layout is clean, but notation is sometimes sloppy (e.g., ∥ · ∥ vs ∥ · ∥_2, missing subscripts on ξ in the depth recursion) and some equations are typographically garbled."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Abstract, Intro, Related Work, Preliminaries, Theory, Experiments, Discussion, Conclusion) applied cleanly within reasonable length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, attack families, and coarse model configurations are described, but training hyperparameters, patch sizes, Lipschitz-estimator details, and seeds are underspecified independent of the anonymization redactions."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Covers attention robustness, Lipschitz-constrained attention, and interpretability, and correctly notes no prior work targets DA specifically; but does not seriously position against alternative attention modifications that would serve as natural controls."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe well-chosen comparisons (ASR by budget, Lipschitz vs depth, cos<0 frequency per layer) that directly support the claims; a joint (cosθ, ρ) view is missing but the shown items are informative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Attack suite (PGD/AA/CW) is adequate, but baselines are limited to vanilla ViT/CLIP, models are small (mostly single-layer or ≤12-layer ViT on CIFAR), and there is no parameter-matched or alternative-attention control — the generality claimed ('fundamental trade-off') is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "Interesting hypothesis and directionally supportive experiments, but weak theoretical content, missing statistical rigor, and narrow baseline coverage put this below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.25
+}

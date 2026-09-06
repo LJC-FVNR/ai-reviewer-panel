@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free VAD framework that identifies discriminative attention heads (LAEs) via a scatter-ratio criterion and then modulates their representations with a lightweight conditional controller. The ablation study and stability analysis are commendable, and the data-efficiency story is well-told. However, the core RSA metric is essentially the Fisher discriminant ratio without adequate attribution, the anisotropic scaling operation is functionally equivalent to FiLM/conditional affine modulation (an entirely unacknowledged family of methods), the 'manifold' framing is largely rhetorical rather than rigorously applied, and the margin over the closest competitor—which appears to be the authors' own anonymized prior work—is small and lacks significance testing.",
+  "strengths": [
+    "Practical data efficiency is convincingly demonstrated: Table 3 runs 10 independent seeds and shows identical LAE selection and AUC σ≈0.04%, and Table 4 quantifies the diminishing-returns plateau from 1% to 100% calibration data—this is thorough and honest.",
+    "Ablation study (Table 2) systematically isolates each HMC component and compares RSA against four alternative selection heuristics, providing clear evidence for each design choice.",
+    "The paper is well-written with a coherent narrative arc from geometric motivation through concrete mechanism to experiments, and the problem decomposition (representational bias + contextual ambiguity) is crisp and useful.",
+    "Post-hoc text explanation capability is a useful practical feature that distinguishes SteerVAD from pure score-based baselines and adds deployment value."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The RSA metric in Eq. 1 is the classical Fisher inter-to-intra scatter ratio (Fisher LDA criterion), a ~70-year-old discriminant analysis statistic. The paper presents it as a novel contribution without citing Fisher LDA, Fukunaga's discriminant analysis, or the large literature on probing classifiers that applies virtually the same metric to identify task-relevant representations in LLMs. This is a significant attribution and novelty gap.",
+      "suggested_fix": "Clearly position RSA as an application of the Fisher criterion to attention-head selection for VAD; cite the relevant prior work; and reframe the contribution as the specific application and integration into the frozen-MLLM pipeline rather than the metric itself."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The anisotropic manifold scaling (Eq. 4, h'_i = h_i ⊙ (1 + s_global · g_i)) is functionally a conditional feature-wise affine transformation—structurally identical to FiLM (Perez et al., 2018), AdaIN, SPADE, and similar conditional normalization/modulation methods. None of these are cited or differentiated. The 'hierarchical meta-controller' is also closely related to hypernetwork-style conditioning. Without engaging with this literature, the novelty claim for the core mechanism is unsupported.",
+      "suggested_fix": "Add a dedicated comparison to FiLM and related feature modulation methods in related work, and empirically or analytically justify why the specific formulation in Eq. 4 is preferable to standard FiLM conditioning (γh + β) for this task."
+    },
+    {
+      "severity": "blocking",
+      "issue": "'HiProbeVAD ([Author] et al., 2025)' appears in Table 1 with anonymized authorship, strongly suggesting it is the authors' own prior or concurrent work. SteerVAD outperforms it by only 0.43% AUC on UCF-Crime and 0.87% AP on XD-Violence. No statistical significance test is reported for these margins. If this is the authors' own prior work, it should be properly contextualized; if it is not, the anonymization artifacts create confusion that must be resolved.",
+      "suggested_fix": "Provide significance tests (e.g., bootstrapped confidence intervals or Wilcoxon test across segments) for all comparisons to HiProbeVAD, and clarify the relationship to that paper in the response or a non-anonymized version."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'manifold hypothesis' framing is used as rhetorical scaffolding throughout but the paper never performs any topological or intrinsic-dimensionality analysis to validate it. UMAP and t-SNE visualizations (Figures 2, 4) are sensitive to hyperparameters and are not evidence of low-dimensional manifold structure. Appendix A reportedly has a 'rigorous topological analysis' but this is inaccessible in the submission and described only vaguely.",
+      "suggested_fix": "Either provide concrete geometric evidence (intrinsic dimensionality estimates, persistent homology, or quantitative manifold separation metrics before/after rectification) in the main paper, or reframe the contribution in more operationally honest terms—e.g., as context-dependent head-specific feature scaling."
+    },
+    {
+      "severity": "major",
+      "issue": "The activation/representation steering literature (e.g., representation engineering of Zou et al. 2023; activation steering in LLMs by Turner et al. 2023; mechanistic interventions via causal scrubbing) is directly relevant to the method's core premise—actively editing internal activations of frozen models—yet is not cited or discussed. This omission weakens the positioning of the 'novel intervention paradigm' claim.",
+      "suggested_fix": "Expand the 'Internal Analysis of LLMs' subsection to cover representation engineering and activation steering, and articulate why SteerVAD's dynamic, task-conditioned steering differs from or improves on these approaches."
+    },
+    {
+      "severity": "minor",
+      "issue": "The stability analysis (Table 3) is only reported on UCF-Crime. It is unclear whether LAE selection and AUC variance are similarly stable on XD-Violence, which has a different distribution (movies, sports, online vs. surveillance).",
+      "suggested_fix": "Report the same 10-seed stability analysis on XD-Violence."
+    },
+    {
+      "severity": "minor",
+      "issue": "Inference latency is not reported anywhere. The paper claims 'negligible computational overhead' for the HMC but provides no timing comparison against VERA, EventVAD, or LAVAD.",
+      "suggested_fix": "Add a timing table (e.g., per-segment wall-clock time and total throughput on a fixed GPU) for the main tuning-free baselines and SteerVAD."
+    }
+  ],
+  "questions_for_authors": [
+    "Is 'HiProbeVAD ([Author] et al., 2025)' from the same author group? If so, how does SteerVAD conceptually extend or differ from that work beyond the performance delta?",
+    "The RSA score in Eq. 1 is the Fisher inter-to-intra scatter ratio. How does RSA differ from simply applying Fisher LDA head-selection probing as in prior mechanistic interpretability work? What specific properties make RSA novel?",
+    "The anisotropic scaling h'_i = h_i ⊙ (1 + s·g) is a multiplicative conditional modulation. Have you compared against standard FiLM (additive+multiplicative) or AdaIN conditioning as baseline controllers?",
+    "What is Appendix A's 'rigorous topological analysis'—specifically, what topological invariants or dimensionality measures are computed, and do they support the manifold geometry claims made in the introduction?",
+    "Have you evaluated on ShanghaiTech or Avenue, or any industrial quality-control benchmark? The claim that this is 'a promising new direction for video anomaly detection' broadly implies generalization beyond surveillance datasets.",
+    "The Gaussian smoothing in Eq. 6 is applied post-hoc. What is σ_g, and is this hyperparameter tuned on the calibration set or fixed? Could it inflate reported AUC by smoothing boundary predictions?"
+  ],
+  "calibration_check": "The paper's core performance claims (SOTA among tuning-free methods) are factually supported, but the framing of RSA and anisotropic scaling as conceptually novel contributions is over-claimed given their close relationship to Fisher LDA and FiLM respectively, and the multiple 'first to' assertions require stronger differentiation from the activation-steering and representation-engineering literature.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The data-efficient, tuning-free paradigm for MLLM-based VAD is useful and the geometric-intervention framing may inspire follow-on work, but the contribution is bounded to a narrow surveillance application with modest absolute gains over prior work."
+    },
+    "novelty": {
+      "score": 4,
+      "justification": "RSA is the classical Fisher scatter ratio, the HMC is functionally a FiLM/conditional affine modulation, and the manifold framing is rhetorical; the genuine novelty is their integration into a frozen-MLLM VAD pipeline, which is incremental rather than a conceptual breakthrough."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Ablation studies and stability analysis are methodologically careful, but the manifold claims lack quantitative geometric validation, the significance of marginal improvements over HiProbeVAD is untested, and the related-work gaps weaken the claim-evidence chain."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "The 10-seed LAE stability analysis (Table 3) is commendable, but the main comparison table (Table 1) has no error bars or significance tests, and the 0.43%/0.87% margins over the nearest competitor could easily be within noise."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "Multiple unqualified 'first to' and 'novel' claims ignore directly relevant prior work (Fisher LDA, FiLM, activation steering); SOTA is scoped only to tuning-free methods but this qualification is sometimes elided in the abstract and conclusion."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and the method is described precisely with equations; the geometric vocabulary is consistently applied even if over-literal, and the two-problem motivation (bias + ambiguity) aids readability."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure is followed; section ordering is appropriate; length appears within bounds; the use of appendices for supplementary material is appropriate."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "The backbone (InternVL3), key hyperparameters (K=4, F=16, lr=1e-3, λ=0.1, σ_g=6), hardware (A6000), and calibration protocol (1% random sample) are all specified, enabling reproduction at the algorithmic level even without released code."
+    },
+    "related_work": {
+      "score": 4,
+      "justification": "The Fisher LDA/discriminant analysis literature, FiLM and conditional feature modulation methods, representation engineering, and activation steering are all absent despite being directly related to the paper's core technical mechanisms."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From the captions, Figures 2 and 4 use UMAP/t-SNE to show before/after separation—illustratively useful but methodologically limited; Figure 3 appears to give a clear framework overview; Table 1 is comprehensive and informative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two standard surveillance benchmarks (UCF-Crime, XD-Violence) are the norm in this subfield, but the paper's claims about 'a powerful new direction for video anomaly detection' broadly would benefit from at least one industrial or cross-domain benchmark; XD-Violence stability analysis is missing."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting and practically motivated paper with real ablation effort, but the unacknowledged overlap with Fisher LDA and FiLM, the absence of significance testing on marginal gains, the unevaluated manifold framing, and the missing activation-steering literature collectively push this below the ICLR acceptance bar as submitted."
+    }
+  },
+  "publishability_probability": 0.2
+}

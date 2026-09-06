@@ -1,0 +1,113 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper presents a theoretically motivated analysis of the 'PCC plateau' phenomenon in attention-based regression, identifying gradient-attenuation and convex-hull capacity limits as root causes, then introduces ECA—a three-component plug-in module—to address them. The theoretical framing (Proposition 2.1, Corollary 2.1, Theorem 2.2) is the paper's strongest asset and is largely sound. However, the experimental section suffers from missing variance/significance reporting on the UCI results, a limited set of baselines (no non-convex attention alternatives such as sparsemax/entmax), and only one backbone architecture tested, which together undermine the generality claims. The work is promising but requires substantial experimental strengthening before it meets the ICLR acceptance bar.",
+  "strengths": [
+    "First rigorous theoretical analysis of PCC plateau in attention-based regressors: the MSE–PCC decomposition (Proposition 2.1) and the O(1/σ_ŷ^{3/2}) gradient ratio decay (Corollary 2.1) are clean, verifiable results that give intuitive and actionable insight.",
+    "Theorem 2.2 (convex-hull PCC gain bound) is a non-trivial, architecture-agnostic capacity result that cleanly explains why high in-sample homogeneity is especially harmful, and the derivation is self-contained.",
+    "Each ECA component is directly motivated by a specific identified limitation—the theory-to-method mapping is tight and honest.",
+    "The spatial transcriptomics experiment (Table 3) shows large absolute PCC improvements (~15%) over a published baseline on a real clinically relevant task, with three-fold cross-validation.",
+    "The synthetic dataset with controllable homogeneity is a principled way to isolate and validate the theoretical predictions before moving to real-world benchmarks."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "UCI results in Table 1 are reported without any variance estimate (no standard deviation, no confidence intervals, no indication of how many seeds were used). The absolute PCC gains on Online News (+0.012) and Superconductivity (+0.010) are small and could plausibly be within run-to-run noise for these datasets. The lack of statistical evidence makes it impossible to assess whether the improvements are real.",
+      "suggested_fix": "Report mean ± std over at least 5 random seeds for all UCI results; add a Wilcoxon or paired t-test to substantiate claims of improvement. If runtime constraints are an issue, even 3 seeds with confidence intervals would be an improvement over the current single-point estimates."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No comparison to non-convex attention alternatives (e.g., sparsemax, α-entmax, slot attention) despite these directly addressing the convex-hull constraint identified in Theorem 2.2. Without this comparison, a reviewer cannot assess whether the proposed SRA mechanism is needed or whether simply swapping to a known non-convex aggregator achieves the same gains.",
+      "suggested_fix": "Add at least sparsemax and one entmax variant as baselines across the real-data experiments, and discuss in theory how they relate to (or are bounded by) Theorem 2.2."
+    },
+    {
+      "severity": "major",
+      "issue": "ECA is only plugged into a single backbone (FT-Transformer) on UCI and into a single baseline on spatial transcriptomics and MOSI. The paper claims ECA is 'backbone-agnostic' and a 'drop-in module', but the evidence only spans one backbone per task, greatly limiting the support for that generality claim.",
+      "suggested_fix": "Test ECA on at least one additional backbone per real-data benchmark (e.g., SAINT or TabNet on UCI; a different video encoder on MOSI) to support the claimed generality."
+    },
+    {
+      "severity": "major",
+      "issue": "Corollary 2.1 assumes ρ ∈ [0,1], but PCC can be negative. It is unclear whether the bound still holds (or holds with a different form) when ρ < 0, and whether the practical relevance of the result is limited to cases where the baseline model already achieves non-negative correlation.",
+      "suggested_fix": "Provide the bound for the general case ρ ∈ (−1,1), or explicitly discuss why the ρ ≥ 0 regime is the relevant regime and give an empirical check that it holds on the evaluated benchmarks."
+    },
+    {
+      "severity": "major",
+      "issue": "Theorem 2.2 carries the precondition R < σ0/∥w∥2, but no empirical check verifies this condition holds on the actual datasets used. If it is violated, the theorem does not apply and the motivation for SRA weakens.",
+      "suggested_fix": "Report the empirical values of R and σ0/∥w∥2 on each real dataset (or at initialization and at convergence) to confirm the precondition holds throughout the experiments."
+    },
+    {
+      "severity": "major",
+      "issue": "The DNPL loss LPCC = StopGrad(σ_ŷ)·(1−ρ) is claimed to 'leave the learning objective's stationary points unchanged,' but this claim is asserted without proof. StopGrad changes the Hessian at stationary points, which can affect local minima even if the set of first-order stationary points is the same; the training dynamics may diverge from those of the original loss.",
+      "suggested_fix": "Either prove rigorously that stationary points are identical (gradient equals zero iff gradient of modified objective equals zero) or soften the claim to 'the gradient direction for ρ is preserved while the magnitude attenuation is corrected.'"
+    },
+    {
+      "severity": "minor",
+      "issue": "The large standard deviations in Table 3 (e.g., ±0.202 for EGN+ECA PCC@F vs. ±0.160 for EGN) mean that the reported fold-mean differences (+0.088, +0.077, +0.087) may not be statistically distinguishable with only three folds. A Wilcoxon signed-rank test or bootstrap confidence interval across folds would strengthen this result.",
+      "suggested_fix": "Report p-values or confidence intervals for the spatial transcriptomics comparisons; consider adding additional folds if computational budget permits."
+    },
+    {
+      "severity": "minor",
+      "issue": "The ablation table (Table 1) omits the SRA ablation row for Superconductivity and the DNPL ablation row for UCI Online News, making it impossible to fully assess the per-component contribution on every dataset.",
+      "suggested_fix": "Complete the ablation matrix so every component ablation appears for every dataset; if space is limited, move the full table to an appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "Corollary 2.1 is stated for ρ ∈ [0,1]. Do the gradient ratio bounds change qualitatively when ρ < 0? Is there a setting in your experiments where the model begins with negative PCC and, if so, does the bound still hold empirically?",
+    "What are the empirical values of R and σ0/∥w∥2 (from Theorem 2.2) on the spatial transcriptomics and MOSI datasets at initialization and at convergence? Does the precondition R < σ0/∥w∥2 hold throughout training?",
+    "Have you compared ECA against sparsemax or α-entmax, which also break the strict convexity of softmax? If so, what is the relative gain? If not, why is this comparison omitted?",
+    "The Dispersion-Normalized PCC Loss uses StopGrad. Can you provide a formal proof or counterexample showing that the set of first-order stationary points is unchanged, accounting for the modified Hessian?",
+    "For the MOSI experiment, the comparison between ALMT+LPCC (PCC 0.791) and ALMT+LPCC+ECA (PCC 0.806) is the cleanest test of ECA. The gain is +0.015 PCC. Is this difference statistically significant across seeds, and were multiple random seeds used for these runs?"
+  ],
+  "calibration_check": "The theoretical claims are well-scoped and appropriately hedged, but the empirical claims (e.g., 'significant improvements' on UCI) are frequently not backed by statistical tests or error bars, making the overall framing overly confident relative to the experimental evidence provided.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a practically relevant failure mode (PCC plateau) in multiple important application domains (pathology, sentiment analysis, genomics), but the scope is constrained to attention-based regressors trained with joint MSE+PCC loss, limiting the breadth of impact."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The theoretical analysis of gradient attenuation (Corollary 2.1) and the convex-hull PCC gain bound (Theorem 2.2) appear genuinely new; individual ECA components (residual scaling, temperature softmax, loss rescaling) are relatively straightforward engineering moves once the theory is established, but the unified theoretical motivation is the novel contribution."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The core derivations follow standard calculus and linear algebra and appear correct, but the precondition of Theorem 2.2 (R < σ0/∥w∥2) is never empirically verified on real data, and the DNPL stationary-point claim is asserted without proof, leaving two non-trivial gaps in the theoretical argument."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "UCI results are presented as single-run point estimates with no variance, confidence intervals, or significance tests; the spatial transcriptomics improvements have large fold-level standard deviations that are not significance-tested; only the ablation in Figure 5/6 shows training curves suggesting robustness."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The paper repeatedly describes improvements as 'significant' and 'consistent' without statistical backing; the Online News PCC gain (+0.012) and Superconductivity PCC gain (+0.010) are modest and potentially within noise, yet are presented with the same confidence as the larger spatial transcriptomics gains; limitations (preconditions, negative-ρ regime) are not prominently acknowledged."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The theory-to-method-to-experiments flow is logical and notation is reasonably consistent; several grammatical errors and awkward constructions appear (likely not native speaker), and the table extraction reveals some missing/garbled rows, though the narrative text fills in the gaps adequately."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows the standard ICLR structure and fits within a reasonable page budget; the related work section is notably brief but present; appendix references are used appropriately for proofs and additional experiments."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key hyperparameters (λPCC, Tmin, β, γmax, λγ) are named and their roles explained; experimental setup details are deferred to Section G; enough description is present to attempt reproduction, though the number of seeds, optimizer schedules, and backbone configuration details are not all visible in the main text."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "The existing coverage of joint MSE+PCC optimization and softmax expressivity limits is adequate, but the paper does not engage with non-convex attention alternatives (sparsemax, entmax) that directly address the identified convex-hull limitation, nor with rank-based loss alternatives (Spearman, concordance correlation), leaving a notable gap in positioning."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Figure 3 (gradient ratio bound validation) and Figure 5/6 (training curves) directly support key theoretical and empirical claims; Figure 4 (σ_ŷ increase) provides useful mechanistic illustration; captions are sufficiently detailed to judge the display items' purpose and conclusions."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "ECA is tested on only one backbone per real-data benchmark; no non-convex attention baselines are included; three UCI datasets is a minimal evaluation; the MOSI improvement over the ALMT+LPCC baseline is only +0.015 PCC, and the claimed 'drop-in' generality is not substantiated across multiple architectures."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Promising theoretical contribution with real-world motivation, but the experimental section is insufficiently rigorous (missing error bars, no non-convex attention baselines, single-backbone evaluation) to justify acceptance at ICLR in its current form; a major revision addressing statistical rigor and baseline coverage could substantially change this assessment."
+    }
+  },
+  "publishability_probability": 0.18
+}

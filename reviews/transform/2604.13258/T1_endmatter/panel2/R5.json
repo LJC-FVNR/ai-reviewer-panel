@@ -1,0 +1,110 @@
+{
+  "grade": "Reject and Resubmit",
+  "summary": "HETA proposes a principled combination of attention-rollout causal gating, Hessian-based second-order sensitivity, and KL-divergence information loss for token attribution in decoder-only LLMs. The curated evaluation dataset and robustness analysis are genuine contributions. However, the primary evaluation metric (Soft-NC/NS) is structurally circular with HETA's KL component — both measure output distribution shift under token masking — likely inflating the reported 5–6× margins. Compounding this, an inline table in Section 5 shows HETA as the worst method on Soft-NC for LLaMA-3.1, directly contradicting Table 3; the DSA metric formula is garbled beyond unambiguous recovery; and ReAgent results are missing for two of three models in the main table. These issues must be resolved before the core claims can be assessed.",
+  "strengths": [
+    "The three-component architecture (semantic transition gating via causal attention rollout, Hessian-based curvature via HVP/Hutchinson estimation, and KL-based information loss) is methodologically motivated and clearly connects to documented limitations of first-order and attention-only methods.",
+    "The curated NarrativeQA × SciQ benchmark with controlled distractor structure is a reusable and well-designed contribution for the attribution evaluation community.",
+    "The decoding-hyperparameter robustness analysis (Table 2, sweeping temperature/top-p/top-k/repetition penalty over 3 seeds) is rigorous and addresses a practical concern that most attribution papers ignore.",
+    "The ablation study spans six configurations and covers all three HETA components, confirming each contributes incrementally.",
+    "Evaluation across four models of varying scale (GPT-J 6B, Phi-3 14B, LLaMA-3.1 70B, Qwen2.5 3B) provides reasonable architectural diversity."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Circular evaluation: HETA's KL component I(xi→xT) = DKL(Porig || Pmasked_i) directly measures how much the output distribution shifts when token i is masked. The primary evaluation metrics Soft-NC and Soft-NS are also perturbation-based faithfulness scores that reward methods whose top-ranked tokens, when masked, cause large output distribution shifts. Because HETA's attribution scores are monotonically increasing in DKL-per-token, it will rank tokens in exactly the order that maximises Soft-NC/NS. This structural alignment — not a genuine advantage in causal faithfulness — plausibly explains the 5–6× margins over all baselines. The paper does not acknowledge or control for this.",
+      "suggested_fix": "Report Soft-NC/NS for HETA-MT (causal gate only), HETA-MT+Hessian (gate + curvature, no KL), and full HETA separately. If HETA-MT+Hessian already achieves competitive Soft-NC/NS without the KL term, the circularity is confirmed and the evaluation must be redesigned (e.g., using held-out counterfactual probes or token-flip accuracy rather than distribution-shift scores). Alternatively, design a new faithfulness metric that is decoupled from masking-based scores."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Internal table inconsistency: An inline table in Section 5 (experimental setup, Llama-3.1 70B block) lists HETA with Soft-NC = 0.6 and Soft-NS = 0.8, making it the worst method — lower than Attention Rollout (2.3), IG (2.7), and TDD-backward (3.1). Table 3 simultaneously shows HETA with Soft-NC = 9.9 and Soft-NS = 2.60 for the same model. This contradiction is unexplained and undermines confidence in all reported numbers.",
+      "suggested_fix": "Identify and correct the source of the discrepancy. If the inline table covers the curated dataset only while Table 3 covers benchmark datasets, label this explicitly. If it is a copy-paste error, fix and re-verify all numeric entries across tables."
+    },
+    {
+      "severity": "major",
+      "issue": "DSA metric formula is unrecoverable from the text. The stated expression reads 'DSA = P_{j∈SNarrQA} fsj ... i∈SSciQ ssi − P' — a fragment that appears mid-sentence after the definition of fsj and ssi. The intended formula (presumably Σ_{i∈SSciQ} ssi − Σ_{j∈SNarrQA} fsj) cannot be unambiguously inferred, making the metric unreproducible.",
+      "suggested_fix": "State the complete formula on a single numbered equation line and verify it matches the described semantics (DSA should be positive when more mass falls on the SciQ segment and negative when more falls on NarrativeQA)."
+    },
+    {
+      "severity": "major",
+      "issue": "ReAgent results are absent for GPT-J and Phi-3 in Table 3, yet the paper states 'ReAgent consistently ranks second' across all models. Selective omission of the stated second-best baseline from two of three model sections is misleading and prevents verification of this claim.",
+      "suggested_fix": "Report ReAgent for all model–dataset combinations in Table 3, or explicitly state and justify any exclusion."
+    },
+    {
+      "severity": "major",
+      "issue": "The curated dataset's gold labels are produced by 'GPT-4o and GPT-5 Thinking' as two annotation systems, with inter-annotator agreement reported between these two LLMs (F1 = 0.91, κ = 0.89), not between LLMs and human annotators. Inter-LLM agreement does not validate ground-truth quality; both systems may share systematic biases. Additionally, 'GPT-5 Thinking' is not a clearly identified public model version, making reproduction impossible.",
+      "suggested_fix": "Include a human annotation sample (even 200–300 instances) and report human-vs-LLM agreement alongside the LLM-vs-LLM agreement. Specify the exact model version and API access date for both annotators. If GPT-5 is inaccessible to reviewers, provide annotated labels as part of the released dataset."
+    },
+    {
+      "severity": "minor",
+      "issue": "No sensitivity analysis over the hyperparameters β and γ. These are fixed at 0.5/0.5 throughout without justification or ablation, leaving it unclear whether balanced weighting is optimal or whether one component dominates.",
+      "suggested_fix": "Add a 2D grid sweep over β ∈ {0.1, 0.3, 0.5, 0.7, 0.9} and γ ∈ {0.1, 0.3, 0.5, 0.7, 0.9} on one dataset/model combination and report Soft-NC/DSA as a heat map."
+    },
+    {
+      "severity": "minor",
+      "issue": "The multiplicative gate MT[i] is derived from causal attention rollout, so any token with zero rollout mass (common for tokens far from the target in long sequences) receives zero attribution regardless of its Hessian or KL contribution. This reintroduces the very limitation of attention-only methods the paper critiques (influence via residual connections and MLP layers is zeroed out).",
+      "suggested_fix": "Discuss this explicitly in the limitations section and consider an additive rather than multiplicative combination, or a floor on MT[i], or a residual-stream-aware rollout."
+    }
+  ],
+  "questions_for_authors": [
+    "To isolate the metric-circularity concern: what are Soft-NC and Soft-NS scores for HETA-MT+Hessian (gate + curvature only, without the KL term) compared to full HETA? If removing the KL term drops Soft-NC substantially, the metrics cannot be treated as independent validation of the full method.",
+    "What explains the inline table in Section 5 showing HETA with Soft-NC = 0.6 and Soft-NS = 0.8 for LLaMA-3.1 (worst of all listed methods), while Table 3 shows HETA at Soft-NC = 9.9 and Soft-NS = 2.60 on the same model?",
+    "What is the exact definition of SNarrQA and SSciQ in the DSA formula — are these the annotation-derived token sets (fixed across methods) or the per-method top-attributed token sets? If the latter, how are the set sizes determined?",
+    "Why are ReAgent's Soft-NC/NS results omitted for GPT-J and Phi-3 in Table 3 given that it is identified as consistently the second-best baseline?",
+    "What is the per-sequence wall-clock time for full HETA versus HETA-LR+WIN versus ReAgent on each model? The Hessian component requires O(m) HVPs and the KL component requires O(T) forward passes; a concrete runtime table is essential to assess practicality.",
+    "For the decoding robustness experiment, are the attribution scores computed on the same generated output across different decoding settings, or is the output itself resampled? If the output changes, the attribution target changes, making cross-condition comparison ill-defined.",
+    "Is 'GPT-5 Thinking' the 'o-series' reasoning model or a separately named model? What exact API version was used, and on what date were annotations collected?"
+  ],
+  "calibration_check": "The claim of 'establishing a new standard' and margins exceeding 2× (and in practice 5–6×) over all baselines are not appropriately scoped: the primary evaluation metric is structurally correlated with the KL component of HETA's score, the DSA metric relies on LLM-vs-LLM agreement rather than human ground truth, and an unresolved internal table contradiction prevents verification of the numerical claims.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Token attribution for decoder-only LLMs is a genuine and timely problem, but the metric-circularity concern means the scale of claimed improvement is unverified, leaving the true contribution magnitude unclear."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The specific integration of target-conditioned causal rollout gating with Hessian HVP estimation and per-token KL divergence in a single multiplicative attribution score is new, even though each individual component draws on prior work."
+    },
+    "rigor": {
+      "score": 3,
+      "justification": "The structural alignment between HETA's KL component and the Soft-NC/NS evaluation criterion is a fundamental methodological flaw that is unacknowledged; the contradictory inline table further undermines result validity."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Only 3 seeds are used with no formal significance testing; reported standard deviations (< 0.2 for DSA, < 0.06 for Soft-NC/NS) are implausibly tight given the magnitude of cross-method differences and the potential circularity in the primary metric."
+    },
+    "calibration_honesty": {
+      "score": 4,
+      "justification": "The 'new standard' and '2×' margin claims are overstated given the unaddressed circularity; limitations section correctly flags runtime cost but omits the evaluation validity concern and the gate-zeroing issue for MLP-mediated influence."
+    },
+    "clarity": {
+      "score": 4,
+      "justification": "The core method equations are stated precisely, but the DSA formula is garbled beyond unambiguous recovery, the inline table contradicts Table 3 without explanation, and the paper inconsistently uses 'model-selected' and 'annotated' to describe the same token sets."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure with Abstract, Introduction, Motivation, Background, Method, Experiments, Related Work, and Conclusion sections at an appropriate length; the Background section is somewhat redundant with Motivation."
+    },
+    "reproducibility": {
+      "score": 4,
+      "justification": "The Hessian HVP implementation (rank, window, overlap, Hutchinson sample count m) and decoding hyperparameters are stated, but the annotation pipeline requires 'GPT-5 Thinking' with no pinned version, and the garbled DSA formula prevents independent reimplementation of the metric."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of relevant attribution methods (ContextCite, TDD, PML, ReAGent, IG, LRP, rollout) is adequate and criticisms are specific, but Hessian-based attribution literature cited is thin and the potential connection to SHAP's higher-order interaction values is not discussed."
+    },
+    "figure_quality": {
+      "score": 5,
+      "justification": "Figure captions describe ablation bar plots, robustness comparisons, and qualitative attribution heatmaps that appear to directly support the paper's claims; without rendered images the level of detail in axes, legends, and error depiction cannot be assessed."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four models and four datasets provide reasonable breadth, but the missing ReAgent baseline for GPT-J and Phi-3, the metric-circularity issue on Soft-NC/NS, and the exclusive reliance on LLM annotations for DSA collectively weaken the generality of the experimental conclusions."
+    },
+    "overall_recommendation": {
+      "score": 4,
+      "justification": "The paper presents a principled and novel attribution framework with a useful curated dataset, but a potential circular evaluation flaw that plausibly explains the extraordinary margins, an unresolved internal table contradiction, and a missing metric formula together place it below the ICLR acceptance bar without substantial revision."
+    }
+  },
+  "publishability_probability": 0.07
+}

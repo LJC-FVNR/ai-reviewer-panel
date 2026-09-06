@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "DIRECTER proposes a practical inference-time activation steering method combining KV cache scaling, a plausibility-guided decoding loop, and attention-sensitivity-based layer ranking to mitigate oversteering in LLM instruction following. The core idea is sound and the engineering is competent, with multi-model generalization results and good ablation coverage. However, the main results table lacks error bars or significance tests, the comprehensive multi-benchmark evaluation is conducted on a single model, the method is only assessed under greedy decoding, and the steering baselines are limited to two methods, leaving the generality claims insufficiently supported for an ICLR main-conference paper.",
+  "strengths": [
+    "The plausibility-guided decoding loop is a principled and practical mechanism for preventing oversteering that requires no training data and uses fixed hyperparameters across all tasks — a genuine usability advantage over prior methods.",
+    "The paper includes a comprehensive set of analyses: fixed-strength ablations, layer ranking ablations, robustness to β and α, prompt-format robustness, efficiency profiling (throughput, latency, memory), LLM-judge quality/fidelity evaluation, and a human evaluation, which collectively paint a thorough picture of the method.",
+    "Multi-model evaluation across five model sizes/families (Llama-3.2-1B, Qwen-2.5 3B/7B/14B) in Table 2 provides meaningful evidence that the improvement is not specific to a single model.",
+    "The demonstration that the plausibility filter is modular and can be applied as a safety gate to existing methods (PASTA, SpotLight) strengthens the contribution beyond DIRECTER as a standalone system.",
+    "The efficiency analysis is honest and detailed; the ≈16% throughput overhead and FlashAttention compatibility are clearly quantified and position the method favorably against SpotLight."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Main results (Table 1) and the LLM-judge evaluation (Table 4) report single numbers with no standard deviations, confidence intervals, or significance tests across multiple seeds. LLM-evaluation outputs and even programmatic metrics like IFEval can exhibit run-to-run variance, and without this information it is impossible to assess whether the reported gains (e.g., 78.8 vs. 76.3 on P.Acc) are statistically real rather than noise.",
+      "suggested_fix": "Report mean ± std over at least 3–5 seeds/runs for IFEval and GSM8K-Format, and perform paired significance tests (e.g., bootstrap or McNemar) against the strongest baseline. For LLM-judge metrics, additional runs with different GPT-4o-mini temperatures or a secondary judge should be included."
+    },
+    {
+      "severity": "major",
+      "issue": "The comprehensive multi-benchmark evaluation (Table 1, Table 4, Figures 2–3) is conducted exclusively on Llama-3.1-8B-Instruct. Claims about broad generalizability to 'diverse architectures' are only partially supported: Table 2 shows IFEval accuracy for five model/scale variants, but task fidelity, text quality, and oversteering trade-off analyses are not replicated across these models. It is unknown whether the quality-fidelity balance holds on, say, Qwen-2.5-7B.",
+      "suggested_fix": "Run at least the quality/fidelity evaluation (Table 4) and the fixed-strength ablation (Figure 2a) on one additional model family (e.g., Qwen-2.5-7B) to substantiate the generalization claim beyond IFEval accuracy."
+    },
+    {
+      "severity": "major",
+      "issue": "All experiments use greedy decoding exclusively. The plausibility constraint (Eq. 1) is defined in terms of top-1 token probabilities, and its behavior under sampling, beam search, or nucleus sampling is uncharacterized. A significant fraction of real-world LLM use involves non-greedy decoding, and the claim of being 'a general mechanism' is not supported under those conditions.",
+      "suggested_fix": "Include a short evaluation with temperature sampling (e.g., τ=0.7) on IFEval and at least one other benchmark, discussing whether or how the plausibility criterion generalizes to non-greedy settings."
+    },
+    {
+      "severity": "major",
+      "issue": "Only two steering baselines are evaluated (PASTA, SpotLight). Given the rapid pace of the activation steering literature, the absence of more recent methods (e.g., contrastive decoding variants, residual stream steering, or methods building on DOLA/CAD) limits the reader's ability to assess DIRECTER's contribution within the current SOTA landscape. The paper cites but does not compare against several related works.",
+      "suggested_fix": "Include at least one additional steering baseline (e.g., a steering-vector-based method or DOLA) to better delineate the contribution and verify that the efficiency advantage holds more broadly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'efficient gating mechanism' relies on a claim that 'no steered distribution p̃_t could satisfy the plausibility constraint except when ĩ_t = i_t.' This guarantee appears to be stated without proof, and the special case 'when ĩ_t = i_t' is not fully resolved — if the steered top-1 is the same as the raw top-1, the constraint is trivially satisfied regardless of the gate, which needs to be stated explicitly.",
+      "suggested_fix": "Add a one-paragraph formal proof or tight sketch of the gating guarantee, clarifying the ĩ_t = i_t edge case."
+    },
+    {
+      "severity": "minor",
+      "issue": "GSM8K-Format is a custom benchmark created by the authors, and its construction details (prompt templates, formatting rules, difficulty calibration, potential overlap with model training data) are described only briefly in the main text with additional detail deferred to the appendix. Author-designed benchmarks require particularly careful validation.",
+      "suggested_fix": "Include a clearer discussion of how GSM8K-Format avoids benchmark-specific overfitting, whether DIRECTER's hyperparameters were ever tuned on it, and a cross-check that the formatting instructions are genuinely challenging for the baseline model."
+    },
+    {
+      "severity": "minor",
+      "issue": "The connection to contrastive decoding (Li et al., 2022) and DOLA (Chuang et al., 2023) — cited as the basis for the plausibility-guided decoding loop — is not made explicit enough in the related work. Readers familiar with those lines of work will immediately notice the structural similarity (accept/reject on distribution divergence), and the paper does not clearly articulate what is genuinely new vs. what is directly inherited.",
+      "suggested_fix": "Add 2–3 sentences in the related work section or in the method section explicitly contrasting the plausibility criterion and progressive layer-reduction strategy against contrastive decoding and DOLA's analogues."
+    }
+  ],
+  "questions_for_authors": [
+    "Table 1 reports single-point accuracy numbers. What is the variance across multiple evaluation runs, and are the gains over SpotLight† statistically significant by any formal test?",
+    "Why is greedy decoding the sole decoding strategy evaluated? The plausibility constraint is defined over top-1 tokens — what happens to the acceptance rate and downstream accuracy when nucleus sampling or top-k sampling is used?",
+    "The gating mechanism guarantees skipping steering when the top-2 gap is too small. Can you provide the empirical rate at which the gate fires (fraction of tokens skipped) and how this rate varies across benchmark types and model scales?",
+    "The attention sensitivity analysis (Eq. 2–3) is described as a one-time pre-decoding computation. How sensitive is the final ranking to the specific input prompt used during this analysis, and what happens when ranking is computed on a different (even random) prompt?",
+    "Table 2 shows DIRECTER on IFEval for five models. Does the quality-fidelity balance (Table 4) and the oversteering mitigation property (Figure 2a) hold on those models, or are those results Llama-3.1-8B-specific?"
+  ],
+  "calibration_check": "The claims are mostly appropriately scoped, but 'up to 6.5%' leads with the best-case figure rather than the average, and the assertion of 'no trade-offs in generation quality' rests on a single GPT-4o-mini judge evaluated on one model under greedy decoding — this does not fully support a general claim.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Oversteering is a real and practical problem for inference-time steering, and the proposed plausibility-gating mechanism is clean and reusable, but the application domain (activation steering for instruction following) is niche enough that the broader ICLR community impact is moderate."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "Each component — KV cache scaling, distribution-divergence-based accept/reject gating, and layer sensitivity ranking — has clear antecedents in prior work (PASTA, contrastive decoding, DOLA, KV quantization); the specific combination and progressive-halving strength modulation constitute real but incremental novelty."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The method is technically sound, ablations cover all key components, and the efficiency analysis is honest, but the absence of error bars on main results and the exclusive use of greedy decoding leave core empirical claims inadequately validated."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main results (Table 1, Table 4) report single numbers with no standard deviations, confidence intervals, or significance tests; only two ablation rows in Table 3 include ±SD, and no formal comparison between DIRECTER and baselines is conducted."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section honestly addresses the lack of theoretical grounding for the sensitivity metric and the clean span assumption; however, the 'up to 6.5%' framing and absolute claims about 'no trade-offs' slightly overclaim given the narrow evaluation conditions."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-organized and the method is generally clearly described, but Algorithm 1 has apparent formatting gaps (lines 6–7 appear truncated), the gating guarantee is stated without proof, and the distinction from contrastive decoding is not made explicit enough."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard ICLR structure is followed with clear research questions mapping to experiment subsections, and the paper length appears appropriate for a conference submission."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Key hyperparameters (α=100, β=0.5) are stated as fixed and universal, implementation details for baselines are disclosed, and appendices provide additional detail; the custom GSM8K-Format benchmark construction is not fully described in the main text."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of attention-level and KV-cache steering is solid, but the relationship to contrastive decoding and DOLA — the most directly analogous acceptance/rejection mechanisms — is not discussed in the related work section, and recent steering methods beyond PASTA and SpotLight are absent."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From the captions, Figures 2–4 appear directly tied to specific research questions with clear comparisons (fixed-strength vs. dynamic, with/without plausibility filter, throughput/latency/memory), and Figure 1's overview of the decoding loop is described in sufficient detail to convey the mechanism."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Comprehensive multi-benchmark evaluation is performed on a single model; Table 2 covers five model/scales on IFEval only; only greedy decoding is used; only two steering baselines are compared; the combination of these gaps leaves the generality claim underdetermined."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A promising and practically motivated paper with a clean core idea, but the missing statistical validation on main results, single-model comprehensive evaluation, greedy-only decoding, and limited baseline set collectively fall short of the ICLR acceptance bar without substantial revision."
+    }
+  },
+  "publishability_probability": 0.31
+}

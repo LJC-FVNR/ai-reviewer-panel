@@ -1,0 +1,98 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper proposes a single-location regression (SLR) task as a theoretical testbed to compare softmax vs. linear (and other) attention, and develops a high-dimensional analysis via order parameters and the replica method. It cleanly establishes that softmax attains the Bayes risk at the population level, characterizes why linear attention fundamentally fails (poor normalization under variable sequence length, weak dependence on signal strength), and extends the analysis to a finite-sample proportional regime, showing softmax continues to dominate linear attention. The work is a solid, honestly-scoped theoretical contribution, though the model is stylized, key results rely on the (non-rigorous) replica method, and empirical validation is limited to synthetic settings with small L.",
+  "strengths": [
+    "Formalizes single-location regression as a tractable task that generalizes prior sequence multi-index models to variable sequence length and to softmax normalization, filling a real gap in the theoretical literature that has largely focused on linear/kernelized attention.",
+    "Provides a clean separation: Prop. 4.2 (softmax reaches Bayes risk via a Nishimori-style argument) together with Corollaries 4.3–4.4 give crisp asymptotic gaps in ν and L that directly illustrate why softmax's exponential + normalization matter.",
+    "Ablates the two ingredients of softmax (nonlinearity vs. normalization) by comparing linear, element-wise erf, softplus-kernelized, and softmax activations — the finding that normalized softplus is hurt by weak growth at +∞ while element-wise erf is hurt by variable L is a genuinely informative decomposition.",
+    "Extends the analysis from population to a proportional-α finite-sample regime with self-consistent equations for the ERM, and matches these predictions numerically to a quasi-Newton optimizer, giving evidence that the statistical picture also captures a computationally attainable regime.",
+    "Calibration is generally good: the replica method is flagged as non-rigorous, the manifold assumption is discussed with landscape caveats, and the absence of learnable query vectors is stated as a limitation."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Central finite-sample characterization (Result 5.1) uses the non-rigorous replica method and additionally restricts to diagonal order parameters via a manifold assumption whose validity is only supported numerically for softmax. Since the paper's finite-sample separation between softmax and linear rests on this result, the strength of the claim depends heavily on how robust the manifold assumption is off-diagonal, and the paper does not stress-test it (e.g., by comparing to ERM at various regularization strengths where the landscape could plausibly host non-diagonal minima).",
+      "suggested_fix": "Add numerical evidence that random-initialization ERM has vanishing off-diagonal order parameters across α, ν, L, r_k, r_v, and ideally include a small experiment where the manifold assumption is intentionally violated at init to check convergence back to M. State clearly which claims are theorems, which are non-rigorous replica predictions, and which are numerical."
+    },
+    {
+      "severity": "major",
+      "issue": "The empirical evidence for the softmax-vs-linear separation lives entirely inside the SLR toy model with very small L (2, 3, up to 10 in Fig. 2). Given that the motivating Fig. 1 is about LLM-scale retrieval, the leap from 'linear attention loses on SLR with L=3' to 'this explains softmax's retrieval advantage in LLMs' is asserted rather than shown. There is no bridging experiment (e.g., on MQAR or NIAH-style tasks with realistic L) linking the theoretical prediction to the empirical retrieval gap.",
+      "suggested_fix": "Add at least one experiment on MQAR or a similar synthetic retrieval benchmark comparing softmax and linear (or kernelized) attention as a function of L and signal, and check whether the qualitative scaling predicted by Corollaries 4.3–4.4 (e.g., 1/ν vs exp(-cν), log(L)/L vs 0) is recovered. Even a small-scale trained-Transformer experiment would substantially strengthen the paper's external validity."
+    },
+    {
+      "severity": "minor",
+      "issue": "The connection to 'performance efficiently attainable with one-pass SGD' (claimed for the population analysis) is asserted but not proved. Ben-Arous-style summary statistic dynamics are invoked informally via the gradient-at-init condition (Corollary 4.1), but no sample-complexity theorem for one-pass SGD is given, and the manifold-invariance argument is deferred to the appendix and admitted to be incomplete.",
+      "suggested_fix": "Either derive a formal one-pass SGD sample complexity on the reduced order-parameter system (as done for related single-index models), or soften the wording in the introduction/Section 4 to make clear this is a heuristic identification rather than a theorem."
+    },
+    {
+      "severity": "minor",
+      "issue": "The novelty over Marion et al. (2025)/Cui (2025)/Troiani et al. (2025)/Arnaboldi et al. (2025) is delineated in prose but not quantitatively. The reader is left to trust that variable L, the reweighted-Gaussian generic g_ν, and treating softmax (rather than element-wise) inside the replica computation are the key technical departures. Given how close the framework is to prior sequence multi-index work, a more explicit 'what is new' table or theorem-by-theorem attribution would help.",
+      "suggested_fix": "Add a short subsection or table in Related Work explicitly listing which results were previously known, which are direct extensions, and which are genuinely new (e.g., the Nishimori/Bayes-risk argument for softmax attention, the effect of Var(L), and the max-SLR separation)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The setup omits learnable query vectors and value/output mixing beyond a single v, so the class F_σ under study is strictly weaker than a standard attention head; this is acknowledged but the implication — that any gap you show between softmax and linear may shrink once query learning is added — is not discussed.",
+      "suggested_fix": "Add a brief discussion of how the separation is expected to behave with learnable Q, and ideally a small ablation with a learnable query in the numerical section."
+    }
+  ],
+  "questions_for_authors": [
+    "How sensitive is Result 5.1 to the diagonal/manifold restriction? Do you see off-diagonal order parameters at any tested (α, ν, L, r_k, r_v), particularly at low α where regularization matters most?",
+    "Can you connect the L→∞ separation in Corollary 4.3 (linear → trivial predictor, softmax → 0) to any empirically observable trend in trained Transformers vs. linear/kernelized models on MQAR or NIAH as context length grows?",
+    "The softplus-kernelized attention 'is not well-specified' on max-SLR and its gap to softmax widens with L. Does this mean the retrieval failure of kernelized attention in Shen et al. (2024) is predicted by kernel tail behavior alone, independent of normalization? Can your framework produce a quantitative kernel-choice diagnostic?",
+    "For the one-pass SGD claim: do you have simulations showing that SGD sample complexity for reaching the Bayes-optimal (or ERM-predicted) risk on SLR scales as predicted by the order-parameter dynamics, and does it differ between linear and softmax in the way theory suggests?",
+    "How does the analysis change qualitatively if the label depends on two tokens (rather than a single location), i.e., what breaks first — the Nishimori identity that gives softmax Bayes-optimality, or the manifold assumption?"
+  ],
+  "calibration_check": "Claims are mostly appropriately scoped: the paper is careful to describe results as pertaining to the SLR toy model and flags the replica method as non-rigorous, though the framing occasionally leans on the LLM-retrieval motivation (Fig. 1) more strongly than the SLR-only evidence formally supports.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Understanding why softmax dominates alternatives — especially for retrieval — is a genuinely important open question in the community, and a principled toy model with a clean population-and-finite-sample separation is a useful contribution, though the impact depends on how much readers accept SLR as a proxy for real retrieval."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The technical framework is a moderate extension of existing sequence multi-index / order-parameter machinery (Cui, Troiani, Arnaboldi, Marion) to variable sequence length and softmax normalization; the softmax-attains-Bayes-risk observation and the L-variance argument are the freshest pieces."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Population-level results (Props. 4.1–4.4, Corollaries 4.1–4.4) look formally proven, but the finite-sample cornerstone (Result 5.1) is a replica calculation plus a manifold restriction, and the SGD/optimization claims are informal — a mix of proven, plausibly-provable, and heuristic."
+    },
+    "statistical_soundness": {
+      "score": 6,
+      "justification": "Numerical simulations compare theory to quasi-Newton ERM at finite N,D and appear consistent, but the paper does not report seeds, error bars, or how many restarts of the fixed-point iteration were used, and all experiments are synthetic and small-L."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Limitations (no learnable Q, replica non-rigor, manifold assumption, small-L) are stated in the text; the phrase 'statistical and computational advantages' in Section 5 is a slight overreach relative to the evidence but is not egregiously overclaimed."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The high-level narrative is clear and the corollaries convey the story well, but the mid-paper mathematical presentation (Section 5, equations 17–25) is dense and hard to parse in one pass — some intermediate intuition is provided but notation is heavy."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard Intro / Related Work / Model / Population Analysis / Finite-Sample Analysis structure, appropriately scoped for an ICLR-length paper with proofs deferred to appendices."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Theory is fully specified (order parameters, self-consistent equations, activation choices) and could be re-derived; the numerical protocol (grid search on r_k, r_v, N,D=1e4, quasi-Newton) is described at a level that allows reproduction, though details on optimizer settings, restarts, and the fixed-point solver could be sharper."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "The connections to sequence multi-index models, kernelized attention, SSMs, and induction-head/MQAR literature are well-mapped; the delineation vs. Marion et al. (2025) and concurrent works Dohmatob (2025), Barnfield et al. (2026), Dragutinović et al. (2025) is present but somewhat brief."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "From the captions, Fig. 2 (population risk vs. ν for four activations across two tasks and three L regimes) and Fig. 3 (finite-α test risk vs. theory) look well-designed to isolate the effects claimed in the text, and Fig. 1 usefully frames the empirical motivation from prior work."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Scope is narrow: one synthetic task family (SLR with two variants), small L, no learnable query, no experiments on real retrieval benchmarks — the generality of the softmax-over-linear conclusion beyond SLR is asserted rather than demonstrated."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "A careful, honestly-scoped theoretical paper that materially clarifies why softmax attention outperforms linear on retrieval-like tasks; borderline accept for ICLR, contingent on tightening the manifold-assumption evidence and adding at least a bridging experiment to real retrieval."
+    }
+  },
+  "publishability_probability": 0.55
+}

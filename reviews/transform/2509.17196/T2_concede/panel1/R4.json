@@ -1,0 +1,111 @@
+{
+  "grade": "Minor Revision",
+  "summary": "The paper adapts crosscoders (originally cross-layer) to a cross-snapshot setting to track how sparse features emerge, rotate, and decay during LLM pre-training on the Pythia suite. It contributes (i) a concrete methodology using decoder norms as proxies for feature presence at a snapshot, (ii) empirical characterizations (complexity–emergence correlation, feature persistence, a universal directional turning point around step 1k), (iii) attribution-based circuit tracing linking features to SVA/IOI/induction metrics, and (iv) evidence for a statistical→feature-learning phase transition via unigram/bigram KL and total feature dimensionality. The contribution is genuinely novel within mech-interp on training dynamics, and the mixture of representational, causal, and behavioral analyses is a strength; the main weaknesses are limited generality (Pythia only, single layer per model), simple downstream tasks, and some phase-transition claims that lean on decoder-norm behavior from the same crosscoder being interpreted.",
+  "strengths": [
+    "Genuinely novel adaptation of crosscoders from cross-layer to cross-snapshot analysis, filling a real gap since most SAE work targets fully-trained models.",
+    "Careful comparison to per-snapshot SAEs (matched hyperparameters, Pareto frontier) that supports the claim that crosscoders do not lose reconstruction fidelity while gaining alignment across snapshots.",
+    "Multi-pronged analysis: not only representational statistics but also attribution-patching circuit analysis on SVA/IOI/induction, tying feature emergence to task metrics with both retention and ablation of top features.",
+    "The complexity-vs-emergence-time correlation and the previous-token → induction → context-sensitive emergence ordering are non-trivial empirical results that align with independent evidence (induction heads literature).",
+    "Reasonably transparent discussion of failure modes of feature alignment (splitting vs misalignment) and explicit sanity check via linear probes in the appendix.",
+    "Uses two model scales (160M and 6.9B) rather than only a toy model, which strengthens robustness of the qualitative phenomena."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Generality is thin: all conclusions come from a single model family (Pythia), a single mid-layer per size, and a single crosscoder width per size, yet the paper repeatedly makes universal-sounding claims (e.g., 'universal directional turning point,' 'statistical-to-superposition transition'). The step-1k turning point in particular could plausibly track Pythia's LR warmup or optimizer schedule rather than a general property of pre-training.",
+      "suggested_fix": "Replicate at least the turning-point and phase-transition analyses on a second model family (e.g., OLMo, LLM360, TinyLlama checkpoints) and on ≥2 layers per model. If Pythia-only, retitle claims from 'universal' to 'in Pythia' and explicitly test whether the turning point moves with LR schedule."
+    },
+    {
+      "severity": "major",
+      "issue": "The Section-6 evidence for a statistical→feature-learning transition partly uses total feature dimensionality D_i computed from the same crosscoder whose decoder norms are being interpreted. Because the crosscoder is trained on all snapshots jointly, early-snapshot dictionaries are shaped by the sparsity penalty in a way that could mechanically produce the observed compression-then-expansion curve.",
+      "suggested_fix": "Add a control: train crosscoders using only early snapshots (or only late snapshots) and check whether the D_i curve on the shared range reproduces. Alternatively, corroborate the phase transition with an independent measure (per-snapshot SAE dimensionality, LLC/RLCT estimates, or a probe-capacity curve) that is not derived from the joint crosscoder."
+    },
+    {
+      "severity": "major",
+      "issue": "Statistical soundness is under-reported. Number of crosscoder training seeds, variability of the emergence-time and complexity distributions, and confidence intervals on the Pareto/L0 comparisons are not shown. The Pearson r=0.309 correlation (Fig. 6a) is on 100 auto-scored samples with an LLM judge — this is fragile without inter-rater or seed variance.",
+      "suggested_fix": "Report ≥3 crosscoder seeds for the core analyses (Fig. 2, Fig. 4, Fig. 8c), add bootstrap CIs on emergence-time histograms, and validate the LLM complexity scores against a small human-rated subset or a second judge model."
+    },
+    {
+      "severity": "major",
+      "issue": "The circuit-tracing section demonstrates recovery/ablation on tens of features but stops short of validating that the crosscoder's decoder-norm 'emergence' matches the training step at which the task metric itself moves. Without that alignment, the story 'feature emergence → task capability' is suggestive rather than causal.",
+      "suggested_fix": "For SVA/IOI/induction, overlay the per-snapshot task metric with the emergence trajectories of the top-K attributed features and quantify (e.g., Granger-style or lagged correlation) whether feature emergence precedes and predicts the metric jump."
+    },
+    {
+      "severity": "minor",
+      "issue": "Baseline for the tracking capability itself is missing: crosscoders are compared to per-snapshot SAEs on reconstruction, but not to simpler cross-snapshot alignment baselines (e.g., independently trained SAEs aligned by activation-similarity or Hungarian matching, or a shared-encoder / independent-decoder ablation) to show that jointly training decoders is what buys the alignment.",
+      "suggested_fix": "Add an ablation where per-snapshot SAEs are trained and features are matched post-hoc, and compare the resulting evolutionary trajectories and the fraction of 'stable' features to the crosscoder."
+    },
+    {
+      "severity": "minor",
+      "issue": "The manuscript contains a duplicated Limitations block: one substantive section and a second, generic-sounding paragraph at the end. This looks like a template artifact and undermines the paper's calibration signal.",
+      "suggested_fix": "Delete the second, generic limitations paragraph and keep only the topical one."
+    },
+    {
+      "severity": "minor",
+      "issue": "Text is riddled with OCR/word-break artifacts ('crosscoders(Lindsey et al., 2024)', 'pre-training(Radford et al., 2018)', 'multiplepre-training snapshots', many missing spaces), and equation formatting appears broken in places (e.g., the reconstruction sum in Eq. 1). This is a clarity hit even accounting for extraction.",
+      "suggested_fix": "Clean up spacing/math typesetting and verify Eq. 1–6 render correctly; check that σ is defined precisely (JumpReLU? TopK?) in the main text, not only in the appendix."
+    }
+  ],
+  "questions_for_authors": [
+    "Does the step-~1000 directional turning point shift when the LR warmup schedule or batch size is changed? Is it possible to rule out that it simply tracks the end of warmup on Pythia?",
+    "How sensitive are the emergence-time distributions and the feature-dimensionality curves to crosscoder width, sparsity coefficient, and random seed?",
+    "For the complexity–emergence correlation, what happens if you (a) use a different judge model, (b) score the same features twice, and (c) restrict to features with high interpretability confidence? Does r=0.309 survive?",
+    "Section 6 uses D_i computed on the joint crosscoder. Have you verified the compression-then-expansion pattern with an independent estimator (per-snapshot SAE, LLC, probe capacity)?",
+    "In Section 5, does the emergence time of the top-attributed features (e.g., 47045, 68813, 69636) actually align with the snapshot at which the SVA metric jumps, or only precede it loosely?",
+    "Do the two developmental patterns (initialization vs emergent features) reproduce at other layers of Pythia and at other model families, or is this specific to mid-layer of Pythia?",
+    "The paper claims decoder norm is a 'direct' proxy for feature presence. Under what conditions does this break — e.g., features that share directions across snapshots but change activation semantics?"
+  ],
+  "calibration_check": "Claims are mostly scoped, but 'universal directional turning point' and the statistical-to-superposition framing generalize further than the Pythia-only, single-layer evidence warrants and should be softened.",
+  "recommended_for_publication_after_minor_fixes": true,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Cross-snapshot feature tracking is a plausibly useful primitive for the mech-interp/training-dynamics community, and the linkage to circuit tracing and phase-transition claims makes it more than a methods report."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "Applying crosscoders across pre-training checkpoints (rather than across layers or model versions) is a genuinely new use, and the resulting analyses (turning point, emergence hierarchy) are not obvious extensions of prior SAE work."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Methodology is largely sound and the crosscoder-vs-SAE control is a good check, but several key claims (phase transition, universality) depend on the same tool being studied and lack independent corroboration."
+    },
+    "statistical_soundness": {
+      "score": 5,
+      "justification": "Seed counts, error bars on Pareto/L0 curves, variance on emergence histograms, and inter-judge agreement on complexity scores are largely missing; the reported r=0.309 correlation is not stress-tested."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "A dedicated limitations section is present and reasonable, but the paper still uses strong language ('universal turning point', 'statistical-to-superposition transition') on evidence that is single-family and single-layer."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The overall narrative is coherent and easy to follow at a high level, but equation formatting, spacing artifacts, and imprecise notation in the crosscoder objective and IG description mildly obscure important details."
+    },
+    "structure_compliance": {
+      "score": 6,
+      "justification": "Standard ICLR structure is followed, but the manuscript has a duplicated limitations block and mixes conclusion/limitations placement, which reads as unpolished."
+    },
+    "reproducibility": {
+      "score": 7,
+      "justification": "Uses the fully public Pythia suite and SlimPajama with described snapshot selection, crosscoder widths, and layers; enough detail is given that a competent reader could reproduce the pipeline modulo hyperparameter fine points that live in the appendix."
+    },
+    "related_work": {
+      "score": 7,
+      "justification": "Related work covers the relevant literature — SAEs/crosscoders/transcoders, IB/NTK/SLT, learning dynamics — and positions the contribution clearly as the first cross-snapshot use, with appropriate credit to Lindsey et al."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Judging from captions, the figures are informative and directly tied to the claims (Pareto comparison, norm-evolution grid, emergence-time histograms, KL and dimensionality curves) rather than decorative."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Two model sizes but a single model family, single mid-layer per model, and only simple downstream tasks (SVA/IOI/induction) — the breadth does not really support the generality-flavored claims."
+    },
+    "overall_recommendation": {
+      "score": 6,
+      "justification": "Borderline accept: novel and useful methodology with interesting empirical findings, offset by generality and independent-corroboration gaps that a revision could plausibly close."
+    }
+  },
+  "publishability_probability": 0.55
+}

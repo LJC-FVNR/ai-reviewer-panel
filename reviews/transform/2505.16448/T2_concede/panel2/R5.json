@@ -1,0 +1,103 @@
+{
+  "grade": "Major Revision",
+  "summary": "This paper proposes that 'internal bias'—a model's preliminary answer formed before deliberate reasoning—is a key driver of overthinking in o1/R1-style reasoning models. The core hypothesis is novel and timely, and the authors deploy three lines of evidence: correlational statistics across models and tasks, two counterfactual interventions (question removal and bias injection), and attention analysis. The idea is compelling and the experiments are imaginative, but the causal chain rests on interventions with underspecified mechanisms and alternative explanations, statistical rigor is consistently weak (no error bars, small AIME samples, point estimates throughout), and the generality claims outrun the evidence base.",
+  "strengths": [
+    "Novel, clearly stated hypothesis that reframes overthinking as a bias-conflict phenomenon rather than a training artifact—directly addresses a gap in the rapidly growing efficient-reasoning literature.",
+    "Multi-model, multi-scale validation (14B, 32B, 671B; DeepSeek and Qwen families; English/Chinese prompts) adds breadth to the correlational claim.",
+    "Two conceptually distinct counterfactual interventions (question removal and sample-wise bias injection) represent a serious attempt to move beyond correlation; the 31–53% reduction in redundant reasoning length is a concrete, noteworthy result.",
+    "Attention analysis (both the illustrative 'strawberry' example and the quantitative layer-wise statistics) gives a mechanistic story that is interpretable and aligns with the broader literature on attention sinks and reflection triggers.",
+    "The negative result—that existing mitigation methods do not eliminate internal-bias influence—is an honest and useful finding that motivates future work."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "The question-removal intervention's technical implementation is critically underspecified. 'Removing the input question from the prompt' during autoregressive generation is ambiguous: does this involve KV-cache ablation, attention masking, or prompt re-injection after the first answer token? Each implementation has very different implications. If KV-cache entries for question tokens are retained, their representations still influence subsequent attention and the intervention does not cleanly isolate input-dependent bias reactivation. This gap makes the causal conclusion unverifiable and potentially invalid.",
+      "suggested_fix": "Add a precise algorithmic description of the intervention (pseudocode or implementation notes) in the main text, specifying exactly which tokens are masked/removed, when, and how the KV cache is handled. Include an ablation comparing attention-mask-only vs. full cache purge if both are feasible."
+    },
+    {
+      "severity": "blocking",
+      "issue": "All tables report point estimates with no confidence intervals, standard deviations, or significance tests. The AIME 2024/2025 benchmarks contain only 30 problems each (inferred from 63.3% = 19/30), making comparisons such as 63.3% → 66.7% statistically meaningless. Even the larger CharCount experiments (1,000 samples) lack error bars. The paper repeatedly draws conclusions (e.g., length increases of 21–42%, accuracy changes in Table 2 of ±2pp) without any test of whether these differences exceed noise.",
+      "suggested_fix": "Report mean ± standard deviation across at least three seeds for all tables. For AIME (small N), use Wilson confidence intervals or exact binomial tests and caveat any comparison with 95% CI overlap. Expand AIME evaluation to AIME 2019–2025 combined or other math benchmarks to increase statistical power."
+    },
+    {
+      "severity": "major",
+      "issue": "The bias injection experiment (Section 5.2) fine-tunes on 50 rephrased declarative statements per sample and then evaluates on the exact same sample. This is effectively sample-wise memorization, not bias manipulation: the model may simply have memorized the correct/incorrect answer rather than having its internal bias distribution shifted. The Random2Correct and Random2Wrong baselines do not fully control for this because they use different samples for train and test, so the confound is different.",
+      "suggested_fix": "Add a held-out evaluation: fine-tune on sample S using rephrased statements, then test on semantically similar but distinct samples S' to verify that the bias shift generalizes beyond memorization of the specific instance. Alternatively, report activation-space evidence that the direct-answer distribution shifts as expected after injection."
+    },
+    {
+      "severity": "major",
+      "issue": "The claim of 'universality' is overstated relative to the task coverage. All tasks with deep analysis (CharCount, KnowLogic, AIME) have structured, closed-form answers. The paper explicitly disclaims applicability to open-ended tasks in the limitations section, yet the introduction and abstract use language like 'widespread influence' and 'various complex reasoning tasks' without this caveat. The analysis is also absent for coding tasks, scientific reasoning, or other ICLR-relevant settings.",
+      "suggested_fix": "Soften generality language in abstract/introduction to match the scope of experiments. Add at least one additional structured reasoning domain (e.g., coding/HumanEval or a science QA benchmark) to broaden the empirical base, or explicitly narrow the contribution claim to character-counting, logic, and competition mathematics."
+    },
+    {
+      "severity": "minor",
+      "issue": "The mitigation baselines (FCS, SEAL, PROBE) are reimplementations by the authors rather than results from original codebases. No verification against reported numbers from the original papers is provided, introducing potential reimplementation error that could artificially inflate the gap with the question-removal baseline.",
+      "suggested_fix": "Include a single row in Table 4 showing the original reported numbers for each method (if available on comparable settings) or explicitly state that no comparable setting exists. Report reimplementation details sufficient for independent verification."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention-mechanism interpretation (Section 6.2) demonstrates correlation between question-token attention weight and reflection steps but does not establish that intervening on attention would change overthinking behavior. The probing study mentioned as support (Appendix J.1) is not summarized in the main text, weakening the mechanistic chain presented as a key contribution.",
+      "suggested_fix": "Summarize the probing results in 2–3 sentences in the main text. Ideally, include an ablation where attention to question tokens is directly suppressed at reflection steps (e.g., via attention steering) to test whether this reduces overthinking, even if preliminary."
+    }
+  ],
+  "questions_for_authors": [
+    "How exactly is the question removed during autoregressive generation in Section 5.1? Are the KV-cache entries for question tokens cleared, masked, or retained? What happens at the attention level when the prompt is truncated?",
+    "In the bias injection experiment, training and testing are performed on the exact same 500 samples. What is the reasoning length and accuracy when evaluating on held-out samples from the same distribution? Is the effect of injection generalized or sample-specific?",
+    "Table 1 reports results for DeepSeek-R1 (671B) on CharCount and AIME but this model is absent from the counterfactual interventions (Section 5) and attention analysis (Section 6). Why, and do the causal and mechanistic findings hold for the 671B model?",
+    "The attention analysis in Section 6.2 averages over layers 21–30. How sensitive are the reported ratios (Figure 4b) to this layer range? Do early layers show the same pattern? Is the choice of layers 21–30 motivated by prior mechanistic work or post-hoc from the data?",
+    "For the 'removing question' intervention on simple tasks (CharCount en/zh), accuracy drops slightly (93.8% → 93.2%; 73.4% → 72.9%). The paper attributes this to disruption of short reasoning chains. Have you tested whether the drop disappears if the intervention is applied only after a longer reasoning prefix, suggesting a minimum-reasoning-length threshold for safe application?"
+  ],
+  "calibration_check": "The abstract and introduction use causal language ('triggers', 'causal relationship', 'key driver') that is moderately supported by the counterfactual design but outpaces the statistical rigor; the explicit limitations section is honest, but this caveat is too distant from the strong causal claims in the front matter.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 7,
+      "justification": "Overthinking in reasoning models is a high-priority problem for the ICLR community, and identifying a root cause (rather than another mitigation heuristic) is a valuable contribution that practitioners and researchers would build on."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The framing of internal bias as a distinct, measurable precursor to overthinking—distinct from existing unfaithfulness and bias work—is genuinely novel, though it extends a line of mechanistic work on implicit answer priors."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The counterfactual design is imaginative, but the question-removal intervention lacks implementation specificity (KV cache ambiguity) and the bias injection conflates memorization with bias shift, leaving the causal chain partially open to alternative explanations."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No confidence intervals or standard deviations appear in any table; AIME evaluations use ~30 samples, making all accuracy comparisons statistically underpowered; differences of 2–3 percentage points are reported without significance tests throughout."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "The limitations section is candid about scope, and the paper does not claim SOTA outright, but the 'causal' and 'universal' language in the abstract and introduction is stronger than the evidence strictly supports."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-written with a logical flow from hypothesis to measurement to intervention to mechanism; notation is defined clearly and examples (strawberry) aid intuition."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard ICLR structure is followed; the paper is within typical length with most heavy details appropriately deferred to appendices; the separate 'LIMITATIONS' section after Conclusion is redundant with the limitations paragraph in Section 8 but not a significant problem."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Hyperparameters and datasets are described in appendices, and the 64-sample multi-template protocol for direct answers is explained, but the key question-removal intervention lacks an algorithmic specification sufficient to re-implement."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Coverage of the overthinking mitigation literature and bias/unfaithfulness work is thorough and fair; comparisons to SEAL, PROBE, and FCS are included, though reimplementation rather than original results introduces uncertainty."
+    },
+    "figure_quality": {
+      "score": 7,
+      "justification": "Captions for Figures 1–4 and Tables 1–4 describe informative, well-chosen display items; the correlation plots (Figure 2), attention heatmaps (Figure 3), and layer-wise attention ratios (Figure 4) all directly support the paper's claims rather than decorating them."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Deep analysis is concentrated on CharCount (a synthetic task), with AIME providing only 30 problems and KnowLogic used mainly for Table 1; coding or open-ended tasks are explicitly excluded, and the 671B model is absent from most experiments, limiting the claimed universality."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "An interesting and timely paper with a novel hypothesis and creative experimental design, but the combination of underspecified interventions, absent error bars, small AIME samples, and a memorization confound in bias injection place it at borderline reject pending major revisions."
+    }
+  },
+  "publishability_probability": 0.27
+}

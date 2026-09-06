@@ -1,0 +1,114 @@
+{
+  "grade": "Major Revision",
+  "summary": "SteerVAD proposes a tuning-free video anomaly detection framework for frozen MLLMs that introduces Representational Separability Analysis (RSA) to identify task-aligned attention heads and a Hierarchical Meta-Controller (HMC) to perform context-conditioned anisotropic feature scaling. The geometric framing via the manifold hypothesis is conceptually appealing and the within-method ablation is thorough. However, the margin over the closest competitor in Table 1 is very small (<0.5% AUC / <1% AP), the method is validated on a single MLLM backbone, evaluation spans only two benchmarks, and no statistical significance testing is provided for the cross-method comparisons—making it impossible to confirm whether improvements are real. Additionally, a self-citation appears as '[Author] et al., 2025' (HiProbeVAD), and the relationship to and differentiation from this prior work is never explained.",
+  "strengths": [
+    "The manifold-hypothesis framing provides an intuitive and principled motivation that elevates the narrative above typical feature-engineering papers.",
+    "The ablation studies are unusually thorough: HMC component ablation (Table 2 Part A), expert selection strategy (Table 2 Part B), stability across 10 random seeds (Table 3), data efficiency curve (Table 4), and hyperparameter sweep (Table 5).",
+    "The stability result in Table 3—identical LAEs selected in all 10 runs with σ ≈ 0.04% AUC—is a strong empirical claim that the identified circuits are intrinsic to the backbone, not artifacts of the calibration sample.",
+    "Training time and data efficiency are concretely quantified: <1 min and ~16 videos at 1% data, providing a clear, practically useful comparison against full-training alternatives.",
+    "The composite training objective combining BCE with sparsity regularization on normal samples is well-motivated and adds a useful inductive bias."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "Single-backbone evaluation. All experiments use InternVL3 exclusively. The paper claims a 'powerful new direction' and a general 'intervention paradigm' for frozen MLLMs, but every number in every table comes from a single model family. If RSA selects fundamentally different head sets in, say, LLaVA-1.5 or BLIP-2, the generality claim collapses.",
+      "suggested_fix": "Add experiments on at least one additional MLLM backbone (e.g., LLaVA-1.5 or BLIP-2, both of which appear as baselines in Table 1). Report RSA-selected heads and downstream AUC/AP for each backbone to validate that the mechanism generalises."
+    },
+    {
+      "severity": "blocking",
+      "issue": "No statistical significance testing for the main comparison results. The margin over the closest competitor HiProbeVAD is +0.43% AUC on UCF-Crime and +0.87% AP on XD-Violence. Table 3 estimates the within-SteerVAD run-to-run variance as σ ≈ 0.04%, but the variance of HiProbeVAD, VERA, and other competitors is unknown. Without confidence intervals or significance tests across methods, the claim of SOTA cannot be substantiated.",
+      "suggested_fix": "Report mean ± std over multiple runs (different random seeds for calibration data sampling) for SteerVAD and, where feasible, for baseline methods using published code. Apply a paired or bootstrap test to establish whether the 0.43% / 0.87% deltas are statistically significant."
+    },
+    {
+      "severity": "blocking",
+      "issue": "Undisclosed self-comparison. 'HiProbeVAD ([Author] et al., 2025)' in Table 1 is clearly an anonymised self-citation. SteerVAD outperforms it by 0.43% / 0.87%, yet the paper never explains what HiProbeVAD is, how it differs architecturally, or whether SteerVAD is a strict extension. This omission makes it impossible to assess the novelty increment and whether the contribution is sufficient for a separate submission.",
+      "suggested_fix": "In the camera-ready (or in an author response), provide a clear compare-and-contrast against HiProbeVAD in the Related Work and Method sections. If HiProbeVAD is a probe-based approach without geometric steering, explain that distinction explicitly and add a dedicated ablation."
+    },
+    {
+      "severity": "major",
+      "issue": "Only two benchmarks evaluated. UCF-Crime and XD-Violence are standard, but the field also uses ShanghaiTech Campus, CUHK Avenue, and newer datasets like TAD or UBnormal. A method claiming broad efficacy for VAD with MLLMs should at minimum gesture toward one additional benchmark.",
+      "suggested_fix": "Add one more benchmark dataset. If InternVL3's resolution/frame-rate requirements are incompatible with certain datasets, state this explicitly as a limitation."
+    },
+    {
+      "severity": "major",
+      "issue": "The 'tuning-free' framing is imprecise. The HMC (GSG + K LGM adapters) and the logistic-regression scorer are trained with gradient descent on labeled calibration data. The paper correctly places itself in the 'Few-Parameter Learning' row of Table 1, but the abstract and introduction repeatedly describe the method as 'tuning-free', which conflicts with the literal training performed. This risks misleading readers about the supervision budget.",
+      "suggested_fix": "Adopt consistent language throughout: 'lightweight calibration', 'few-parameter learning', or 'frozen-backbone adaptation'. Reserve 'tuning-free' for methods that apply zero gradient updates (e.g., ZS CLIP, ZS ImageBind)."
+    },
+    {
+      "severity": "major",
+      "issue": "Missing ablation on temporal smoothing (Gaussian kernel post-processing). The smoothing in Equation 6 can substantially boost frame-level AUC on these benchmarks by filling in short prediction gaps around sustained anomalies. Without an ablation isolating its contribution, it is unclear how much of the gain comes from the geometric steering versus the post-processing.",
+      "suggested_fix": "Add a row to Table 2: 'Full Model w/o Gaussian Smoothing'. This is a single change requiring minimal additional compute."
+    },
+    {
+      "severity": "minor",
+      "issue": "Inference latency is never measured. The paper discusses training time extensively but does not report per-video or per-segment inference time compared to baselines. For a surveillance application, real-time performance is explicitly stated as a goal (Section 3.2), yet no latency numbers appear.",
+      "suggested_fix": "Report average inference time per video segment on the A6000 alongside the training time in Table 4, and compare to at least one baseline (e.g., LAVAD or EventVAD)."
+    },
+    {
+      "severity": "minor",
+      "issue": "The scatter-ratio metric (Equation 1) is a well-known Fisher criterion / between-class-to-within-class ratio from classical LDA/FLD. The paper presents it without attribution to this lineage, which may mislead readers about its novelty.",
+      "suggested_fix": "Add a sentence situating the RSA metric within classical scatter analysis (Fisher, 1936) and note that the novelty lies in applying it to frozen attention-head representations rather than in the metric itself."
+    }
+  ],
+  "questions_for_authors": [
+    "HiProbeVAD appears as '[Author] et al., 2025' in Table 1 and is the closest competitor. What is the architectural relationship between SteerVAD and HiProbeVAD? Is SteerVAD a direct extension, and if so, what specifically is the new contribution beyond that prior work?",
+    "Have you tested SteerVAD on any MLLM backbone other than InternVL3? If so, do the same four LAEs (L18H4, L23H24, L21H21, L22H7) appear as top-scoring heads, or does RSA select a completely different set? This directly bears on the generality of the 'latent anomaly experts' concept.",
+    "What is the inference-time overhead of the HMC relative to the frozen MLLM baseline? Specifically, how much slower is a single forward pass with the HMC appended versus VERA or EventVAD?",
+    "The regularization term (Equation 8) penalises sglobal for normal samples. Did you try placing the same sparsity penalty on the local steering vectors gi for normal samples? Could this further reduce false positives?",
+    "Table 4 shows that going from 1% to 100% training data yields only +0.27% AUC, suggesting geometric saturation. Does this saturation also hold for XD-Violence, or is that dataset's more diverse anomaly taxonomy more data-hungry?",
+    "Appendix A is cited multiple times for the rigorous topological analysis and geometric interpretation of Equation 4, but is not included in this submission. Can you confirm these appendices exist and summarise the key claims from Appendix A regarding the theoretical justification for anisotropic scaling as a manifold transformation?"
+  ],
+  "calibration_check": "The 'state-of-the-art among tuning-free methods' claim is technically defensible but oversold: the margin over the nearest competitor is <0.5% AUC without significance testing, the evaluation covers only two benchmarks and a single backbone, and 'tuning-free' is used inconsistently given that supervised gradient updates do occur on calibration data.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Efficient adaptation of frozen MLLMs for VAD is a timely and practically relevant problem, but the demonstrated improvements are incremental (<0.5% AUC) and validated on too narrow a scope to claim broad impact."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The combination of RSA-based expert discovery and context-conditioned anisotropic scaling is a fresh integration, but each component individually (scatter ratios for submodule selection, element-wise feature gating) is well-precedented; the manifold framing is motivational rather than introducing new mathematical machinery."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Within-method ablations are thorough, but the method is evaluated on a single MLLM backbone, with no cross-backbone or cross-dataset transfer, and the causal attribution of gains to geometric steering versus temporal smoothing post-processing is not isolated."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Run-to-run variance for SteerVAD is impressively low (σ ≈ 0.04%), but primary Table 1 comparisons lack confidence intervals or significance tests, and the claimed performance advantage over HiProbeVAD and VERA is within plausible noise bounds for those methods."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations around labeled calibration data and data efficiency are honestly quantified, and the gap to fine-tuned methods is stated; however, 'tuning-free' is applied inconsistently and the 'first to' claims in contributions are broader than warranted given related activation-steering and mechanistic-interpretability literature."
+    },
+    "clarity": {
+      "score": 7,
+      "justification": "The paper is well-written with a logical narrative arc from manifold hypothesis to framework design; equations are clearly stated and the ablation tables are well-organised, though the prose occasionally repeats the same motivation in multiple sections."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "The paper follows standard conference structure (Abstract, Introduction, Related Work, Methodology, Experiments, Conclusion) at an appropriate length, with appendix references that supplement rather than replace main-text content."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Hyperparameters, dataset splits, and hardware are specified; however, the appendices containing the theoretical analysis (Appendix A) and full implementation details (Appendix B) are not included, and code is deferred to post-publication, preventing full reproducibility assessment."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Coverage of traditional VAD, MLLM-based VAD, and mechanistic interpretability is reasonable, but the relationship to HiProbeVAD (an anonymised self-citation that is the closest competitor) is never explained, and the attribution of the RSA scatter-ratio metric to its LDA lineage is absent."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions: Figure 2 (3D UMAP of manifolds, two rendering styles) and Figure 4 (t-SNE before/after rectification on both datasets) are appropriate choices that directly visualise the core geometric claims; Table 1 is well-structured with clear method categorisation, though Figure 1's comparison diagram appears verbose from the caption."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Only two benchmarks and a single MLLM backbone are evaluated; no experiments demonstrate that RSA selects meaningful LAEs in a different backbone or that the method generalises beyond InternVL3, undermining the paper's broad claims about frozen MLLMs as a class."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "The work is promising—clean idea, honest ablations, compelling data-efficiency story—but the combination of single-backbone evaluation, two-benchmark scope, unresolved self-comparison, lack of significance testing for the key claim, and inconsistent 'tuning-free' framing places it below the ICLR acceptance bar in its current form."
+    }
+  },
+  "publishability_probability": 0.27
+}

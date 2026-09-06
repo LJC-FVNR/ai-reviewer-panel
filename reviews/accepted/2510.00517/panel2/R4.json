@@ -1,0 +1,109 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper studies adversarial robustness of Differential Attention (DA) and argues that its subtractive structure structurally encourages negative gradient alignment between the two branches, thereby amplifying local sensitivity, and offers a depth-dependent noise-cancellation counter-mechanism. The framing is timely given growing interest in DA, and the empirical picture (ASR, Lipschitz estimates, gradient-alignment frequency) is broadly consistent with the theory. However, the theoretical contribution reduces to an elementary norm-decomposition of a subtraction and its depth-recursion sibling, key empirical claims lack seeds/variance/statistical tests, some findings are inconsistent across scales (ImageNet), and the breadth of DA variants, attacks, and modalities tested does not match the paper's structural-generality claims.",
+  "strengths": [
+    "Timely and well-motivated question: DA is being adopted rapidly, and its robustness has genuinely not been examined; the mechanism-level framing (fragility as a structural byproduct of the cancellation objective) is a useful conceptual contribution.",
+    "The connection between subtractive structure, negative gradient alignment, cross-term sign, and local Lipschitz upper bound (Lemma 1–2, Thm 1–3) is stated cleanly and gives testable predictions the empirical section then targets.",
+    "The depth-dependent crossover (Cor. 1) is a non-obvious refinement that reframes an initially one-sided fragility story and matches the trend across depths in Fig. 3.",
+    "Empirical evaluation spans two architectures (ViT/DiffViT, CLIP/DiffCLIP), several datasets, three standard attacks (PGD, AutoAttack, CW) plus patch variants, and includes ablations on λ_init and depth — a reasonable, if not deep, mechanism-focused sweep.",
+    "Limitations section is refreshingly honest about local linearization, layer isolation, and the choice to avoid robustness-enhancing training as a confound."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "Statistical rigor is thin. ASR tables and Lipschitz/gradient-alignment figures are reported without seeds, confidence intervals, or significance tests. Several of the head-to-head DA-vs-baseline comparisons (especially on ImageNet, where patch-attack results even reverse) are small enough that a couple of seeds could plausibly change the sign.",
+      "suggested_fix": "Report mean ± std across at least 3 seeds for all ASR/Lipschitz/alignment numbers, add paired significance tests (e.g., McNemar or bootstrap CIs) for the DiffViT-vs-ViT and DiffCLIP-vs-CLIP ASR comparisons, and mark differences whose sign is not seed-stable."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical results are elementary. Lemma 1 is just ‖a−λb‖² expanded; Theorems 2–3 are restatements. The depth analysis (Thm 4, Cor. 1) inserts a scalar α<1 as an assumption rather than deriving it from DA's structure, so the crossover result is essentially ‘if a hypothetical multiplicative reduction exists, depth helps’, which is close to circular.",
+      "suggested_fix": "Either derive a data-conditioned lower bound on the cancellation factor α (e.g., under assumptions on how A₁ and A₂ overlap after training), or reposition the theory more modestly as a normative characterization and lean harder on empirical mechanism analysis."
+    },
+    {
+      "severity": "major",
+      "issue": "Breadth does not match the claimed generality. DA was proposed for language (Ye et al., 2025), yet this paper evaluates only vision (ViT/CLIP). The paper repeatedly claims a ‘structural’ property of DA, but no NLP evaluation (the original DA setting) is provided, and only PGD/AA/CW are used — no adaptive attacks that exploit the specific two-branch structure the theory highlights.",
+      "suggested_fix": "Add at least one language-model evaluation with Differential Transformer on a standard adversarial-NLP benchmark, and design an adaptive attack that explicitly targets the (ρ, θ) region in Thm 3; report whether it strictly dominates PGD/AA against DiffViT/DiffCLIP."
+    },
+    {
+      "severity": "major",
+      "issue": "The ImageNet result partially contradicts the headline. On patch attacks, CLIP is more robust than DiffCLIP, and under adversarial examples the gap is described as ‘slightly’ — this is dismissed with one sentence about ‘scale and diversity modulating’ fragility, which is not tested. This matters because ImageNet is closer to the real-world regime the paper motivates.",
+      "suggested_fix": "Either investigate the scale/diversity hypothesis directly (e.g., subsample ImageNet by class count, or vary DiffCLIP model size) or explicitly weaken the abstract/intro claims to reflect that the fragility is dataset-dependent."
+    },
+    {
+      "severity": "minor",
+      "issue": "Reproducibility gaps: training hyperparameters for DiffViT (optimizer, epochs, augmentation), CW step counts, AutoAttack version, and precise definitions used for the ‘mean local Lipschitz’ estimator (number of ξ samples, radius) are not stated in the main text. Which DiffCLIP checkpoint is used is likewise unclear.",
+      "suggested_fix": "Add a compact Reproducibility subsection or checklist in Appendix listing all training hyperparameters, attack configurations (steps, restarts, norm, budget schedule), Lipschitz estimator sample size, and the exact DiffCLIP checkpoint identifier."
+    },
+    {
+      "severity": "minor",
+      "issue": "Related-work positioning to DA follow-ups (Abid et al. 2025; Hammoud & Ghanem 2025; Schneider et al. 2025) is cited but not compared. If any of these already discuss robustness or noise properties, the delta is unclear.",
+      "suggested_fix": "Add one paragraph delineating what each DA follow-up claims about noise/robustness and where the present analysis is orthogonal or contradictory."
+    },
+    {
+      "severity": "minor",
+      "issue": "Calibration nit: the abstract and intro repeatedly assert DA ‘increases adversarial vulnerability’ as a general fact, while the body qualifies this with depth, λ, and dataset scale. This is borderline overclaiming.",
+      "suggested_fix": "Rephrase abstract/intro to ‘can increase vulnerability under specified conditions (small depth, moderate λ, small-class datasets)’ and reference the depth crossover explicitly."
+    }
+  ],
+  "questions_for_authors": [
+    "For the ASR numbers in Fig. 2 and Table 1, how many seeds were used, and what is the seed-to-seed standard deviation? In particular, is the DiffCLIP-vs-CLIP gap on ImageNet patch attacks statistically distinguishable from zero?",
+    "Can you empirically measure the cancellation factor α in Eq. 5 layer-by-layer, and show it is (a) <1 in trained DA models and (b) not <1 in a suitable control (e.g., DA with randomly initialized second branch)? Without this, Cor. 1 is essentially conditional.",
+    "Have you tried an adaptive attack that maximizes the (ρ, θ) predicted by Thm 3 to lie in the amplification region? If so, does it materially exceed PGD/AA against DiffViT/DiffCLIP?",
+    "How does the analysis apply to the original language-model DA of Ye et al. (2025)? A single NLP adversarial evaluation (e.g., TextAttack against a Differential Transformer LM) would sharply strengthen the ‘structural’ claim.",
+    "Table 1 shows ASR is non-monotonic in λ_init with a maximum near the default 0.8, but clean accuracy is nearly flat. Is the ‘over-cancellation’ explanation for λ_init≥0.85 backed by any direct measurement (e.g., attention entropy, α estimates) rather than inference from ASR?",
+    "How sensitive is the ‘mean local Lipschitz’ estimator to the sampling radius and number of samples ξ? A short robustness check would strengthen Figs. 3(d) and 4."
+  ],
+  "calibration_check": "Body-level claims are mostly reasonable and hedged, but the abstract/intro overstate the generality of ‘DA is more vulnerable’ relative to what the depth-, λ-, and dataset-dependent evidence supports.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "A useful cautionary result for the DA community, but confined to a still-niche architecture and to gradient-based attacks; unlikely to shift broader practice on its own."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "First robustness analysis of DA is genuinely new, but the analytical tools (norm decomposition of a subtraction, Lipschitz recursion across depth) are standard and the depth argument leans on an assumed cancellation factor."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "Theorems are correct but elementary; Thm 4/Cor. 1 assume rather than derive α<1, which weakens the depth-crossover claim from a theorem into an ‘if-then’ observation."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No seeds, error bars, or significance tests reported; several head-to-head gaps (esp. ImageNet) look small enough that seed variance could alter the direction."
+    },
+    "calibration_honesty": {
+      "score": 6,
+      "justification": "Limitations are stated explicitly and the scope of the mechanism study is honestly framed, though the abstract/intro overclaim generality relative to the body's caveats."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Overall readable and well-organized, though several definitions (α, Lipschitz estimator, gradient-alignment sampling) are stated informally and would benefit from precise algorithmic descriptions."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Follows a standard ICLR structure with intro/related/prelim/theory/experiments/limitations/conclusion and appears within typical length."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Datasets, attacks, and models are named, but training hyperparameters, attack configurations, and estimator details are underspecified in the main text; a checklist-level artifact description is missing."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Covers attention robustness, Lipschitz analyses, and interpretability adequately, but treats DA follow-ups (Abid, Hammoud, Schneider 2025) as citations without delineating what each already says about noise/robustness."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative comparisons (ASR panels, Lipschitz depth curves, negative-alignment frequency) that directly target the theoretical predictions, though variance/CI overlays are not indicated."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Vision-only evaluation (ViT/CLIP), three standard attacks, no adaptive attack, and no test on the original NLP setting of DA — insufficient to support a claim of a ‘structural’ property of DA."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Borderline reject: interesting mechanism-level observation and coherent empirics, but elementary theory, thin statistical rigor, and narrow evaluation relative to the generality claimed."
+    }
+  },
+  "publishability_probability": 0.28
+}

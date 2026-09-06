@@ -1,0 +1,108 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper identifies and theoretically analyzes the 'PCC plateau' phenomenon in attention-based regression models trained with a joint MSE+PCC loss, attributing it to (1) gradient attenuation of the PCC objective relative to MSE as prediction dispersion grows, and (2) a fundamental capacity limit of convex aggregators bounded by the convex hull radius. The proposed ECA framework (SRA + DATS + DNPL) is well-motivated by the theory and achieves consistent improvements across diverse benchmarks. However, the experimental evaluation lacks statistical rigor (missing error bars on UCI and MSA results), the breadth of baseline comparisons is narrow (one attention architecture per domain, no alternative aggregation methods), and the scope of the theoretical guarantees—primarily a single-layer attention with a linear head—is not clearly communicated in the main text. These issues prevent acceptance in the current form but are fixable.",
+  "strengths": [
+    "The MSE mean-std-correlation decomposition (Proposition 2.1) cleanly motivates joint training and provides an elegant analytical handle for diagnosing the plateau; coupling this with the PCC gradient analysis (Theorem 2.1, Corollaries 2.1–2.2) yields a coherent mechanistic story linking σ_y growth to gradient attenuation.",
+    "Theorem 2.2 is a non-trivial capacity result: the bound on achievable PCC gain for *any* convex aggregator over mean-pooling is technically interesting, novel to the best of this reviewer's knowledge, and directly motivates SRA.",
+    "The experimental scope spans four qualitatively different settings (synthetic, tabular, spatial transcriptomics, multimodal sentiment), and the spatial transcriptomics result (~14–16% PCC gain with EGN+ECA) is both striking and clinically relevant.",
+    "Each of the three ECA components (SRA, DATS, DNPL) has a direct theoretical motivation, and ablation studies removing each component individually are provided across all UCI tasks, strengthening the contribution narrative.",
+    "The experimental validation of gradient ratio decay (Figure 3 — empirical bound matches theoretical bound trajectory) is an unusually direct validation of a theoretical claim that is commendable."
+  ],
+  "key_concerns": [
+    {
+      "severity": "blocking",
+      "issue": "No variance estimates on UCI or MSA results: Table 1 reports single-point estimates for all nine UCI cells (three tasks × three metrics) and Table 2 reports single-run results for MOSI, making it impossible to judge whether gains are statistically real. The PCC improvements on Online News (0.408→0.420, Δ=0.012) and Superconductivity (0.920→0.930, Δ=0.010) are small enough that they could easily fall within run-to-run noise.",
+      "suggested_fix": "Report mean ± std over at least 5 seeds (or equivalently, use k-fold CV with reported variance) for UCI and MOSI results. Mark improvements with a significance test (e.g., paired t-test or Wilcoxon) where feasible."
+    },
+    {
+      "severity": "blocking",
+      "issue": "The evaluation uses only one baseline architecture per domain (FT-Transformer for UCI, EGN for spatial transcriptomics, ALMT for MSA). This makes it impossible to verify that gains are architecture-agnostic rather than specific to the interaction between ECA and each base model. Critically, no alternative attention pooling methods (e.g., mean pooling with increased model capacity, sparse/linear attention, Perceiver-style cross-attention) are compared, leaving open whether simpler interventions achieve similar gains.",
+      "suggested_fix": "Integrate ECA into at least one additional backbone per domain (e.g., a second tabular Transformer such as SAINT or TabNet for UCI) and include a mean-pooling + residual MLP baseline to show that the gain is not merely from added parameters in the SRA MLP."
+    },
+    {
+      "severity": "major",
+      "issue": "The theoretical guarantees in Theorem 2.1 and Theorem 2.2 apply to a *single-layer* attention module with a linear regression head. Deep multi-layer Transformers share the final convex pooling step but the regression head is typically applied after multi-layer nonlinear processing, meaning ∥w∥ and the effective 'linear regression head' interpretation are not directly applicable. The discussion of deep architectures is relegated to Appendix E, yet the paper repeatedly claims backbone-agnostic analysis in the main text without qualification.",
+      "suggested_fix": "Add a clear caveat in Section 2 (Problem Setup) and the Introduction stating that the capacity and gradient bounds are formally derived for the final attention-pooling + linear-head stage and that applicability to deeper architectures is based on an approximation argument detailed in the appendix. Alternatively, provide a brief proof sketch in the main text for the deep case."
+    },
+    {
+      "severity": "major",
+      "issue": "The DNPL design (multiplying PCC loss by StopGrad(σ_y)) is motivated as counteracting the 1/σ_y attenuation in the correlation gradient. However, early in training σ_y ≈ 0 (as shown in Figure 4), which means DNPL's effective PCC weight is near zero precisely when correlation shaping would be most informative, potentially delaying rather than accelerating PCC learning. The paper does not analyze or ablate the transient behavior of DNPL versus a simple fixed-weight PCC loss or an adaptive schedule.",
+      "suggested_fix": "Provide a learning-curve comparison between DNPL, a standard λ_PCC(1-ρ) loss, and a linearly-ramped PCC weight schedule to isolate DNPL's effect in the early-training regime. Clarify analytically why the σ_y ≈ 0 regime does not pathologically suppress PCC early."
+    },
+    {
+      "severity": "major",
+      "issue": "No hyperparameter sensitivity analysis is provided for the ECA-specific hyperparameters (β in DATS, λ_γ, γ_max, T_min, and the SRA MLP architecture). Given that ECA introduces at least four new hyperparameters beyond the base model's λ_PCC, practitioners need guidance on how sensitive the gains are to these choices and whether the reported results reflect careful per-dataset tuning.",
+      "suggested_fix": "Include at minimum a sensitivity figure (grid or 1-D sweep) for the most impactful parameters (β, γ_max) on one representative dataset, and report the hyperparameter values used for each experiment in the appendix."
+    },
+    {
+      "severity": "minor",
+      "issue": "The claim of 'first rigorous theoretical analysis' of the PCC plateau is too strong without a careful negative survey. Concordance Correlation Coefficient loss, multi-task MSE/correlation interactions in affective computing, and prior expressivity analyses of softmax attention (which the paper itself cites) collectively constitute a body of related theoretical work that must be positioned against more carefully.",
+      "suggested_fix": "Qualify the novelty claim to 'first analysis that jointly characterizes optimization dynamics and model capacity limits of convex attention aggregators for the MSE+PCC training regime' or similar precise framing."
+    },
+    {
+      "severity": "minor",
+      "issue": "Table 1 appears to have rendering artifacts in the Superconductivity ablation rows (truncated PCC values), making it impossible to verify ablation claims for that dataset from the main text. The discussion of Superconductivity ablations is correspondingly thin.",
+      "suggested_fix": "Ensure Table 1 is fully rendered and legible in the camera-ready version; explicitly state the missing PCC values for each Superconductivity ablation row in the surrounding text."
+    }
+  ],
+  "questions_for_authors": [
+    "Theorem 2.2 requires R < σ_0/∥w∥_2. As training progresses and ∥w∥ grows, this condition can fail. Do you have empirical evidence that this condition holds in your experiments during training, and if not, how does the bound interpretation change?",
+    "In the MSA experiment (Table 2), adding the PCC loss alone (ALMT+L_PCC) degrades F1 (0.851→0.834) and MAE (0.721→0.731) while improving PCC (0.783→0.791). This MSE–PCC trade-off is exactly the conflict your theory predicts, yet ECA+L_PCC achieves all-metric improvement. Can you decompose how much of ECA's benefit is from DNPL (loss gradient repair) vs. SRA/DATS (architectural change)?",
+    "The synthetic dataset is deliberately structured with one signal element and K-1 homogeneous background elements. How sensitive is the magnitude of ECA's advantage to this specific generative structure, and have you tested variants where signal is distributed across multiple elements?",
+    "DATS introduces a lower temperature τ_s for more homogeneous samples, sharpening attention. Is there a risk that very homogeneous samples get near-zero residuals regardless (because all embeddings ≈ mean), and sharpening attention on noise? How is this regularized?",
+    "The SRA MLP is conditioned on the sample mean embedding s̄. For the datasets tested, how many additional parameters does the SRA MLP introduce compared to the base model, and what is the additional compute cost per forward pass?"
+  ],
+  "calibration_check": "The core claims (PCC plateau diagnosis and ECA's mitigation) are reasonably supported for the tested architectures and datasets, but the 'backbone-agnostic' and 'first rigorous theoretical analysis' framings are overclaimed relative to the actual scope of the theorems, which formally apply to a single-layer attention with a linear head.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "The PCC plateau is a genuine and widely-observed training failure mode in affective computing, spatial transcriptomics, and tabular regression; characterizing it theoretically is useful, but the direct audience is relatively specialized."
+    },
+    "novelty": {
+      "score": 7,
+      "justification": "The capacity bound for convex aggregators (Theorem 2.2) and the gradient attenuation analysis linking σ_y growth to PCC plateau are new contributions; SRA/DATS/DNPL individually resemble prior ideas (residual attention, learned temperature, loss re-weighting) but their joint grounding in the two theorems is original."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "The proofs appear sound for the stated assumptions, and Figure 3 directly validates the theoretical bound empirically; however, the conditions for Theorem 2.2 (R < σ_0/∥w∥_2) are not verified in experiments, and the single-layer linear-head analysis is generalized to deep architectures without formal justification in the main text."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "UCI and MSA results are single-point estimates with no variance; 3-fold CV with std on spatial transcriptomics is the only exception; improvements as small as Δ PCC = 0.010–0.012 on tabular benchmarks are scientifically uninterpretable without confidence intervals."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The 'backbone-agnostic' and 'first rigorous theoretical analysis' claims are not fully supported by the scope of the theorems; DNPL's early-training regime implications are not acknowledged; but the paper does honestly report the ALMT+L_PCC degradation on F1/MAE."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The mathematical exposition and the Limitation 1 / Limitation 2 organization are clear; Table 1 has rendering artifacts and several in-text cross-references (e.g., 'Section E', 'Figure 7') point to appendix material not reviewable from this extract."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference structure (Abstract, Introduction, Theory, Method, Related Work, Experiments, Conclusion) is followed; section numbering appears slightly inconsistent (Sections 2.3, 2.5 but no explicit 2.4 header visible), and Related Work placed after Method is atypical but acceptable."
+    },
+    "reproducibility": {
+      "score": 5,
+      "justification": "Architecture choices and dataset sources are documented; ECA hyperparameter values (T_min, β, γ_max, λ_γ) used per experiment are not listed in the main text; SRA MLP architecture details are absent; UCI and MOSI experimental protocols reference external codebases that would need to be located."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Core references on attention aggregation and joint MSE+PCC objectives are present, but temperature-scaled attention, sparse/linear attention as alternatives to convex pooling, Concordance Correlation Coefficient loss literature, and multi-task loss balancing methods (PCGrad, GradNorm) are not discussed despite relevance."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "From captions, Figures 2, 3, 4, and 5 appear well-designed—Figure 5's grid of PCC/MSE curves across four homogeneity levels directly maps to Theorem 2.2's predictions, and Figure 3's empirical bound vs. theoretical bound comparison is unusually rigorous; Figure 6's per-fold training curves are appropriately detailed for a high-variance setting."
+    },
+    "breadth_generality": {
+      "score": 4,
+      "justification": "Four task types are covered but each uses only one base architecture, no alternative aggregation mechanisms are compared, the synthetic setup is highly structured, and no hyperparameter sensitivity analysis is provided, leaving the generality of both theory and method inadequately tested."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "Interesting theoretical contribution with promising empirical results, but the missing statistical validation of small gains (UCI, MSA), narrow baseline comparisons, and overclaimed scope of theoretical results collectively place this at borderline reject; a focused revision addressing statistical rigor and baseline breadth could yield a clear accept."
+    }
+  },
+  "publishability_probability": 0.22
+}

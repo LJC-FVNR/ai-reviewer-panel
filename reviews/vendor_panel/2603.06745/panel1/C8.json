@@ -1,0 +1,122 @@
+{
+  "grade": "Major Revision",
+  "summary": "The paper proposes DIRECTER, an inference-time instruction-following method that scales key vectors of instruction tokens in the KV cache and modulates steering strength per decoding step by progressively halving the set of steered layers whenever the steered top-1 token fails a contrastive-decoding-style plausibility check against the raw distribution; layers are ordered by a one-time attention 'disturbance' sensitivity score. The empirical package is broad for a method paper (three benchmarks, five models, fixed-strength and layer-ranking ablations, β/α sweeps, prompt-format robustness, efficiency, LLM-judge quality/fidelity, plus a plug-in demonstration on PASTA and SpotLight), and the oversteering problem it targets is real and well-motivated. However, the contribution is largely a coupling of two existing ingredients (attention/KV-level instruction amplification and the plausibility constraint from contrastive decoding), no result anywhere in the paper carries error bars or significance tests, the cross-model table does not actually support the 'robust, model-agnostic improvement' narrative it is used to justify, and natural decoding-time competitors such as context-aware decoding / CFG-style instruction amplification and residual-stream steering-vector methods are cited but never compared against. These are fixable with additional experiments rather than a redesign, but they are substantive enough to sit below the acceptance bar as submitted.",
+  "strengths": [
+    "The oversteering failure mode is clearly identified, and the diagnosis that static steering strength cannot be optimal at every decoding step is supported directly by the fixed-strength sweep in Figure 2a, where accuracy rises then collapses as more layers are steered.",
+    "The plausibility gate is a clean, cheap mechanism with a correct efficiency argument: if the raw top-2 probability satisfies p_{t,i2} < beta * p_{t,i1}, no alternative top-1 token can pass Eq. 1, so the steered forward pass can be skipped exactly rather than heuristically.",
+    "GSM8K-Format is a well-chosen diagnostic that separates format adherence from task correctness, and it exposes the trade-off in prior work convincingly (PASTA reaches 99.2 format accuracy while task accuracy falls from 82.7 to 62.7, whereas DIRECTER holds 99.1/86.9).",
+    "The layer-selection claim is properly ablated with both a reversed-ranking and a random-ordering control, and the random-token control isolates whether gains come from the instruction span specifically rather than arbitrary KV perturbation.",
+    "The plausibility filter is shown to be modular by bolting it onto PASTA and SpotLight (Figure 2b), which supports the broader framing that the contribution is a general anti-oversteering mechanism, not just one method.",
+    "Cost is measured rather than asserted: throughput, per-token latency, and memory are all reported, and the paper notes the practically relevant fact that KV-cache scaling remains compatible with FlashAttention while attention-logit interventions are not."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No variance, error bars, or significance testing on any headline result. Decoding is greedy and every main-table number appears to be a single run; only the two random-control rows in Table 3 carry a standard deviation. Several claimed wins are small enough that they cannot be distinguished from benchmark noise: Llama-3.2-1B goes 61.3 to 61.6, and Table 3's 81.8 vs 80.2 +/- 0.7 for random layer ordering is roughly two standard deviations of the control's own spread.",
+      "suggested_fix": "Report paired significance tests (e.g., McNemar or bootstrap over per-instruction outcomes) between DIRECTER and the strongest baseline on each benchmark, and report variability from multiple runs over the stochastic components that remain (sensitivity-analysis randomness, prompt-rewriting seeds, judge sampling). State explicitly which differences are not significant."
+    },
+    {
+      "severity": "major",
+      "issue": "Table 2 does not support the text's conclusion. DIRECTER is not best on Qwen-3B (67.1 vs Few-shot 67.8) or Qwen-7B (74.4 vs SpotLight-tuned 74.9), and beats zero-shot on Llama-3.2-1B by 0.3 points. The prose nonetheless states 'robust performance gains on models ranging from 1B to 14B' and 'a more robust, model-agnostic improvement,' and the abstract's 'up to 6.5%' comes from a single-model average against zero-shot.",
+      "suggested_fix": "Rewrite the Section 4.2 generalization paragraph to state where DIRECTER wins, ties, and loses; report percentage points rather than '%' improvement; and either add models/seeds to establish the cross-family claim statistically or soften it to 'competitive and never harmful across families,' which is what the data actually shows."
+    },
+    {
+      "severity": "major",
+      "issue": "Missing baselines from the most closely related decoding-time family. The method is a contrastive/plausibility-constrained decoding scheme, yet there is no comparison to context-aware decoding or classifier-free-guidance-style instruction amplification, which pursue exactly the same goal (upweighting the instruction at inference) with comparable cost, nor to the residual-stream steering-vector methods (CAA/ITI-style) that the related work section cites. Comparison is limited to PASTA and SpotLight plus prompting.",
+      "suggested_fix": "Add at least one contrastive/CFG-style decoding baseline (instruction-conditioned vs. instruction-ablated logit contrast) and one steering-vector baseline, tuned with the same protocol used for PASTA and SpotLight, on IFEval and GSM8K-Format."
+    },
+    {
+      "severity": "major",
+      "issue": "The comparison in Figure 2b appears to be against default-configuration PASTA and SpotLight, which the paper itself says are severely oversteered; adding a safety gate to a known-broken configuration is close to a strawman. The interesting question, whether the gate still helps the *tuned* variants that are the real competitors in Table 1, is not answered in the main text.",
+      "suggested_fix": "Report the plausibility filter applied to the tuned PASTA and SpotLight configurations as well, and state whether the gain persists or vanishes once the baselines are properly tuned."
+    },
+    {
+      "severity": "major",
+      "issue": "Benchmark integrity and fairness of the tuning protocol. IFEval prompts are rewritten by gpt-4o-mini to separate task from instruction, so the reported numbers are not comparable to standard IFEval and the rewriting itself is an uncontrolled confound that could favor span-based methods. Separately, baselines are tuned on IFEval and frozen, while DIRECTER's beta=0.5 is presented as tuning-free even though Figure 3a shows it is the IFEval optimum.",
+      "suggested_fix": "Report unmodified-IFEval results (with an automatic span detector, as in Appendix D.2) alongside the rewritten version, verify the rewriting does not change the constraint set, and either drop the 'without any task-specific tuning' framing or show baseline performance under a matched single-hyperparameter-for-all-tasks protocol chosen on the same split."
+    },
+    {
+      "severity": "minor",
+      "issue": "The attention sensitivity score in Eq. 2 is ad hoc: the 'direct' and 'propagated' terms both subtract the same unsteered reference distance, cosine distance between pre- and post-attention hidden states is an unusual proxy for influence, and the score is averaged uniformly over all layers j with no justification for that aggregation. The paper acknowledges the lack of theory, but the design space is not explored in the main text.",
+      "suggested_fix": "Promote the alternative-formulation ablations from Appendix D.1 into the main paper, and add a cheap reference point (e.g., ranking by attention mass on instruction tokens, or by direct KL of the output distribution under single-layer steering) to show the specific two-term formulation is earning its complexity."
+    },
+    {
+      "severity": "minor",
+      "issue": "The 'All (Avg.)' column in Table 1 averages heterogeneous quantities (IFEval prompt/instruction accuracy, LIFBench rubric scores, and GSM8K format/task accuracy), and the headline 6.5-point improvement is read off this composite. A method that trades task accuracy for format accuracy can move this number in ways that are hard to interpret.",
+      "suggested_fix": "Keep the per-benchmark numbers as the primary evidence, and either drop the composite average or define and justify the weighting explicitly."
+    },
+    {
+      "severity": "minor",
+      "issue": "The quality/fidelity evaluation in Table 4 rests on a single judge model (gpt-4o-mini) that is also the model used to rewrite IFEval prompts, with no agreement statistics, no confidence intervals on the 4.24-4.43 text-quality spread, and the corroborating human study deferred to an appendix without scale or protocol in the main text.",
+      "suggested_fix": "Report inter-annotator and judge-human agreement, confidence intervals on the judge scores, and a second judge from a different family; summarize the human study's size and protocol in the main text since it carries the 'no quality trade-off' claim."
+    },
+    {
+      "severity": "minor",
+      "issue": "The cost accounting of the sensitivity analysis is ambiguous. It is described as 'one-time' but also as 'generated once after the prompt prefill,' which implies per-prompt cost that scales with the number of layers; the paper concedes this dominates for short generations, yet the headline is a flat 16% throughput reduction.",
+      "suggested_fix": "State clearly whether ranking is per-prompt or amortized globally, and report throughput as a function of generation length (including the short-output regime) rather than a single aggregate number."
+    }
+  ],
+  "questions_for_authors": [
+    "Is the attention sensitivity ranking computed once per prompt or once per model? If per prompt, how much do the resulting rankings vary across prompts, and does a single global ranking computed offline recover the same accuracy?",
+    "Does the plausibility filter still improve PASTA and SpotLight when applied to their *tuned* configurations from Table 1, or only to the oversteered default settings shown in Figure 2b?",
+    "How does DIRECTER compare against context-aware decoding or classifier-free-guidance instruction amplification, which target the same objective at similar cost and also require two forward passes?",
+    "What are the per-benchmark significance test results between DIRECTER and the best baseline, particularly for Qwen-3B (67.1 vs 67.8 few-shot) and Qwen-7B (74.4 vs 74.9 SpotLight-tuned)?",
+    "On unmodified IFEval, without gpt-4o-mini prompt rewriting and using automatic span detection, what is the gap between DIRECTER and the baselines?",
+    "Since alpha=100 sits in a saturated regime (Figure 3b) and steering is modulated purely by layer count, how coarse is the resulting control? What fraction of decoding steps end with the loop exhausting Lcand and falling back to the raw distribution, and how often does the gate skip steering entirely?",
+    "How does the halving schedule for |Lcand| compare to alternatives (one layer at a time, or a continuous alpha decay) in both accuracy and latency?",
+    "In Table 3, what is the standard deviation for the DIRECTER and reversed-ranking rows, so the 81.8 / 79.0 / 80.2 +/- 0.7 comparison can be read as significant or not?"
+  ],
+  "calibration_check": "Claims are mostly scoped but the paper overreaches in two specific places: the cross-model 'robust, model-agnostic improvement' narrative is contradicted by DIRECTER losing on two of four models in its own Table 2, and the abstract's 'up to 6.5%' is a single-model composite average against zero-shot presented as a general improvement, though the limitations section is honest about the lack of theory and the clean-span assumption.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 5,
+      "justification": "Oversteering is a real and practically relevant obstacle for inference-time steering, and a drop-in plausibility gate is the kind of thing practitioners could adopt, but the absolute gains are modest and shrink to near-zero on several models, limiting how much practice would actually change."
+    },
+    "novelty": {
+      "score": 5,
+      "justification": "The core mechanism is a recombination of established ingredients (instruction-token amplification in the KV cache, and the plausibility constraint from contrastive decoding), with the genuinely new pieces being the use of steered-layer count as the strength knob and the attention-sensitivity ranking that orders it."
+    },
+    "rigor": {
+      "score": 5,
+      "justification": "The gating derivation is correct and the layer-selection claim is properly controlled with reversed and random orderings, but the central generalization claim is not supported by its own table, the compatibility experiment uses oversteered default baselines, and the sensitivity metric is admittedly heuristic with alternatives buried in an appendix."
+    },
+    "statistical_soundness": {
+      "score": 3,
+      "justification": "No error bars, seeds, or significance tests accompany any main result, and several highlighted wins (61.3 to 61.6 on 1B; 81.8 vs 80.2 +/- 0.7 in the ablation) are of a magnitude that the paper's own reported spread cannot distinguish from noise."
+    },
+    "calibration_honesty": {
+      "score": 5,
+      "justification": "The limitations section is candid about the lack of theoretical grounding and the clean-span assumption, and losses are visible in the tables, but the prose describing Table 2 asserts robust model-agnostic gains that the numbers contradict and the abstract's headline figure is a favorably chosen composite."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "The problem, mechanism, and experimental questions (RQ1-RQ5) are laid out clearly and the algorithm is easy to follow, though the disturbance-score formulation in Eq. 2 is under-explained in the main text and much of the supporting justification is deferred to appendices."
+    },
+    "structure_compliance": {
+      "score": 7,
+      "justification": "Standard conference organization with abstract, introduction, related work, method, experiments framed as explicit research questions, conclusion, and a limitations paragraph, all at appropriate length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Models, decoding regime, key hyperparameters (alpha=100, beta=0.5), baseline configurations, and the algorithm are specified well enough to reimplement, but the IFEval prompt-rewriting procedure, the exact GSM8K-Format construction, and the judge/human-evaluation protocols are described only at a high level in the main text."
+    },
+    "related_work": {
+      "score": 5,
+      "justification": "Prior attention-level steering is described accurately and the distinction from PASTA and SpotLight is clear, but the contrastive-decoding lineage that supplies the paper's central mechanism is relegated to a parenthetical citation, and neither KV-cache-based steering nor CFG-style instruction amplification is discussed or compared."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "The captions describe display items that carry real argumentative weight (the fixed-strength collapse in Figure 2a, the format-vs-task split in Table 1, the efficiency triple in Figure 4), though Table 1's composite average column and the absence of any variance annotation in the ablation and robustness figures weaken them as evidence."
+    },
+    "breadth_generality": {
+      "score": 5,
+      "justification": "Three benchmarks and five models across two families is respectable coverage, but the main comparison rests on a single 8B model, the cross-scale table shows the method losing on two of four settings, and the most relevant decoding-time baselines are absent, so the claimed general-purpose enhancement is under-supported."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, broadly ablated engineering contribution on a real problem that falls just below the bar due to modest novelty, absent statistical testing, a generalization claim its own data contradicts, and missing comparisons to the closest decoding-time competitors."
+    }
+  },
+  "publishability_probability": 0.3
+}

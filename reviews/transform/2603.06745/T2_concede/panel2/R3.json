@@ -1,0 +1,97 @@
+{
+  "grade": "Major Revision",
+  "summary": "DIRECTER proposes an inference-time activation steering method that mitigates oversteering by (1) scaling instruction-token keys in the KV cache, (2) a plausibility-guided decoding loop that rejects steered predictions deviating too far from the raw distribution and progressively removes steered layers, and (3) an attention-sensitivity layer ranking. The paper is well-organized, tackles a genuine problem (the accuracy/quality trade-off of static steering), and offers a reasonably broad evaluation across benchmarks, scales, and ablations. The core weaknesses are modest absolute gains over tuned baselines, absence of statistical significance/variance reporting on the main results, and reliance on a self-designed benchmark plus a single primary model family.",
+  "strengths": [
+    "Targets a real and well-motivated failure mode (oversteering) with an adaptive, per-step control loop rather than static hyperparameters; the GSM8K-Format result compellingly shows baselines crashing on task accuracy (e.g., PASTA* 82.7→62.7) while DIRECTER preserves both formatting and task accuracy.",
+    "Good experimental breadth for this subfield: three benchmark families, model scales 1B–14B across two families, ablations on layer ranking (reversed/random), random-token steering, fixed-strength variants, robustness to β and α, efficiency (throughput/latency/memory), and LLM-judged text quality + task fidelity.",
+    "The plausibility filter is shown to be modular — applied as a safety gate it improves PASTA and SpotLight (Fig. 2b) — supporting the generality claim rather than just asserting it.",
+    "Honest, appropriately scoped limitations section (no formal theory for the sensitivity metric; assumes separable task/instruction spans), and hyperparameters (α=100, β=0.5) are fixed across tasks without per-task tuning, which strengthens the robustness story."
+  ],
+  "key_concerns": [
+    {
+      "severity": "major",
+      "issue": "No variance, seeds, or significance testing on the main tables (Table 1, 2, 4). While greedy decoding is deterministic per model, the LLM-judge scores (gpt-4o-mini for text quality/task fidelity) and benchmark subsampling are not deterministic, and gains over tuned baselines are often only 2–4 points; without error bars it is hard to establish that improvements are real.",
+      "suggested_fix": "Report multiple judge runs / bootstrap CIs on benchmark scores, add paired significance tests against the strongest tuned baseline, and quantify judge variance (e.g., re-scoring stability, ideally a second judge model)."
+    },
+    {
+      "severity": "major",
+      "issue": "GSM8K-Format is a benchmark the authors designed themselves, and it is the setting where DIRECTER's advantage is most dramatic. This raises fairness/construction-bias concerns and makes it hard to separate a genuine capability from a benchmark tuned to the method's strengths.",
+      "suggested_fix": "Provide full construction details, release exact prompts/verifiers, and corroborate the oversteering-mitigation claim on an independent third-party formatting/reasoning benchmark not designed by the authors."
+    },
+    {
+      "severity": "major",
+      "issue": "Analyses (RQ1, RQ3, RQ4, efficiency, robustness) are almost entirely on Llama-3.1-8B-Instruct; only IFEval accuracy is extended across scales (Table 2). The 'general mechanism' and 'model-agnostic' claims outrun the evidence, since the multi-benchmark and ablation evidence is single-model.",
+      "suggested_fix": "Repeat at least the core ablations and the multi-benchmark comparison on one additional model family/scale to demonstrate the adaptive mechanism (not just IFEval accuracy) generalizes."
+    },
+    {
+      "severity": "minor",
+      "issue": "Novelty is moderate: the plausibility-guided rejection is explicitly derived from contrastive/DoLa-style decoding, and KV-key scaling toward instruction tokens is conceptually close to SpotLight's attention re-weighting. The genuinely new piece (layer-rejection modulation + sensitivity ranking) should be more sharply delineated from these precedents.",
+      "suggested_fix": "Add a focused comparison/discussion isolating what the rejection-based layer modulation contributes beyond contrastive decoding and attention re-weighting, ideally with an ablation swapping the rejection criterion for a contrastive-decoding baseline."
+    },
+    {
+      "severity": "minor",
+      "issue": "The efficiency claims ('≈16% throughput reduction', '2× faster than SpotLight') and the gating correctness argument depend on details relegated to appendices; the guarantee behind skipping steering is stated compactly and is easy to misread in the body.",
+      "suggested_fix": "State the gating guarantee and its proof sketch cleanly in the main text and report efficiency across generation-length regimes (the worst case is acknowledged but not tabulated in-body)."
+    }
+  ],
+  "questions_for_authors": [
+    "Are the main-table numbers single runs? What is the variance of the gpt-4o-mini judge scores, and do improvements over tuned PASTA*/SpotLight* pass a paired significance test?",
+    "How was GSM8K-Format constructed, and does the oversteering-mitigation advantage replicate on an external formatting/reasoning benchmark?",
+    "Do the core ablations (fixed-strength ST_k, ranking reversed/random, random tokens) hold on a non-Llama model, or is the adaptive advantage specific to Llama-3.1-8B?",
+    "α=100 with softmax renormalization essentially hard-selects instruction tokens; how does DIRECTER's steering differ in effect from simply masking attention onto the instruction span, and what does the rejection loop add once α saturates?",
+    "How sensitive are results to the instruction-span detection when tasks and instructions are interleaved (the realistic case), beyond the Appendix D.2 automatic-span note?"
+  ],
+  "calibration_check": "Claims are mostly scoped honestly (the '6.5%' and '≈92%' figures match the tables and limitations are candid), but the 'general mechanism' and 'model-agnostic' framing overreach given that most analyses and the strongest results rest on a single model and a self-designed benchmark.",
+  "recommended_for_publication_after_minor_fixes": false,
+  "metrics": {
+    "significance": {
+      "score": 6,
+      "justification": "Addresses a practically important trade-off in activation steering and offers a reusable oversteering safety gate, though absolute gains over tuned baselines are modest."
+    },
+    "novelty": {
+      "score": 6,
+      "justification": "The rejection-based layer modulation and sensitivity ranking are new, but the plausibility loop and KV-key scaling are close adaptations of contrastive decoding and attention re-weighting."
+    },
+    "rigor": {
+      "score": 6,
+      "justification": "Method is sound and most claims are supported by targeted ablations, but the causal attribution of gains and generality claims are not fully isolated across models."
+    },
+    "statistical_soundness": {
+      "score": 4,
+      "justification": "Main tables report single-run point estimates with no error bars or significance tests, and LLM-judge variance is unaddressed despite small margins."
+    },
+    "calibration_honesty": {
+      "score": 7,
+      "justification": "Numbers match claims and limitations are candidly stated, though 'general/model-agnostic' framing modestly exceeds the single-model evidence base."
+    },
+    "clarity": {
+      "score": 6,
+      "justification": "Well-structured with clear research questions and algorithm, though notation is dense and the gating guarantee is easy to misread as written."
+    },
+    "structure_compliance": {
+      "score": 8,
+      "justification": "Standard conference structure (abstract, intro, related work, method, experiments, conclusion, limitations) is applied cleanly and at reasonable length."
+    },
+    "reproducibility": {
+      "score": 6,
+      "justification": "Key hyperparameters, models, and procedures are specified, but several critical details (gating proof, GSM8K-Format construction, span detection) are deferred to appendices."
+    },
+    "related_work": {
+      "score": 6,
+      "justification": "Prior steering methods (PASTA, SpotLight, vector injection) are fairly summarized and positioned, though the delineation from contrastive-decoding precedents could be sharper."
+    },
+    "figure_quality": {
+      "score": 6,
+      "justification": "Captions describe informative, claim-supporting comparisons (fixed-strength curves, compatibility bars, efficiency, robustness), adequate but not exceptional in the evidence they carry."
+    },
+    "breadth_generality": {
+      "score": 6,
+      "justification": "Multiple benchmarks and scales are covered, but deep analyses and the strongest results concentrate on one model family and a self-designed benchmark, under-supporting the general claims."
+    },
+    "overall_recommendation": {
+      "score": 5,
+      "justification": "A competent, well-motivated method with broad-but-single-model evidence; sits at the borderline-reject line pending statistical validation and independent-benchmark corroboration."
+    }
+  },
+  "publishability_probability": 0.4
+}
