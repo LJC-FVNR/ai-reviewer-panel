@@ -146,7 +146,7 @@ def main():
     # figure that could not be read as it was meant.
     # Written in the paper's own sign convention rather than as "24/23 down/up", which at thirteen
     # characters was wider than the 0.58in a tick owns and overprinted both its neighbours.
-    ticks = [f"{NICE[t]}\n{sgn(arms[t]['pooled']['median'], 3)}\n"
+    ticks = [f"{NICE[t]}\n{sgn(arms[t]['pooled']['median_exact'], 3)}\n"
              f"{arms[t]['pooled']['negative']}\u2212/{arms[t]['pooled']['positive']}+" for t in names]
 
     axA.set_xticks(range(len(names)))
@@ -256,7 +256,7 @@ def main():
     axB.set_ylim(y - GAP - STEP / 2, head["composite"] - STEP / 2)
     axB.set_xlim(0, max(v for vs in U.values() for v in vs) * 1.13)
     axB.set_xlabel("movement / its own re-run", fontsize=PT_LAB)
-    axB.set_title("b  the grade cannot tell an edit from a re-run",
+    axB.set_title("b  on the grade, an edit looks like a re-run",
                   fontsize=PT_TITLE, fontweight="bold", loc="left", pad=13)
     # Shortened from "moved as much as": at 44 characters this line was wider than its own axes and
     # set the figure's right-hand bbox, so the placed figure carried a strip of empty paper.

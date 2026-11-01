@@ -243,7 +243,7 @@ def main():
         # went.
         flat = len(SHORT) - len(up[t]) - len(dn[t])
         split = f"{len(dn[t])} of {len(SHORT)} channels down, {len(up[t]) or 'none'} up"
-        ax.text(x_lab, ys[t], f"{NICE[t]}\ncomposite {sgn(r['median'], 3)} z\n"
+        ax.text(x_lab, ys[t], f"{NICE[t]}\ncomposite {sgn(r['median_exact'], 3)} z\n"
                 + split + (f", {flat} unchanged" if flat else ""),
                 transform=ax.get_yaxis_transform(), ha="left", va="center", multialignment="left",
                 fontsize=PT_TICK, color=COL[t], linespacing=1.35)
@@ -259,7 +259,7 @@ def main():
     # of them describes the other two rows in the wrong colour. Under the axis it also cannot land on a dot,
     # which a box inside the panel can as soon as a channel moves further than it did.
     fig.text((LEFT_FRAC + RIGHT_FRAC) / 2, 0.012,
-             "filled = a channel this edit cannot legitimately move; open = it may",
+             "filled = a channel outside the edit's licence; open = a licensed channel",
              ha="center", va="bottom", fontsize=PT_ANN, color="#3d474e")
 
     # Room for the three named channels, measured rather than guessed: a label anchored at a dot is drawn

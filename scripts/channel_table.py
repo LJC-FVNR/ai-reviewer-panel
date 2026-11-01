@@ -60,7 +60,7 @@ PIA_COLS = [("5model_pooled", "five-slot"), ("8slot", "eight-slot")]
 PIA_TRANSFORMS = [("T1_endmatter", "T1"), ("T3_lengthen", "T3")]
 # The claim-strength table's columns. One transform, so the columns are readings instead: the pool, the
 # corpus the claim was not developed on, and the second roster.
-T2_COLS = [("5model_pooled", "both corpora"), ("5model_rejected", "declined only"),
+T2_COLS = [("5model_pooled", "both corpora"), ("5model_rejected", "rejected only"),
            ("8slot", "eight slots")]
 # Group rows are named by size in pia_null.py, and the sizes differ between the two licences, so they are
 # matched by prefix rather than by full name.
@@ -70,7 +70,7 @@ GROUP_PREFIXES = ["composite", "allotted group", "non-allotted group"]
 # paper's: the claim-strength arm first, because it is the control the other two are read against.
 GROUP_READINGS = [("5model_pooled", "five slots, pooled"),
                   ("5model_matched", "five slots, accepted"),
-                  ("5model_rejected", "five slots, declined"),
+                  ("5model_rejected", "five slots, rejected"),
                   ("8slot", "eight slots, accepted")]
 GROUP_ORDER = [("T2_concede", "T2 claim strength"), ("T1_endmatter", "T1 end matter"),
                ("T3_lengthen", "T3 sentences joined")]
@@ -122,14 +122,15 @@ def table(d, cols, transforms, rank_on):
         assert {c: ax[c][1] for c in chans} == allot, f"{r}/{t} allots a different set of channels"
 
     order = sorted(chans, key=lambda c: axes(d, *rank_on)[c][0])
-    head = ["channel", "allotted"] + [f"{rn} {tn}" for _, rn in cols for _, tn in transforms]
+    head = ["channel", "licensed"] + [f"{rn} {tn}" for _, rn in cols for _, tn in transforms]
     rows = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for c in order:
         cells = [NICE[c], "yes" if allot[c] else ""]
         cells += [fmt(ax[c][0]) for _, _, ax in grid]
         rows.append("| " + " | ".join(cells) + " |")
     for g in groups:
-        cells = [f"**{g}**", ""]
+        # The page names the licence the way the body does; pia_null.py's axis names keep "allotted".
+        cells = [f"**{g.replace('allotted', 'licensed')}**", ""]
         cells += [f"**{fmt(ax[g][0])}**" for _, _, ax in grid]
         rows.append("| " + " | ".join(cells) + " |")
     return "\n".join(rows)

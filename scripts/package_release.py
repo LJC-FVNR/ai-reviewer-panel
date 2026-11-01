@@ -273,7 +273,8 @@ def readme(n, n_pub, n_dec, title, stale):
     stale_fields = stale_fields_phrase(stale)
     t = f"""# {title} -- release bundle
 
-Artifacts for the paper of that title, submitted anonymously to the NeurIPS 2026 AI-Native Academia workshop.
+Artifacts for the paper of that title by Jiecheng Lu and Shihao Yang (Georgia Institute of Technology), presented
+at the NeurIPS 2026 workshop AI-Native Academia: Authorship, Peer Review, and Conference Governance under AI.
 Everything needed to recheck every number in it is here, and one script does the rechecking.
 
 ## Start here
@@ -298,17 +299,19 @@ and what the interpolating convention would give instead).
     calibration/                    the frozen mu/sd each roster's composite is a z-score against, and the
                                     arXiv ids of the {n_pub} published papers they were fitted on
     reviews/accepted/               {n['accepted']} reviews of those {n_pub} published papers, in full
-    reviews/rejected/               {n['rejected']} reviews of {n_dec} declined submissions, R01--R32, SCORES ONLY (see below)
+    reviews/rejected/               {n['rejected']} reviews of {n_dec} rejected submissions, R01--R32, SCORES ONLY (see below):
+                                    their two untouched panels, which are also the baselines that
+                                    reviews/transform_rejected/ holds for the same papers
     reviews/transform/              {n['transform']} reviews of the presentation-transform variants
-    reviews/transform_rejected/     {n['transform_rejected']} reviews of the same transforms applied to the declined
-                                    submissions, R01--R32, SCORES ONLY -- the arm that takes the presentation
-                                    result from 16 papers to 48, each paper's variant and baselines in one sitting
+    reviews/transform_rejected/     {n['transform_rejected']} reviews of the same transforms applied to the rejected
+                                    submissions, R01--R32, SCORES ONLY -- each paper's variants and its two
+                                    baseline panels in one sitting, with the paper order shuffled
     reviews/drift_5model/           {n['drift5']} five-model reviews inside the variants' own sitting: every
                                     baseline text four times and each variant once, so the transform contrast
                                     can be taken with no session boundary in it rather than corrected for one
-    reviews/dayrep_5model/          {n['dayrep']} five-model reviews of the eight papers the figure arm's effect
-                                    sits in, re-scored one day later -- the arm that tells a paper set apart
-                                    from a sitting
+    reviews/dayrep_5model/          {n['dayrep']} five-model reviews of eight accepted papers in a second sitting,
+                                    two baseline panels and one panel each of T1 and T3 -- the arm that tells
+                                    a paper set apart from a sitting
     reviews/vendor_panel/           {n['vendor']} reviews of the same {n_pub} papers by a second roster: eight slots,
                                     six vendors, its own calibration
     reviews/vendor_transform/       {n['vendor_transform']} second-roster reviews of the same transform variants
@@ -326,7 +329,7 @@ and what the interpolating convention would give instead).
 
 ## The carve-outs, and what they do not buy
 
-**The {n_dec} declined submissions.** They are third-party manuscripts whose authors did not publish them, so they
+**The {n_dec} rejected submissions.** They are third-party manuscripts whose authors did not publish them, so they
 appear as `R01`--`R32` in shuffled order, the label carrying no arm. Their reviews ship as scores only: every
 number the paper computes is in them, but the free-text fields are withheld because a review's summary
 paraphrases its subject closely enough to identify it. Their PDFs and de-identified texts are not
@@ -362,9 +365,9 @@ they will not execute against this tree: their paths are rewritten to `/path/to/
 read files that are deliberately not released -- above all the label mapping. Read them to see what was done.
 Run `reproduce.py` to check that it was done right.
 
-*{len(stale)} annotation fields of `instrument/metrics_schema.json`.* The schema began life in an earlier study
-of journal articles and was carried over unchanged, so {len(stale)} of its `title` and `description` strings
-still describe that corpus and its task numbering: `{stale_fields}`. Two of them matter to a reader,
+*{len(stale)} annotation fields of `instrument/metrics_schema.json`.* The schema is shared with a study of
+journal articles, so {len(stale)} of its `title` and `description` strings describe that corpus and its task
+numbering: `{stale_fields}`. Two of them matter to a reader,
 because they name a journal's bar for quantities this paper scores against a conference's. None of it was shown
 to a reviewer: the prompt each model received is `instrument/reviewer_prompt_iclr.md` with the manuscript
 substituted for its one placeholder, and the schema is read only afterwards, by `instrument/parse_review.py`,
@@ -537,7 +540,7 @@ def main():
     check(n["transform"] == 470, "470 reviews of transformed published papers", n["transform"])
     check(n["transform_rejected"] == 790, "790 reviews of transformed declined submissions (scores only)",
           n["transform_rejected"])
-    check(n["drift5"] == 560, "560 five-model reviews inside the variants' own sitting: every baseline text "
+    check(n["drift5"] == 555, "555 five-model reviews inside the variants' own sitting: every baseline text "
           "four times and each variant once", n["drift5"])
     check(n["dayrep"] == 160, "160 five-model reviews of the eight papers, re-scored one day later",
           n["dayrep"])
@@ -637,8 +640,8 @@ def main():
         n["data"] += put(f"{AN}/{f}", f"data/{f}")
     ec = json.load(open(f"{STAGE}/data/extract_corpus.json"))
     check(sum(len(v) for v in ec["documents"].values()) == 48
-          and sum(len(v["reviews"]) for v in ec["populations"].values()) == 1216,
-          "extract_corpus.json: 48 documents and 1,216 untouched reviews",
+          and sum(len(v["reviews"]) for v in ec["populations"].values()) == 896,
+          "extract_corpus.json: 48 documents and 896 untouched reviews",
           f"{sum(len(v) for v in ec['documents'].values())} documents, "
           f"{sum(len(v['reviews']) for v in ec['populations'].values())} reviews")
     for src, dst in (("n0_cursor8_iclr/n0_analysis.json", "n0_analysis.json"),
@@ -793,7 +796,10 @@ def main():
          [re.escape(t.encode()) for t in titles.values() if len(t) > 20], {FRAME}),
         ("absolute home paths", [rb"/(?:home|Users)/\w"], set()),
         ("author username", [re.escape(s.encode()) for s in IDENTITY], set()),
-        ("email address", [rb"[\w.\-]+@[\w.\-]+\.[a-z]{2,}"], set()),
+        # The camera-ready names its authors, so their two published addresses may appear; any other address is
+        # a leak from the working tree.
+        ("email address other than the authors'",
+         [rb"(?<![\w.\-])(?!jlu414@gatech\.edu\b)(?!shihao\.yang@isye\.gatech\.edu\b)[\w.\-]+@[\w.\-]+\.[a-z]{2,}"], set()),
         ("released label beside a forum id", [re.escape(f.encode()) + rb'"?\s*[:=]\s*"?R\d\d'
                                                 for f in forums], {FRAME}),
         ("pointer to a corpus the bundle does not contain", [p for p, _ in forbidden_siblings()], set()),

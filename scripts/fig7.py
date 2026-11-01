@@ -55,9 +55,9 @@ RUNGS = {"every reviewer at Minor Revision or better": "every reviewer at\nMinor
          "every reviewer at Major Revision or better": "every reviewer at\nMajor Revision or better"}
 # The populations of the variance ladder, ordered by proximity to the set a programme committee decides over,
 # under the keys reliability.json carries and the names the appendix's ladder table gives them.
-POPS = [("ICLR rejected, all 32 (heterogeneous)", "declined 32, all"),
-        (".. low-rated 16 only", "declined 16, lower-rated"),
-        (".. high-rated 16 only", "declined 16, higher-rated"),
+POPS = [("ICLR rejected, all 32 (heterogeneous)", "rejected 32, all"),
+        (".. low-rated 16 only", "rejected 16, lower-rated"),
+        (".. high-rated 16 only", "rejected 16, higher-rated"),
         ("ICLR accepted 16 (homogeneous)", "accepted 16")]
 
 plt.rcParams.update({

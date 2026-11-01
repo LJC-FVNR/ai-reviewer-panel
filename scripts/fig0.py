@@ -129,17 +129,17 @@ def stage_height(lines):
 STAGES = [
     (0.000, 0.2245, "1  retrieve", [
         ("every ICLR 2026", "body"),
-        ("submission: 19,814,", "body"),
+        ("submission (19,814)", "body"),
         ("with the venue's own", "fine"),
         ("decisions and ratings", "fine"),
         ("", "gap"),
         # Only the 32 declined papers are one primary area by design. The accepted 16 are area-mixed, so the
         # area restriction is stated of the declined sets alone, as Section 3 and Appendix D state it.
         ("three sets of 16, the", "fine"),
-        ("declined from one area:", "fine"),
+        ("rejected from one area:", "fine"),
         ("accepted", "key", ACC),
-        ("declined, higher-rated", "key", REJ_TXT),
-        ("declined, lower-rated", "key", REJ_TXT),
+        ("rejected, higher-rated", "key", REJ_TXT),
+        ("rejected, lower-rated", "key", REJ_TXT),
     ]),
     (0.2585, 0.4830, "2  read", [
         ("one review is one fresh,", "body"),
@@ -150,9 +150,9 @@ STAGES = [
         ("reference list, and", "fine"),
         ("the rubric", "fine"),
         ("", "gap"),
-        ("never the authors, the", "fine"),
-        ("venue's decision, or", "fine"),
-        ("any other review", "fine"),
+        ("the authors, decision", "fine"),
+        ("and other reviews", "fine"),
+        ("are withheld", "fine"),
     ]),
     # Both rosters, by vendor. This box listed the five model names of one roster, and the second roster
     # appeared nowhere except a grey line under the flow, so the figure showed a panel of two vendors and a
@@ -189,7 +189,7 @@ STAGES = [
         ("16 accepted papers,", "fine"),
         ("then averaged", "fine"),
         ("", "gap"),
-        ("one composite, in z", "key", FOC),
+        ("one composite in z", "key", FOC),
     ]),
 ]
 
@@ -646,7 +646,7 @@ def main():
         if os.path.exists(f"{B}/data/sample_scope.json") else \
         json.load(open(f"{HERE}/sample_scope.json"))["reviews_total"]
     strip = axA.text(0.000, TOP - box_h - frac(0.050),
-                     "every result is computed on roster A and repeated on roster B, each reading a "
+                     "every result is computed on roster A; roster B also runs the accepted-paper analyses with a "
                      f"checksum-identical prompt; {n_rev:,} reviews in all",
                      transform=axA.transAxes, ha="left", va="top", fontsize=PT_FINE, color=MUTE, zorder=3)
 
@@ -655,7 +655,7 @@ def main():
     # distribution under four boxes and had to work out for themselves what it had to do with them. Saying it
     # in the title costs no line of prose, and the shared colour on box 4's last line and on this panel's own
     # marker is the same statement made a second way, for a reader who is looking rather than reading.
-    title(b_title, "b  the composite from step 4, against the field it is scored in")
+    title(b_title, "b  the composite from step 4 against the field it is scored in")
     Y_FIELD, Y_DEC, Y_FOC = 2.0, 1.0, 0.0
     fvals = sorted(field.values())
     # Both limits are taken over everything drawn, including the focal paper's band. Written as the focal
@@ -691,7 +691,7 @@ def main():
     labels = [axB.text(-0.014, y, t, transform=gut, ha="right", va="center",
                        fontsize=PT_ANN, color=c, zorder=5)
               for y, t, c in ((Y_FIELD, f"{n_field} accepted papers", ACC),
-                              (Y_DEC, f"{n_dec} declined papers", REJ_TXT),
+                              (Y_DEC, f"{n_dec} rejected papers", REJ_TXT),
                               (Y_FOC, f"the highest of the {n_dec}", FOC))]
     # A row is one unit apart from the next and a line of type at this size needs more than that once the
     # markers have taken their share, so nothing can be written between the strips. Everything goes above the
@@ -711,7 +711,7 @@ def main():
         # what "the bar" means. One line, so "declined papers" gives up its noun to the row label that supplies
         # it; the assertion below is what keeps the sentence inside the panel as the numbers move.
         axB.text(hi, Y_FIELD + 0.42, f"shaded: the accepted range. field median, {sgn(fmed, 3)} z: "
-                                     f"{clears} of the {n_dec} declined are above it",
+                                     f"{clears} of the {n_dec} rejected are above it",
                  ha="right", va="bottom", fontsize=PT_FINE, color=MUTE, zorder=5, transform=inset),
         # A count of the papers this one outscores, not a place in the field and not a margin against its top.
         # The count is the statement the instrument supports: it survives a re-run of either paper, while "above
@@ -724,7 +724,7 @@ def main():
         # line and the drawn interval looked several times its width. A reader who mis-measures the bar
         # mis-reads the whole panel. Proximity and colour carry the association instead.
         axB.text(hi, Y_FOC - 1.05,
-                 f"{sgn(foc, 3)} z, over {sum(1 for v in fvals if foc > v)} of the {n_field} accepted "
+                 f"{sgn(foc, 3)} z, above {sum(1 for v in fvals if foc > v)} of the {n_field} accepted "
                  f"papers\n"
                  f"the bar is {band:.3f}, what the panel moves by on identical text",
                  transform=inset, ha="right", va="center", fontsize=PT_FINE, color=FOC, zorder=5,
@@ -737,7 +737,7 @@ def main():
     # its second line ran into the axis spine and the block read as a fourth strip of data.
     axB.set_ylim(-1.85, 2.95)
     axB.set_yticks([])
-    axB.set_xlabel("composite, in standard deviations of the accepted set", fontsize=PT_LAB)
+    axB.set_xlabel("composite in standard deviations of the accepted set", fontsize=PT_LAB)
     axB.tick_params(labelsize=PT_TICK)
     for s in ("top", "right", "left"):
         axB.spines[s].set_visible(False)
@@ -757,9 +757,9 @@ def main():
     title(c_title, "c  the twelve rated qualities behind that composite, each against the same field")
     notes_c = [fig.text(LEFT, yf(c_title + 0.105 * i), t, fontsize=PT_FINE, color=MUTE, ha="left",
                         va="bottom")
-               for i, t in ((1, "one row per quality, as in (b): shaded, the range of the 16 accepted "
-                                "papers; grey tick, their median."),
-                            (2, "at the right, how many of the 16 the declined paper is above; each bar is "
+               for i, t in ((1, "one row per quality as in (b): shaded is the range of the 16 accepted "
+                                "papers and the grey tick their median."),
+                            (2, "at the right, how many of the 16 the rejected paper is above; each bar is "
                                 "that quality's own re-run band."))]
     # The name, the strip and the count, in inches, and the block is fitted to (b)'s rather than given its
     # own margins: a name in (c) begins where a name in (b) begins and the second column's count ends where
@@ -809,14 +809,14 @@ def main():
     # One axis label for both strips, centred between them, because the two columns are one scale split in
     # half rather than two plots: a label under each would read as two different quantities.
     fig.text(sum(x + GUT_C + W_C / 2 for x in x_c) / (2 * FIG_W), yf(c_top + H_C + 0.300),
-             "the quality's score, in standard deviations of the accepted set", fontsize=PT_LAB,
+             "the quality's score in standard deviations of the accepted set", fontsize=PT_LAB,
              ha="center", va="bottom", color=INK)
 
     check_fit(fig, axA)
     check_frames(fig)
     check_clear(fig, axB, labels + notes,
                 [(fvals, Y_FIELD, 4.4, "an accepted paper"),
-                 (dec_z, Y_DEC, 4.4, "a declined paper"),
+                 (dec_z, Y_DEC, 4.4, "a rejected paper"),
                  ([foc - band, foc, foc + band], Y_FOC, 4.6, "the target paper or its band")])
     check_span(fig, axB, notes)
     # (c)'s labels are a regular grid rather than hand-placed notes, so the pair-wise part of check_clear is

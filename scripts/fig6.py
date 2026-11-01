@@ -56,8 +56,7 @@ INK, MUTE, BAND = "#14181c", "#3d474e", "#dfe6ec"
 # order they are drawn in: the two readings of the accepted sixteen at the ends, so that the sign disagreement
 # between them in panel (c) is the first thing a reader's eye crosses.
 POPS = [("accepted 16, five slots, untouched", "accepted 16, five slots", "five"),
-        ("declined 32, five slots, untouched", "declined 32, five slots", "five"),
-        ("declined 32, five slots, ranking study", "declined 32, ranking study", "five"),
+        ("declined 32, five slots, untouched", "rejected 32, five slots", "five"),
         ("accepted 16, eight slots, untouched", "accepted 16, eight slots", "eight")]
 CHARGE = "charge an extract-only property"
 
@@ -90,7 +89,7 @@ def main():
 
     # ---- (a) the cut, per paper ------------------------------------------------------------------------
     rows = list(docs)                      # "accepted 16, preprint text", "declined 32, as-submitted PDF"
-    short = [r.split(",")[0] for r in rows]
+    short = [r.split(",")[0].replace("declined", "rejected") for r in rows]
     ptsA, n_ptr, n_back = [], 0, 0
     for i, r in enumerate(rows):
         papers = docs[r]

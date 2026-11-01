@@ -218,10 +218,10 @@ def main():
     # Stated as a rule, not as swatches. A two-patch key can only show one hue, and the convention runs
     # across two (blue for T1, green for T3), so blue swatches would have been describing the green
     # panel with the wrong colour.
-    fig.text(0.5, -0.030, "dark fill and bold label = a channel this edit cannot legitimately move; "
-                          "pale = it may", ha="center", va="top", fontsize=PT_ANN, color="#3d474e")
+    fig.text(0.5, -0.030, "dark fill and bold label = a channel outside the edit's licence; "
+                          "pale = a licensed channel", ha="center", va="top", fontsize=PT_ANN, color="#3d474e")
 
-    fig.suptitle("one edit stays in the channels it may move; the other does not",
+    fig.suptitle("relocation stays in its licensed channels; joining reaches three more",
                  fontsize=PT_TITLE, fontweight="bold", x=0.0, ha="left", y=1.055)
 
     # Room for the value labels, measured rather than guessed: a label at a bar tip is drawn outside the

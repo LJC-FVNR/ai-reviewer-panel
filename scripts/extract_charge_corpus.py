@@ -65,7 +65,6 @@ def paper_of(path, labels):
 POPULATIONS = [
     ("accepted 16, five slots, untouched", "n1b_drift_5model/reviews/*/baseline/panel*/R?.json"),
     ("declined 32, five slots, untouched", "n1c_reject_5model/reviews/R*/baseline/panel*/R?.json"),
-    ("declined 32, five slots, ranking study", "reject_arm/reviews/*/panel*/R?.json"),
     ("accepted 16, eight slots, untouched", "n0_cursor8_iclr/reviews/*/panel*/[A-Z][0-9].json"),
 ]
 

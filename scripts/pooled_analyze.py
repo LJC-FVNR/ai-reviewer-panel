@@ -715,6 +715,9 @@ def block(pairs, rng):
     kept = [p for p in pairs if p["grade_base"] and p["grade_var"]]
     same = sum(1 for p in kept if p["grade_base"] == p["grade_var"])
     return {"n": len(d), "median": round(st.median(d), 4), "mean": round(st.mean(d), 4),
+            # Unrounded, for a label printed at three places: rounding the four-place value again turns
+            # -0.00849 into -0.009 beside a table that prints -0.0085.
+            "median_exact": st.median(d),
             # The criterion as pre-registered names mean |delta|; every table in the paper has reported the
             # median of the signed delta. They are a dispersion statistic and a location statistic, they do
             # not answer the same question, and at this sample size they no longer agree. Both are computed

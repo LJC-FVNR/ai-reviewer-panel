@@ -139,8 +139,8 @@ def main():
     tight, loose = sorted((sw["median_rerun_five"], sw["median_rerun_this"]))
     assert tight < sw["median_swap"] < loose, (tight, sw["median_swap"], loose)
     axA.text(0.97, 0.03,
-             f"level shift {sw['median_swap']:.3f} z,\npast one re-run band\n({tight:.3f}) and not\n"
-             f"the other ({loose:.3f})",
+             f"level shift {sw['median_swap']:.3f} z,\npast this roster's band\n({tight:.3f}), inside the\n"
+             f"five-model band ({loose:.3f})",
              transform=axA.transAxes, ha="right", va="bottom", fontsize=PT_ANN,
              color=INK, linespacing=1.35, zorder=4)
 
@@ -213,7 +213,7 @@ def main():
     axC.set_yticklabels([f"{s_}  {disp[s_]}" for s_ in order], fontsize=PT_ANN)
     axC.set_ylim(len(order) - 0.4, -1.9)
     axC.set_xlabel("median Δ composite from the untouched paper (z)", fontsize=PT_LAB)
-    axC.set_title("c  a rewrite that changes no result moves this roster too", fontsize=PT_TITLE,
+    axC.set_title("c  a rewrite that preserves every result moves this roster too", fontsize=PT_TITLE,
                   fontweight="bold", loc="left", pad=5)
     axC.tick_params(labelsize=PT_TICK)
     axC.tick_params(axis="y", length=0)

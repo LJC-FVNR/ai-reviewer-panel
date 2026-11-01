@@ -150,7 +150,9 @@ def main():
     rv = reviews()
     for label, (papers, n, per) in rv.items():
         print(f"   {label:<22} {papers:>3} papers  {n:>5} reviews  {per:>5.1f} per paper")
-    total = sum(v[1] for v in rv.values())
+    # The rejected arm's untouched panels are also the baselines of reviews/transform_rejected, so the total
+    # counts them once, as reproduce.py does.
+    total = sum(v[1] for v in rv.values()) - rv.get("rejected", (0, 0, 0))[1]
     printed = int(re.search(r'"corpus: total reviews",\s*(\d+)',
                             open(beside("reproduce.py"), encoding="utf-8").read()).group(1))
     assert total == printed, f"this counts {total} reviews, the paper prints {printed}"

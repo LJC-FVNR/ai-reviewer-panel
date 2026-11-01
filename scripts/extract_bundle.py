@@ -31,8 +31,7 @@ OUT = f"{HERE}/extract_corpus.json"
 # two halves of this file the way extract_link.py joins the two tool outputs.
 DOCUMENTS = {"accepted 16, five slots, untouched": "accepted 16, preprint text",
              "accepted 16, eight slots, untouched": "accepted 16, preprint text",
-             "declined 32, five slots, untouched": "declined 32, as-submitted PDF",
-             "declined 32, five slots, ranking study": "declined 32, as-submitted PDF"}
+             "declined 32, five slots, untouched": "declined 32, as-submitted PDF"}
 # The fidelity fields the paper's numbers are computed from. Listed rather than copied wholesale, so a field
 # added to the measurement for a later question does not silently enter the release.
 FIELDS = ("document_words", "body_words", "back_words", "reviewer_words", "reviewer_body_words",

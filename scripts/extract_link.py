@@ -35,8 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # appear in it too, and one that is a property of five particular slots should not.
 PAIRS = [("accepted 16, five slots, untouched", "accepted 16, preprint text"),
          ("accepted 16, eight slots, untouched", "accepted 16, preprint text"),
-         ("declined 32, five slots, untouched", "declined 32, as-submitted PDF"),
-         ("declined 32, five slots, ranking study", "declined 32, as-submitted PDF")]
+         ("declined 32, five slots, untouched", "declined 32, as-submitted PDF")]
 # Both reads of the same papers, averaged into one rate per paper. The number of papers is fixed at what the
 # corpus holds, so the only precision left to buy is in the outcome: a paper's charge rate off ten or twenty
 # reviews is a noisy estimate of the rate for that paper, and averaging the two reads halves that noise without
@@ -45,7 +44,7 @@ PAIRS = [("accepted 16, five slots, untouched", "accepted 16, preprint text"),
 POOLED = [("accepted 16, both rosters", "accepted 16, preprint text",
            ["accepted 16, five slots, untouched", "accepted 16, eight slots, untouched"]),
           ("declined 32, both sittings", "declined 32, as-submitted PDF",
-           ["declined 32, five slots, untouched", "declined 32, five slots, ranking study"])]
+           ["declined 32, five slots, untouched"])]
 # What in the supplied text might drive the charge, and which way the association should run if it does.
 #
 # Counts are read as densities. A pointer count is a length in disguise: a longer submission has more back

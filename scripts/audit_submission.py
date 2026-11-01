@@ -44,8 +44,16 @@ BUNDLE = f"{AN}/release/aina2026_agent_reviewers"
 # at all, which is what the checks below then enforce. Setting it does not widen the rule: its host has to be
 # the proxy, no other address on that host may be printed, and it has to appear on a page rather than sit in a
 # source file the reader never sees.
-ARTIFACT_URL = "https://anonymous.4open.science/r/ai-reviewer-panel-917A"
-ARTIFACT_HOST = "anonymous.4open.science"
+# The camera-ready names its authors and points at the public release, so the double-blind checks below turn into
+# their camera-ready counterparts: the author block must name both authors, the style must be the final copy, and
+# the one repository address allowed on a page is the release's own.
+CAMERA_READY = True
+AUTHORS = ("Jiecheng Lu", "Shihao Yang")
+AUTHOR_EMAILS = ("jlu414@gatech.edu", "shihao.yang@isye.gatech.edu")
+PDF_TITLE = "The Grade Says Little, the Score Orders: AI Reviewer Panels Against a Venue's Ratings and Decisions"
+ARTIFACT_URL = ("https://github.com/LJC-FVNR/ai-reviewer-panel" if CAMERA_READY
+                else "https://anonymous.4open.science/r/ai-reviewer-panel-917A")
+ARTIFACT_HOST = "github.com" if CAMERA_READY else "anonymous.4open.science"
 # Hosts the reference list is allowed to print. Every entry here is a third-party citation, so the address
 # names the cited work rather than an author of this one; anything else on a page is a leak whatever it points
 # at, which is why this is a list of what may appear and not a list of what may not.
@@ -133,9 +141,16 @@ def main():
     print("\nidentity")
     info = dict(re.findall(r"^(\w+):[ \t]*(.*)$", subprocess.run(
         ["pdfinfo", PDF], capture_output=True, text=True).stdout, re.M))
-    for field in ("Author", "Title", "Subject", "Keywords"):
-        v = info.get(field, "").strip()
-        check(v == "", f"PDF {field} empty", repr(v))
+    if CAMERA_READY:
+        check(info.get("Title", "").strip() == PDF_TITLE, "PDF Title is the paper's title", repr(info.get("Title")))
+        check(info.get("Author", "").strip() == ", ".join(AUTHORS), "PDF Author names both authors",
+              repr(info.get("Author")))
+        for field in ("Subject", "Keywords"):
+            check(info.get(field, "").strip() == "", f"PDF {field} empty", repr(info.get(field)))
+    else:
+        for field in ("Author", "Title", "Subject", "Keywords"):
+            v = info.get(field, "").strip()
+            check(v == "", f"PDF {field} empty", repr(v))
     # An absolute path is the leak that survives every prose audit: it is in the file, not in the text.
     for label, pat in (("no absolute paths", rb"/(?:home|Users)/[\w./-]+"),
                        ("no local username", "|".join(IDENTITY).encode()),
@@ -144,6 +159,9 @@ def main():
         hits = sorted({h[:70] for h in re.findall(pat, raw)})
         # Short fragments of a name occur inside compressed streams as byte noise; require a real word.
         hits = [h for h in hits if not re.fullmatch(rb"(?i)[a-z]{1,3}", h)]
+        if CAMERA_READY and label == "no email address":
+            hits = [h for h in hits if h.decode("latin-1") not in AUTHOR_EMAILS]
+            label = "no email address beyond the authors'"
         check(not hits, label, str(hits[:4]))
 
     # Two surfaces, because they fail differently. A URL sitting in an embedded figure or an Info dictionary
@@ -174,11 +192,13 @@ def main():
     # generates its own address, so those are the two kinds of link a blind submission may print.
     hosts = {m.group(1).lower() for m in onpage(r"https?://([^/\s,;)\]}]{4,})")}
     stray = hosts - CITATION_HOSTS - ({ARTIFACT_HOST} if ARTIFACT_URL else set())
-    check(not stray, "every printed link is a citation or the anonymous mirror", str(sorted(stray)[:4]))
+    check(not stray, "every printed link is a citation or the release" if CAMERA_READY
+          else "every printed link is a citation or the anonymous mirror", str(sorted(stray)[:4]))
     if ARTIFACT_URL:
         host = re.sub(r"^https?://([^/]+).*$", r"\1", ARTIFACT_URL)
-        check(host == ARTIFACT_HOST, "the artifact link is served by the anonymising proxy",
-              f"{host!r} is not {ARTIFACT_HOST!r}, so the address can be traced to an account")
+        check(host == ARTIFACT_HOST, "the artifact link is the public release" if CAMERA_READY
+              else "the artifact link is served by the anonymising proxy",
+              f"{host!r} is not {ARTIFACT_HOST!r}")
         shown = len(onpage(re.escape(re.sub(r"\s", "", ARTIFACT_URL))))
         check(shown >= 1, "the artifact link is printed on a page",
               "it is set in the sources and not in the rendered text, so no reader can follow it")
@@ -188,7 +208,10 @@ def main():
               "the only mirror address printed is the declared one",
               f"{shown} printings of the declared link against "
               f"{len(onpage(re.escape('://' + ARTIFACT_HOST)))} on its host")
-    check("Anonymous Author(s)" in txt, "author block is anonymous")
+    if CAMERA_READY:
+        check("Anonymous Author" not in txt and all(a in txt for a in AUTHORS), "author block names both authors")
+    else:
+        check("Anonymous Author(s)" in txt, "author block is anonymous")
     for label, pat in (("no acknowledgements", r"(?im)^\s*acknowledge?ments?\b"),
                        ("no funding line", r"(?i)grant no\.?|funded by|supported by (a|the) \w+ (grant|award)"),
                        ("no affiliation", r"(?i)(University|Institute|Laborator(y|ies)) of \w+"),
@@ -200,8 +223,15 @@ def main():
                        ("no markup comment left in the text", r"<!\s*[-\u2013]{1,2}|[-\u2013]{1,2}\s*>"),
                        ("no generator marker left in the text", r"(?i)generated by \S+\.(py|sh)"),
                        ("no drafting marker left in the text", r"\b(TODO|FIXME|XXX|TO BE WRITTEN|PLACEHOLDER)\b")):
+        if CAMERA_READY and label in ("no affiliation", "no repository URL"):
+            continue
         m = re.findall(pat, txt)
         check(not m, label, str(m[:3]))
+    if CAMERA_READY:
+        repo = [m.group(0) for m in re.finditer(r"(?i)(?:github|gitlab|huggingface|zenodo|osf)\.[\w./-]*",
+                                               re.sub(r"\s", "", txt))]
+        check(all(r.rstrip("./").lower().startswith("github.com/ljc-fvnr/ai-reviewer-panel") for r in repo),
+              "the only repository address is the release's", str(sorted(set(repo))[:4]))
 
     print("\nfonts")
     # The submitted file is the artifact, and its font table is a statement about itself that nothing else in
@@ -229,9 +259,14 @@ def main():
     check(len(fig_fam) <= 1, "the figures are set in one typeface", ", ".join(sorted(fig_fam)))
 
     print("\nformat")
-    check("dblblindworkshop" in tex, "style option dblblindworkshop (anonymised submission mode)")
-    check("\\linenumbers" in log or "lineno" in log or re.search(r"^\s*1\s", txt, re.M) is not None,
-          "line numbers present (the style file's submission mode)")
+    if CAMERA_READY:
+        check(re.search(r"\\usepackage\[[^\]]*\bfinal\b[^\]]*\]\{neurips_2026\}", tex) is not None,
+              "style option final (camera-ready copy)")
+        check("Do not distribute" not in txt, "no submission notice on the pages")
+    else:
+        check("dblblindworkshop" in tex, "style option dblblindworkshop (anonymised submission mode)")
+        check("\\linenumbers" in log or "lineno" in log or re.search(r"^\s*1\s", txt, re.M) is not None,
+              "line numbers present (the style file's submission mode)")
     for label, pat in (("no margin change", r"\\geometry|\\addtolength\s*\{\s*\\(?:textwidth|textheight|oddsidemargin|topmargin|evensidemargin)\}"),
                        ("no font-size change", r"\\fontsize|\\renewcommand\s*\{?\\(normalsize|baselinestretch)"),
                        ("no line-spacing change", r"\\linespread|\\setstretch|\\baselineskip\s*="),

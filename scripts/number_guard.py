@@ -33,6 +33,10 @@ empty of unexplained losses at the time, and it buys coverage of exactly the num
 late language edit. It does mean the DELIBERATE entries below are now unreachable: they are the record of
 what the compression pass cost, not a live exemption list.
 
+Re-based a third time for the camera-ready, when the ranking study was read from the shuffled-order scoring of the
+rejected corpus and the relocation arm applied its edit-count floor to every variant: the 110 tokens in GONE were the
+values those readings replaced, each replacement checked by reproduce.py (589 of 589) and placed by where_printed.py.
+
 Re-based a second time after build 12, from 434 distinct tokens to 588. What made it necessary is not a
 language pass: the presentation study grew from sixteen papers to forty-eight and every result in it was
 recomputed, so the 68 tokens standing in GONE were superseded measurements of the smaller corpus -- the
@@ -126,6 +130,30 @@ TOKEN = re.compile(r"[+−-]?\d[\d,]*(?:\.\d+)?\s*(?:%|z\b|×|pts?\b|points?\b)?
 
 # Numbers whose removal is intended. Keep the reason -- this is the record of what the cut cost.
 DELIBERATE = {
+    "0.0309": "superseded, with 0.0528 and 0.2670: the joining arm's dose-response p values are permutation p "
+              "values drawn from one generator shared across the arms, and applying the edit floor to the "
+              "relocation arm changed how many draws precede them. pooled_analyze.py now gives 0.0313, 0.0513 "
+              "and 0.2664 for the same rho values.",
+    "0.0528": "superseded by 0.0513; see 0.0309.",
+    "0.2670": "superseded by 0.2664; see 0.0309.",
+        "1.06": "a stale range end. Appendix E's range of what the arms would resolve at sixteen manuscripts is "
+            "1.02 to 1.05 band widths under the edit floor, the end the resolution table's last column gives.",
+    "579": "the length of reproduce.py's expectation table, which is 589 with the ten rows for the criterion's "
+           "two conjuncts per arm.",
+    "20.9": "removed with the sentence describing the sentence-splitting variant of T3 that was considered and "
+            "not run. The variant's mean sentence length was design history rather than a result; the paper "
+            "now states only the transform that was run (21.4 to 28.6 words).",
+    "+0.766": "unified, not lost. Appendices D and H printed two bootstrap intervals for the same quantity, the "
+              "five-model panel's correlation on the fifteen rated accepted papers: [-0.344, +0.771] in D and "
+              "[-0.362, +0.766] in H, from two resampling runs. The camera-ready prints D's interval in both "
+              "places and in section 5's table; reproduce.py checks both rows against it at the 0.02 bootstrap "
+              "tolerance.",
+    "-0.362": "unified with D's interval; see +0.766.",
+    "0.54": "removed with the sentence that carried it. It quoted an inter-reviewer agreement of 0.43-0.54 "
+            "measured on another panel and corpus and argued against it, an unattributed number rather than a "
+            "result of this paper. The agreement this panel shows, +0.891, is printed beside it and unchanged. "
+            "Its partner 0.43 survives only as the unrelated -0.43 of Appendix H, which the guard reports as "
+            "REFORMATTED.",
     "0.0000": "corrected to 0.000025, not removed. Section 6's sign-test cell for the join arm printed a "
               "four-place rounding of a p the exact two-sided binomial at 38 of 47 returns as 2.4904e-05, so "
               "the page carried a p of zero, which no test returns. The cell now prints the value and its "

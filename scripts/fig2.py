@@ -173,7 +173,9 @@ def main():
 
     b = cf["boot"]
     dm, dmc = b["d_mean_solo"], b["d_mean_solo_ci"]
-    db, dbc = b["d_best_solo"], b["d_best_solo_ci"]
+    # The point estimate, as Appendix C prints it (-0.064). The bootstrap file's d_best_solo is the mean of the
+    # resampled differences (-0.080), which the figure used to print beside the point estimate's interval.
+    db, dbc = prho - max(solo[s]["rho"] for s in order), b["d_best_solo_ci"]
     # Two nulls in the units of the panel above, each a difference with its own interval: what a fifth
     # reviewer buys over the average member, and what it buys over the best one. Printed rather than left to
     # the caption because an eye cannot read a difference of correlations off two overlapping intervals.
@@ -207,13 +209,6 @@ def main():
           f"{min(solo[s]['rho'] for s in order) < prho < max(solo[s]['rho'] for s in order)}")
     print(f"    panel-mean CI includes 0: {dmc[0] < 0 < dmc[1]}; "
           f"panel-best CI includes 0: {dbc[0] < 0 < dbc[1]}")
-    for key, lab in grade_rows:
-        ci = go["rho_vs_venue_rating_ci"][key]
-        gap = go[f"rho_gap_{'grade_minus' if key == 'grade_mean' else 'bar_share_minus'}_composite"]
-        print(f"    {lab}: rho {go['rho_vs_venue_rating'][key]:+.3f} "
-              f"[{ci['low']:+.3f}, {ci['high']:+.3f}], minus composite {gap['point']:+.3f} "
-              f"[{gap['ci'][0]:+.3f}, {gap['ci'][1]:+.3f}] -> includes 0: "
-              f"{gap['ci'][0] < 0 < gap['ci'][1]}")
     return 0
 
 

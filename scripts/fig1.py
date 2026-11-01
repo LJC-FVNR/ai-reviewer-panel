@@ -230,8 +230,8 @@ def main():
     # Each cluster names itself, so panel (b) needs no legend competing for the same corner. The two
     # lines are STACKED, not side by side: at this type size the pair does not fit across a 1.9in
     # panel and silently overprinted when it was laid out horizontally.
-    for arm, nm, col, y in (("low", "lower arm", "#d94801", 0.115),
-                            ("high", "higher arm", "#08519c", 0.025)):
+    for arm, nm, col, y in (("low", "lower group", "#d94801", 0.115),
+                            ("high", "higher group", "#08519c", 0.025)):
         xs = [p["human"] for p in papers if p["arm"] == arm]
         ys = [p["composite"] for p in papers if p["arm"] == arm]
         r, pv = spearman_p(ys, xs)
@@ -247,7 +247,7 @@ def main():
     gap = axB.text((max(p["human"] for p in papers if p["arm"] == "low")
                     + min(p["human"] for p in papers if p["arm"] == "high")) / 2,
                    (min(acc) + min(p["composite"] for p in papers)) / 2,
-                   f"arm means\n{x_hi - x_lo:.3f} points apart",
+                   f"group means\n{x_hi - x_lo:.3f} points apart",
                    ha="center", va="center", fontsize=PT_ANN, color="#3d474e",
                    linespacing=1.3, zorder=4)
     axB.set_xlabel("ICLR reviewers' mean rating", fontsize=PT_LAB)

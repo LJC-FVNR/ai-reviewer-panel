@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import collections
 import glob
+import hashlib
 import itertools
 import json
 import math
@@ -37,15 +38,15 @@ EXPECT = [
     # (section, name, expected, tol)
     # Section 1's corpus, arm by arm. tol is 0 because these are counts of files, and the roster totals are
     # here as well as their parts: an itemisation that does not add up is the failure a reader would catch.
-    ("1", "corpus: total reviews", 2972, 0),
-    ("1", "corpus: 5-model roster reviews", 2460, 0),
+    ("1", "corpus: total reviews", 2647, 0),
+    ("1", "corpus: 5-model roster reviews", 2135, 0),
     ("1", "corpus: 8-slot roster reviews", 512, 0),
     ("3", "corpus: accepted reviews", 160, 0),
     ("3", "corpus: rejected reviews", 320, 0),
-    ("6", "corpus: presentation study reviews", 2652, 0),
+    ("6", "corpus: presentation study reviews", 2647, 0),
     ("6", "corpus: transform reviews", 470, 0),
     ("6", "corpus: transform_rejected reviews", 790, 0),
-    ("E", "corpus: drift_5model reviews", 560, 0),
+    ("E", "corpus: drift_5model reviews", 555, 0),
     ("E", "corpus: dayrep_5model reviews", 160, 0),
     ("3", "corpus: vendor_panel reviews", 256, 0),
     ("H", "corpus: vendor_transform reviews", 192, 0),
@@ -102,20 +103,17 @@ EXPECT = [
     # representation of the gap rather than on any disagreement. The other three rates are nowhere near
     # a boundary and keep the half-place tolerance.
     ("A", "extract, declined 32, five slots: charge rate", 0.237, 0.001),
-    ("A", "extract, declined 32, ranking study: charging reviews", 66, 0),
-    ("A", "extract, declined 32, ranking study: reviews", 320, 0),
-    ("A", "extract, declined 32, ranking study: charge rate", 0.206, 0.0005),
     ("A", "extract, accepted 16, eight slots: charging reviews", 50, 0),
     ("A", "extract, accepted 16, eight slots: reviews", 256, 0),
     ("A", "extract, accepted 16, eight slots: charge rate", 0.195, 0.0005),
-    ("A", "extract: reviews read", 1216, 0),
-    ("A", "extract: charging reviews", 274, 0),
+    ("A", "extract: reviews read", 896, 0),
+    ("A", "extract: charging reviews", 208, 0),
     # Are the charged reviews the reviews of the papers that lost something. The predictor is a density, and the
     # control is the supplied text's own length, so each read is printed twice: once plain and once net of it.
-    ("A", "extract, declined 32, both sittings: rho, pointer density vs charge rate", 0.375, 0.0005),
-    ("A", "extract, declined 32, both sittings: p", 0.0345, 0.00005),
-    ("A", "extract, declined 32, both sittings: rho net of supplied length", 0.395, 0.0005),
-    ("A", "extract, declined 32, both sittings: p net of length", 0.0252, 0.00005),
+    ("A", "extract, declined 32, both sittings: rho, pointer density vs charge rate", 0.388, 0.0005),
+    ("A", "extract, declined 32, both sittings: p", 0.0282, 0.00005),
+    ("A", "extract, declined 32, both sittings: rho net of supplied length", 0.369, 0.0005),
+    ("A", "extract, declined 32, both sittings: p net of length", 0.0378, 0.00005),
     ("A", "extract, accepted 16, both rosters: rho, pointer density vs charge rate", 0.200, 0.0005),
     ("A", "extract, accepted 16, both rosters: p", 0.4582, 0.00005),
     ("A", "extract, accepted 16, both rosters: rho net of supplied length", 0.218, 0.0005),
@@ -136,13 +134,6 @@ EXPECT = [
     ("A", "extract, declined 32, five slots: papers with both", 28, 0),
     ("A", "extract, declined 32, five slots: pooled gap", 0.284, 0.0005),
     ("A", "extract, declined 32, five slots: pooled AUC", 0.592, 0.0005),
-    ("A", "extract, declined 32, ranking study: paired gap, median", 0.001, 0.0005),
-    ("A", "extract, declined 32, ranking study: paired gap CI low", -0.112, 0.02),
-    ("A", "extract, declined 32, ranking study: paired gap CI high", 0.205, 0.02),
-    ("A", "extract, declined 32, ranking study: papers with a positive gap", 13, 0),
-    ("A", "extract, declined 32, ranking study: papers with both", 26, 0),
-    ("A", "extract, declined 32, ranking study: pooled gap", 0.309, 0.0005),
-    ("A", "extract, declined 32, ranking study: pooled AUC", 0.599, 0.0005),
     ("A", "extract, accepted 16, eight slots: paired gap, median", 0.046, 0.0005),
     ("A", "extract, accepted 16, eight slots: paired gap CI low", -0.128, 0.02),
     ("A", "extract, accepted 16, eight slots: paired gap CI high", 0.191, 0.02),
@@ -197,8 +188,8 @@ EXPECT = [
     # band covers, which is the claim the paragraph makes. Both sides of that are counted.
     ("2", "reference field: adjacent pairs", 15, 0),
     ("2", "reference field: adjacent pairs inside the re-run band", 10, 0),
-    ("5", "rho, composite vs venue rating, 32 declined", 0.595, 0.002),
-    ("5", "AUC, high- vs low-rated declined", 0.820, 0.002),
+    ("5", "rho, composite vs venue rating, 32 declined", 0.51, 0.002),
+    ("5", "AUC, high- vs low-rated declined", 0.77, 0.002),
     # The same criterion applied to the grade instead of the composite, which appendix D prints beside the
     # composite with an interval on the difference. Two readings, because the first assumes the five levels
     # are equally spaced and the second assumes nothing: the mean of the levels coded 0 to 4, and the share
@@ -206,8 +197,8 @@ EXPECT = [
     # correlations and a pair of AUCs of its own for a while; the AUCs went with that table, so their rows
     # went too rather than stand as expectations for values no page states. The appendix's own AUC column
     # asks a different question -- the published sixteen against all 32 declined -- and has its rows below.
-    ("D", "mean grade: rho vs venue rating, 32 declined", 0.605, 0.002),
-    ("D", "bar share: rho vs venue rating, 32 declined", 0.663, 0.002),
+    ("D", "mean grade: rho vs venue rating, 32 declined", 0.564, 0.002),
+    ("D", "bar share: rho vs venue rating, 32 declined", 0.561, 0.002),
     # The screening claim's own count, which had no row: section 5 says only 3 of 32 declined papers clear the
     # published field's median, and the opening figure now draws that threshold. It is a single digit, so
     # unchecked.py does not examine it and nothing else would have noticed it going stale -- and it is the
@@ -215,23 +206,23 @@ EXPECT = [
     # the accepted panel is re-run. The two quantities it is built from each have a row; their comparison did
     # not.
     ("5", "declined papers above the published-field median", 3, 0),
-    ("7", "AUC, published vs declined (pooled)", 0.840, 0.002),
-    ("F", "AUC, published vs declined: CI low", 0.713, 0.02),
-    ("F", "AUC, published vs declined: CI high", 0.938, 0.02),
+    ("7", "AUC, published vs declined (pooled)", 0.85, 0.002),
+    ("F", "AUC, published vs declined: CI low", 0.725, 0.02),
+    ("F", "AUC, published vs declined: CI high", 0.947, 0.02),
     # Appendix D in full. Point estimates carry half of their last printed place; the two bootstrap intervals
     # carry 0.02, the seed allowance this file documents at the boot_ci call, because a percentile interval
     # from 4000 resamples is not reproducible to three places across generators.
-    ("D", "rho p, composite vs venue rating", 0.0003, 0.00005),
-    ("D", "rho CI low", 0.296, 0.02),
-    ("D", "rho CI high", 0.798, 0.02),
-    ("D", "kendall tau, composite vs rating", 0.460, 0.0005),
-    ("D", "kendall tau p", 0.0006, 0.00005),
-    ("D", "declined low-arm mean composite", -1.539, 0.0005),
-    ("D", "declined high-arm mean composite", -0.596, 0.0005),
-    ("D", "arm gap, z", 0.943, 0.0005),
-    ("D", "arm gap / sd of all 32", 1.058, 0.0005),
-    ("D", "AUC CI low", 0.660, 0.02),
-    ("D", "AUC CI high", 0.945, 0.02),
+    ("D", "rho p, composite vs venue rating", 0.0029, 0.00005),
+    ("D", "rho CI low", 0.189, 0.02),
+    ("D", "rho CI high", 0.744, 0.02),
+    ("D", "kendall tau, composite vs rating", 0.393, 0.0005),
+    ("D", "kendall tau p", 0.0032, 0.00005),
+    ("D", "declined low-arm mean composite", -1.503, 0.0005),
+    ("D", "declined high-arm mean composite", -0.654, 0.0005),
+    ("D", "arm gap, z", 0.848, 0.0005),
+    ("D", "arm gap / sd of all 32", 0.95, 0.0005),
+    ("D", "AUC CI low", 0.59, 0.02),
+    ("D", "AUC CI high", 0.91, 0.02),
     # What the body's grade-as-order table leaves to the appendix: the same two readings against the venue's
     # decision rather than its rating, and the interval on the difference between each reading and the
     # composite. The difference is a paired quantity -- one set of papers, three columns -- so the resample
@@ -239,25 +230,34 @@ EXPECT = [
     # the composite's twelve calibrated channels order no better and no worse than the grade does. The
     # difference of two correlations is not a quantity a percentile interval reproduces to three places, so
     # these four bounds carry the same 0.02 seed allowance the other bootstrap rows do.
-    ("D", "mean grade: AUC, published vs declined", 0.812, 0.002),
-    ("D", "bar share: AUC, published vs declined", 0.752, 0.002),
-    ("D", "mean grade: rho minus composite rho", 0.010, 0.002),
-    ("D", "mean grade: rho minus composite rho, CI low", -0.097, 0.02),
-    ("D", "mean grade: rho minus composite rho, CI high", 0.114, 0.02),
-    ("D", "bar share: rho minus composite rho", 0.068, 0.002),
-    ("D", "bar share: rho minus composite rho, CI low", -0.149, 0.02),
-    ("D", "bar share: rho minus composite rho, CI high", 0.304, 0.02),
-    ("D", "Mann-Whitney p, high vs low arm", 0.0021, 0.00005),
-    ("D", "declined median composite", -0.861, 0.0005),
+    ("D", "mean grade: AUC, published vs declined", 0.821, 0.002),
+    ("D", "bar share: AUC, published vs declined", 0.76, 0.002),
+    ("D", "mean grade: rho minus composite rho", 0.054, 0.002),
+    ("D", "mean grade: rho minus composite rho, CI low", -0.035, 0.02),
+    ("D", "mean grade: rho minus composite rho, CI high", 0.167, 0.02),
+    ("D", "bar share: rho minus composite rho", 0.051, 0.002),
+    ("D", "bar share: rho minus composite rho, CI low", -0.215, 0.02),
+    ("D", "bar share: rho minus composite rho, CI high", 0.312, 0.02),
+    ("D", "Mann-Whitney p, high vs low arm", 0.0098, 0.00005),
+    ("D", "declined median composite", -0.881, 0.0005),
     ("D", "declined papers above the published median", 3, 0),
     # The two arms against the rating. These are the coefficients that were printed against scoring hour, so
     # they are the rows most worth having a second implementation of.
-    ("D", "low-rated arm: rho with rating", -0.052, 0.0005),
-    ("D", "low-rated arm: p", 0.85, 0.005),
-    ("D", "high-rated arm: rho with rating", 0.565, 0.0005),
-    ("D", "high-rated arm: p", 0.023, 0.0005),
-    ("D", "low-rated arm: partial rho, length held", -0.276, 0.0005),
-    ("D", "high-rated arm: partial rho, length held", 0.509, 0.0005),
+    ("D", "low-rated arm: rho with rating", -0.043, 0.0005),
+    ("D", "low-rated arm: p", 0.87, 0.005),
+    ("D", "high-rated arm: rho with rating", 0.479, 0.0005),
+    ("D", "high-rated arm: p", 0.06, 0.0005),
+    ("5", "low-rated arm: CI low", -0.503, 0.02),
+    ("5", "low-rated arm: CI high", 0.42, 0.02),
+    ("5", "high-rated arm: CI low", -0.039, 0.02),
+    ("5", "high-rated arm: CI high", 0.85, 0.02),
+    ("5", "pooled rank covariance: % between arms", 82, 0.5),
+    ("D", "pooled rank covariance: % between arms, one place", 81.6, 0.05),
+    ("D", "pooled rank covariance: % within arms, one place", 18.4, 0.05),
+    ("5", "high-rated arm: lowest rating", 5.0, 0.05),
+    ("5", "high-rated arm: highest rating", 5.5, 0.05),
+    ("D", "low-rated arm: partial rho, length held", -0.288, 0.0005),
+    ("D", "high-rated arm: partial rho, length held", 0.397, 0.0005),
     ("D", "low-rated arm: distinct ratings over 16", 3, 0),
     ("D", "high-rated arm: distinct ratings over 16", 4, 0),
     ("D", "low-rated arm: papers at the modal rating", 11, 0),
@@ -268,6 +268,8 @@ EXPECT = [
     ("5", "arm mean rating gap", 3.077, 0.0005),   # moved into section 5's design paragraph
     ("D", "declined arm rating span", 3.50, 0.005),
     ("D", "published arm rating span", 3.50, 0.005),
+    ("5", "published arm: lowest rating", 4.5, 0.05),
+    ("5", "published arm: highest rating", 8.0, 0.05),
     ("C", "low-rated arm: modal rating", 2.0, 0.005),
     ("D", "high-rated arm: modal rating", 5.0, 0.005),
     # The same mode at the one decimal place the sentence prints it to. A row whose tolerance implies three
@@ -279,99 +281,106 @@ EXPECT = [
     ("D", "published arm: p", 0.27, 0.005),
     ("D", "published arm: rho, overall_recommendation raw", 0.112, 0.0005),
     ("D", "published arm: p, overall_recommendation", 0.69, 0.005),
-    ("D", "declined minus published rho", 0.291, 0.0005),
-    ("D", "declined minus published: CI low", -0.266, 0.02),
-    ("D", "declined minus published: CI high", 0.974, 0.02),
+    ("D", "declined minus published rho", 0.207, 0.0005),
+    ("D", "declined minus published: CI low", -0.367, 0.02),
+    ("D", "declined minus published: CI high", 0.891, 0.02),
     ("D", "published arm: CI low", -0.344, 0.02),
     ("D", "published arm: CI high", 0.771, 0.02),
     ("D", "declined arm rating IQ width", 3.23, 0.005),
     ("D", "published arm rating IQ width", 1.50, 0.005),
     ("D", "published arm papers with a rating", 15, 0),
-    ("D", "length: partial rho with human rating", 0.344, 0.0005),
-    ("D", "length: partial p, human rating", 0.054, 0.0005),
+    ("D", "length: partial rho with human rating", 0.267, 0.0005),
+    ("D", "length: partial p, human rating", 0.139, 0.0005),
     ("D", "length band: low bound", 4047, 0),
     ("D", "length band: high bound", 4775, 0),
     ("D", "length band: low-arm papers", 8, 0),
     ("D", "length band: high-arm papers", 8, 0),
-    ("D", "length band: gap, z", 0.546, 0.0005),
-    ("D", "length band: AUC", 0.781, 0.0005),
-    ("D", "drift: mean later minus earlier, z", 0.025, 0.0005),
-    ("D", "drift: median later minus earlier, z", 0.038, 0.0005),
-    ("D", "drift: Wilcoxon p", 0.39, 0.005),
-    ("D", "drift: rho, dcomposite vs hours between panels", -0.082, 0.0005),
-    ("D", "drift: p", 0.65, 0.005),
-    ("D", "scoring hour: rho with composite, pooled", 0.574, 0.0005),
-    ("D", "scoring hour: p", 0.0006, 0.00005),
-    ("D", "scoring hour window: low-arm papers", 6, 0),
-    ("D", "scoring hour window: high-arm papers", 15, 0),
-    ("D", "scoring hour window: gap, z", 0.414, 0.0005),
-    ("D", "scoring hour window: AUC", 0.667, 0.0005),
+    ("D", "length band: gap, z", 0.443, 0.0005),
+    ("D", "length band: AUC", 0.719, 0.0005),
+    ("D", "drift: mean later minus earlier, z", -0.027, 0.0005),
+    ("D", "drift: median later minus earlier, z", -0.019, 0.0005),
+    ("D", "drift: Wilcoxon p", 0.6, 0.005),
+    ("D", "drift: rho, dcomposite vs hours between panels", -0.12, 0.0005),
+    ("D", "drift: p", 0.51, 0.005),
+    ("D", "scoring hour: rho with composite, pooled", 0.018, 0.0005),
+    ("D", "scoring hour: p", 0.92, 0.005),
     ("D", "cross-arm pairs, total", 256, 0),
-    ("D", "cross-arm pairs, lower-rated at least higher-rated", 46, 0),
-    ("D", "panel-to-panel lag, median seconds", 53, 0.5),
-    ("D", "scoring queue span, minutes", 87, 0.5),
-    ("6", "T1 median dcomposite", -0.0201, 0.002),
+    ("D", "cross-arm pairs, lower-rated at least higher-rated", 59, 0),
+    ("D", "panel-to-panel lag, median seconds", 80, 0.5),
+    ("D", "scoring queue span, minutes", 139, 0.5),
+    ("6", "T1 median dcomposite", -0.0085, 0.002),
     ("6", "T3 median dcomposite", -0.1384, 0.002),
     ("6", "T2 median dcomposite", 0.0214, 0.002),
+    # The criterion's two conjuncts, as section 6 and appendix E apply them to each arm.
+    ("6", "T1 mean |dcomposite|", 0.148, 0.0005),
+    ("E", "T2 mean |dcomposite|", 0.176, 0.0005),
+    ("E", "T3 mean |dcomposite|", 0.200, 0.0005),
+    ("6", "T1: modal grade kept, papers", 42, 0),
+    ("6", "T1: modal grade kept, of", 46, 0),
+    ("E", "T1: modal grade kept, share", 0.913, 0.0005),
+    ("E", "T2: modal grade kept, papers", 42, 0),
+    ("E", "T2: modal grade kept, of", 48, 0),
+    ("E", "T3: modal grade kept, papers", 42, 0),
+    ("E", "T3: modal grade kept, of", 47, 0),
     # The results table's two corpus columns, which stood in it unrecomputed while every other cell of the row
     # they sit in had a row here. One of the six even passed the coverage check backwards, because a channel
     # median three appendices away rounds to −0.058 as well. The tolerance is the pooled columns': half of the
     # last printed place, since a median of a corpus half is one arithmetic path from the shipped reviews.
-    ("6", "T1 median dcomposite, accepted", -0.0580, 0.00005),
+    ("6", "T1 median dcomposite, accepted", -0.0583, 0.00005),
     ("6", "T1 median dcomposite, declined", +0.0107, 0.00005),
     ("6", "T2 median dcomposite, accepted", +0.0214, 0.00005),
     ("6", "T2 median dcomposite, declined", +0.0197, 0.00005),
     ("6", "T3 median dcomposite, accepted", -0.2126, 0.00005),
     ("6", "T3 median dcomposite, declined", -0.1121, 0.00005),
-    ("6", "T1 sign split, negative", 24, 0),
+    ("6", "T1 sign split, negative", 23, 0),
     ("6", "T3 sign split, negative", 38, 0),
     ("6", "T2 sign split, negative", 22, 0),
-    ("4", "variance: paper %, declined 32", 64.5, 0.05),
-    ("4", "variance: reviewer %, declined 32", 8.4, 0.05),
-    ("C", "variance: reviewer %, low-rated 16", 10.7, 0.05),
-    ("C", "variance: reviewer %, high-rated 16", 13.8, 0.05),
+    ("4", "variance: paper %, declined 32", 64.8, 0.05),
+    ("4", "variance: reviewer %, declined 32", 5.9, 0.05),
+    ("C", "variance: reviewer %, low-rated 16", 11.3, 0.05),
+    ("C", "variance: reviewer %, high-rated 16", 9.1, 0.05),
     ("4", "variance: reviewer %, published 16", 18.8, 0.05),
     ("4", "variance: paper %, published 16", 39.1, 0.05),
     # The ladder's two middle rungs and its third column. Only the ends of the table were checked, and the
     # middle rungs are the table's argument: the claim is that the reviewer's share climbs monotonically as the
     # population narrows, which is a statement about four rows in order, not about the first and the last.
-    ("C", "variance: paper %, low-rated 16", 52.5, 0.05),
-    ("C", "variance: paper %, high-rated 16", 59.0, 0.05),
-    ("C", "variance: residual %, declined 32", 27.1, 0.05),
-    ("C", "variance: residual %, low-rated 16", 36.8, 0.05),
-    ("C", "variance: residual %, high-rated 16", 27.3, 0.05),
+    ("C", "variance: paper %, low-rated 16", 54.2, 0.05),
+    ("C", "variance: paper %, high-rated 16", 60.1, 0.05),
+    ("C", "variance: residual %, declined 32", 29.2, 0.05),
+    ("C", "variance: residual %, low-rated 16", 34.5, 0.05),
+    ("C", "variance: residual %, high-rated 16", 30.7, 0.05),
     ("C", "variance: residual %, published 16", 42.1, 0.05),
-    ("C", "variance: reviewer/paper, declined 32", 0.13, 0.005),
-    ("C", "variance: reviewer/paper, low-rated 16", 0.20, 0.005),
-    ("C", "variance: reviewer/paper, high-rated 16", 0.23, 0.005),
+    ("C", "variance: reviewer/paper, declined 32", 0.09, 0.005),
+    ("C", "variance: reviewer/paper, low-rated 16", 0.21, 0.005),
+    ("C", "variance: reviewer/paper, high-rated 16", 0.15, 0.005),
     ("C", "variance: reviewer/paper, published 16", 0.48, 0.005),
-    ("C", "slot baseline spread, declined 32", 0.73, 0.005),
+    ("C", "slot baseline spread, declined 32", 0.67, 0.005),
     # The two middle rungs of the leniency ladder, whose magnitudes collide with an AUC and a CI bound
     # elsewhere in the paper, so until now they were covered only by a row about a different quantity.
-    ("C", "slot baseline spread, low-rated 16", 0.84, 0.005),
-    ("C", "slot baseline spread, high-rated 16", 0.94, 0.005),
+    ("C", "slot baseline spread, low-rated 16", 0.88, 0.0051),
+    ("C", "slot baseline spread, high-rated 16", 0.78, 0.005),
     ("C", "slot baseline spread, published 16", 0.97, 0.005),
-    ("C", "solo-slot rho, lowest", 0.482, 0.002),
-    ("C", "solo-slot rho, highest", 0.658, 0.002),
-    ("4", "panel rho minus mean-solo rho", 0.043, 0.002),
+    ("C", "solo-slot rho, lowest", 0.381, 0.002),
+    ("C", "solo-slot rho, highest", 0.556, 0.002),
+    ("4", "panel rho minus mean-solo rho", 0.041, 0.002),
     # The interval around that null, and the selection-biased bound printed beside it. 0.02 is the seed
     # allowance every percentile interval in this file carries.
-    ("4", "aggregation gap: CI low", -0.008, 0.02),
-    ("4", "aggregation gap: CI high", 0.088, 0.02),
-    ("C", "panel minus best slot", -0.064, 0.002),
-    ("C", "panel minus best slot: CI low", -0.225, 0.02),
-    ("C", "panel minus best slot: CI high", 0.018, 0.02),
-    ("F", "drop-one AUC, lowest", 0.797, 0.002),
-    ("F", "drop-one AUC, highest", 0.836, 0.002),
-    ("F", "drop-one rho, lowest", 0.542, 0.002),
-    ("F", "drop-one rho, highest", 0.617, 0.002),
-    ("4", "inter-slot agreement, median of 10 pairs", 0.891, 0.002),
-    ("C", "inter-slot agreement, minimum pair", 0.844, 0.002),
-    ("C", "inter-slot agreement, low-rated 16", 0.893, 0.002),
-    ("C", "inter-slot agreement, high-rated 16", 0.865, 0.002),
+    ("4", "aggregation gap: CI low", -0.02, 0.02),
+    ("4", "aggregation gap: CI high", 0.1, 0.02),
+    ("C", "panel minus best slot", -0.046, 0.002),
+    ("C", "panel minus best slot: CI low", -0.191, 0.02),
+    ("C", "panel minus best slot: CI high", 0.012, 0.02),
+    ("F", "drop-one AUC, lowest", 0.758, 0.002),
+    ("F", "drop-one AUC, highest", 0.773, 0.002),
+    ("F", "drop-one rho, lowest", 0.493, 0.002),
+    ("F", "drop-one rho, highest", 0.525, 0.002),
+    ("4", "inter-slot agreement, median of 10 pairs", 0.87, 0.002),
+    ("C", "inter-slot agreement, minimum pair", 0.802, 0.002),
+    ("C", "inter-slot agreement, low-rated 16", 0.846, 0.002),
+    ("C", "inter-slot agreement, high-rated 16", 0.859, 0.002),
     ("C", "inter-slot agreement, published 16", 0.710, 0.002),
-    ("C", "leniency shift, smallest slot", 0.52, 0.005),
-    ("C", "leniency shift, largest slot", 1.02, 0.005),
+    ("C", "leniency shift, smallest slot", 0.5, 0.005),
+    ("C", "leniency shift, largest slot", 1.12, 0.0051),
     # The equal spread of the two middle rungs, which the appendix attributes to the sampling rule rather than
     # to the panel. Three rows, because the equality is the claim and the low arm's two endpoints are printed.
     ("C", "low-rated arm: rating range", 0.500, 0.0005),
@@ -396,10 +405,10 @@ EXPECT = [
     # Counted against the arms as shipped, so a reader with the bundle can settle them without the targets.
     ("C", "pool: eligible below the low arm", 9, 0),
     ("C", "pool: eligible above the high arm", 2, 0),
-    ("C", "panel retest rho, declined 32", 0.965, 0.002),
+    ("C", "panel retest rho, declined 32", 0.981, 0.002),
     ("C", "reviewer variance component, published 16", 0.111, 0.002),
     ("C", "sd of slot baselines, published 16", 0.352, 0.002),
-    ("6", "T1 |median| / own band", 0.13, 0.005),
+    ("6", "T1 |median| / own band", 0.05, 0.005),
     ("6", "T3 |median| / own band", 0.86, 0.008),
     ("6", "T2 |median| / own band", 0.13, 0.005),
     # What each arm resolves, printed in the appendix's resolution table and in the body's scope note. These
@@ -416,8 +425,8 @@ EXPECT = [
     # read for.
     ("E", "T1 resolves", 0.099, 0.0005),
     ("E", "T1 resolves / band", 0.62, 0.005),
-    ("E", "T1 resolves at sixteen", 0.170, 0.0005),
-    ("E", "T1 resolves at sixteen / band", 1.06, 0.005),
+    ("E", "T1 resolves at sixteen", 0.168, 0.0005),
+    ("E", "T1 resolves at sixteen / band", 1.05, 0.005),
     ("E", "T2 resolves", 0.094, 0.0005),
     ("E", "T2 resolves / band", 0.59, 0.005),
     ("E", "T2 resolves at sixteen", 0.163, 0.0005),
@@ -437,17 +446,17 @@ EXPECT = [
     ("2", "5-model: grade re-run cell agreement", 0.8292, 0.00005),
     ("E", "5-model: grade re-run cell agreement, three places", 0.829, 0.0005),
     ("E", "5-model: modal grade holds on identical text, three places", 0.938, 0.0005),
-    ("E", "T1: grade cells differing from both readings, share", 0.094, 0.0005),
+    ("E", "T1: grade cells differing from both readings, share", 0.091, 0.0005),
     ("E", "T2: grade cells differing from both readings, share", 0.104, 0.0005),
     ("E", "T3: grade cells differing from both readings, share", 0.132, 0.0005),
-    ("E", "T1: grade step / own re-run step", 1.05, 0.005),
+    ("E", "T1: grade step / own re-run step", 1.03, 0.005),
     ("E", "T2: grade step / own re-run step", 1.12, 0.005),
     ("E", "T3: grade step / own re-run step", 1.26, 0.005),
     ("E", "grade cells that ever flip, share", 0.225, 0.0005),
-    ("D", "length: rho with composite", 0.556, 0.0005),
+    ("D", "length: rho with composite", 0.502, 0.0005),
     ("D", "length: rho with human rating", 0.597, 0.0005),
-    ("D", "length: partial rho with composite", 0.239, 0.0005),
-    ("D", "length: partial p", 0.19, 0.005),
+    ("D", "length: partial rho with composite", 0.268, 0.0005),
+    ("D", "length: partial p", 0.14, 0.005),
 
     # The second roster: eight slots, six vendors, its own frozen parameters. Section H unless the body
     # prints the number too, in which case the body's section and the body's rounding.
@@ -524,8 +533,8 @@ EXPECT = [
     # argument of the paragraph: without them the two point estimates read as one roster beating the other.
     ("H", "validity, published: 8-slot rho CI low", -0.414, 0.02),
     ("H", "validity, published: 8-slot rho CI high", 0.683, 0.02),
-    ("H", "validity, published: 5-model rho CI low", -0.362, 0.02),
-    ("H", "validity, published: 5-model rho CI high", 0.766, 0.02),
+    ("H", "validity, published: 5-model rho CI low", -0.344, 0.02),
+    ("H", "validity, published: 5-model rho CI high", 0.771, 0.02),
     # The gap between the two point estimates, which is the quantity the paragraph declines to interpret. It is
     # the subtraction the reader performs anyway, so it gets a row rather than being left as the difference of
     # two rows: those are printed to three places and this to two, and nothing checked that the coarser figure
@@ -618,7 +627,7 @@ EXPECT = [
     # of them is the eight-paper roster's, where the appendix argues from the test's coarseness -- eight papers
     # cannot reach 0.05 unless every one moves -- so there the resolution is load-bearing rather than
     # descriptive, and it is a property of n = 8 alone rather than of any observed count.
-    ("6", "T1 sign test p at 24 of 47", 1.0, 0.005),
+    ("6", "T1 sign test p at 23 of 46", 1.0, 0.005),
     ("6", "T2 sign test p at 22 of 48", 0.6655, 0.0005),
     # Printed as 0.000025, not 0.0000: the exact two-sided binomial at 38 of 47 is 2.4904e-05, and a
     # four-place cell rounds it to a value no test can return. The tolerance is half of the last place
@@ -632,8 +641,8 @@ EXPECT = [
     # The body table's three intervals, at the same 0.02 as every other bootstrap bound here. T1's is the
     # one that matters: it crosses zero in the bold column beside the sentence putting the composite inside
     # instrument noise, so it is the entry a reviewer who checks one number in this paper will check.
-    ("6", "T1 CI low", -0.0583, 0.02),
-    ("6", "T1 CI high", +0.0714, 0.02),
+    ("6", "T1 CI low", -0.0672, 0.02),
+    ("6", "T1 CI high", 0.0779, 0.02),
     ("6", "T3 CI low", -0.2034, 0.02),
     ("6", "T3 CI high", -0.0593, 0.02),
     ("6", "T2 CI low", -0.0287, 0.02),
@@ -685,16 +694,16 @@ EXPECT = [
     # that argument rests on them. The eight-paper roster's three rhos were checked here as well, against a
     # roster disagreement the appendix used to report and no longer does; a rank correlation over eight papers
     # is printed nowhere now, and the three rows matched the re-run band's p90 and a channel median instead.
-    ("E", "dose T1: fewest edits", 2, 0),
+    ("E", "dose T1: fewest edits", 3, 0),
     ("E", "dose T1: most edits", 12, 0),
-    ("E", "dose T1: median edits", 6.0, 0.001),
+    ("E", "dose T1: median edits", 6.5, 0.001),
     ("E", "dose T2: fewest edits", 3, 0),
     ("E", "dose T2: most edits", 22, 0),
     ("E", "dose T2: median edits", 7.0, 0.001),
     ("E", "dose T3: fewest edits", 16, 0),
     ("E", "dose T3: most edits", 59, 0),
     ("E", "dose T3: median edits", 35.0, 0.001),
-    ("E", "dose T1: rho edits vs delta, 5-model", 0.0282, 0.00005),
+    ("E", "dose T1: rho edits vs delta, 5-model", 0.0146, 0.00005),
     ("E", "dose T2: rho edits vs delta, 5-model", 0.0019, 0.00005),
     ("E", "dose T3: rho edits vs delta, 5-model", -0.3143, 0.00005),
     # The five-model roster's own drift control. The two clean deltas are the only numbers in the paper that
@@ -726,24 +735,24 @@ EXPECT = [
     # A p the paper prints as a bound rather than a value is entered as the bound with the bound as its
     # tolerance, so the row passes for any computed value inside it and fails if the bound is overrun.
     ("6", "T1 composite: untouched papers in pool", 48, 0),
-    ("6", "T1 composite: delta", -0.0201, 0.0005),
+    ("6", "T1 composite: delta", -0.0085, 0.0005),
     ("6", "T3 composite: delta", -0.1384, 0.0005),
     ("6", "T2 composite: delta", 0.0214, 0.0005),
-    ("6", "T1 composite: papers down", 24, 0),
+    ("6", "T1 composite: papers down", 23, 0),
     ("6", "T3 composite: papers down", 38, 0),
     ("6", "T2 composite: papers down", 22, 0),
     # The group resolution, which is where the leak claim is made and what F4's wing headers print.
     ("E", "T1 allotted: channels", 3, 0),
     ("E", "T1 non-allotted: channels", 9, 0),
-    ("E", "T1 allotted: delta", -0.083, 0.0005),
-    ("E", "T1 non-allotted: delta", -0.006, 0.0005),
-    ("E", "T1 non-allotted: own-arm p", 0.4402, 0.002),
-    ("E", "T1 non-allotted: pooled p", 0.4427, 0.002),
+    ("E", "T1 allotted: delta", -0.084, 0.0005),
+    ("E", "T1 non-allotted: delta", -0.002, 0.0005),
+    ("E", "T1 non-allotted: own-arm p", 0.5004, 0.003),
+    ("E", "T1 non-allotted: pooled p", 0.4974, 0.002),
     # The same p at the two places F4's own wing header prints it, and its caption with it. An alias rather than
     # a second measurement, for the reason the modal-grade pair carries: a row at four places cannot be found on
     # a page that prints two, and coverage searched for by magnitude would otherwise hand the caption's value to
     # the eight-slot sigma of −0.44, a different measurement in a different appendix.
-    ("E", "T1 non-allotted: pooled p at two places", 0.44, 0.005),
+    ("E", "T1 non-allotted: pooled p at two places", 0.5, 0.005),
     ("E", "T3 allotted: delta", -0.414, 0.0005),
     ("E", "T3 non-allotted: delta", -0.109, 0.0005),
     # Both nulls put this group past every one of their 200,000 sign assignments but one, so the appendix prints
@@ -757,18 +766,18 @@ EXPECT = [
     # drafted from -- T1 reproducibility, T3 figure quality and, on the second roster, T3 reproducibility --
     # each one a three-place quote taken from an already-rounded number. The bundle's own rounding is what
     # these rows carry, so the prose has to move to them rather than the other way round.
-    ("E", "T1 channel structure_compliance: delta", 0.049, 0.0005),
-    ("E", "T1 channel clarity: delta", -0.097, 0.0005),
-    ("E", "T1 channel figure_quality: delta", -0.172, 0.0005),
-    ("E", "T1 channel reproducibility: delta", 0.005, 0.0005),
-    ("E", "T1 channel statistical_soundness: delta", -0.022, 0.0005),
-    ("E", "T1 channel related_work: delta", 0.028, 0.0005),
-    ("E", "T1 channel overall_recommendation: delta", 0.0, 0.0005),
-    ("E", "T1 channel breadth_generality: delta", 0.055, 0.0005),
-    ("E", "T1 channel rigor: delta", 0.013, 0.0005),
+    ("E", "T1 channel structure_compliance: delta", 0.05, 0.0005),
+    ("E", "T1 channel clarity: delta", -0.087, 0.0005),
+    ("E", "T1 channel figure_quality: delta", -0.189, 0.0005),
+    ("E", "T1 channel reproducibility: delta", 0.009, 0.0005),
+    ("E", "T1 channel statistical_soundness: delta", -0.024, 0.0005),
+    ("E", "T1 channel related_work: delta", 0.029, 0.0005),
+    ("E", "T1 channel overall_recommendation: delta", 0.002, 0.0005),
+    ("E", "T1 channel breadth_generality: delta", 0.047, 0.0005),
+    ("E", "T1 channel rigor: delta", 0.014, 0.0005),
     ("E", "T1 channel calibration_honesty: delta", -0.002, 0.0005),
-    ("E", "T1 channel novelty: delta", -0.098, 0.0005),
-    ("E", "T1 channel significance: delta", -0.049, 0.0005),
+    ("E", "T1 channel novelty: delta", -0.097, 0.0005),
+    ("E", "T1 channel significance: delta", -0.051, 0.0005),
     ("E", "T3 channel clarity: delta", -0.723, 0.0005),
     ("E", "T3 channel structure_compliance: delta", -0.315, 0.0005),
     ("E", "T3 channel figure_quality: delta", -0.091, 0.0005),
@@ -850,21 +859,11 @@ EXPECT = [
     # down and three up. Four and four over nine channels does not even add up, so both are rows here.
     ("H", "8-slot T3 non-allotted: papers down", 4, 0),
     ("H", "8-slot T3 non-allotted: channels down", 6, 0),
-    # Appendix E's treatment-strength floor. The counts first: how many paper-variant cells there are, how many
-    # came in under their transform's minimum, and how those split into the two the queue never read and the one
-    # it did. The split is the whole disclosure -- two withheld cells are why two arms carry a paper fewer than
-    # the third, and the scored one is why the appendix puts a second reading beside the reported arm.
+    # Appendix E's treatment-strength floor: how many paper-variant cells there are and how many fall under
+    # their transform's minimum. Every one of those is withheld, which the block in main() asserts.
     ("E", "floor: paper-variant cells", 144, 0),
     ("E", "floor: cells under the floor", 3, 0),
-    ("E", "floor: cells under the floor withheld", 2, 0),
-    ("E", "floor: cells under the floor with a reading", 1, 0),
-    # Then the second reading itself, over the arm less that one paper. The two nulls the appendix reports as
-    # holding are rows here, and so is the one axis whose verdict differs: a disclosure whose asymmetry is not
-    # checkable is a sentence, and this is the axis the relocation edit is licensed to move in the first place.
-    ("E", "floor-enforced T1 composite: papers", 46, 0),
-    ("E", "floor-enforced T1 composite: moved", 0, 0),
-    ("E", "floor-enforced T1 non-allotted: moved", 0, 0),
-    ("E", "floor-enforced T1 allotted: moved", 1, 0),
+    ("E", "floor: cells under the floor withheld", 3, 0),
 ]
 
 
@@ -1519,19 +1518,25 @@ def main():
             ("vendor_transform", "8-slot", "H"), ("vendor_drift", "8-slot", "H"))
     # Depth varies: the transform arms hold one directory per variant under each paper. Counted by walking the
     # arm rather than by a per-arm glob, so a review filed at an unexpected depth is counted rather than missed.
+    # The rejected arm's untouched panels are the baselines of that corpus's transform arm: the same reviews
+    # ship under reviews/rejected and under reviews/transform_rejected/*/baseline. The totals count each review
+    # once, after asserting that every file of the first tree is the file of the same paper, panel and slot in
+    # the second. Matching by path, not by content: score-only copies of two different reviews can coincide.
     n_rev = {}
     for arm, _, _ in ARMS:
         n_rev[arm] = sum(1 for f in glob.glob(f"{B}/reviews/{arm}/**/[RC]?.json", recursive=True)
                          if os.path.getsize(f) > 2)
         got[f"corpus: {arm} reviews"] = n_rev[arm]
+    for f in glob.glob(f"{B}/reviews/rejected/*/panel*/R?.json"):
+        q = f.split("/")
+        twin = f"{B}/reviews/transform_rejected/{q[-3]}/baseline/{q[-2]}/{q[-1]}"
+        assert os.path.exists(twin) and open(f, "rb").read() == open(twin, "rb").read(), f
+    shared = n_rev["rejected"]
     for roster in ("5-model", "8-slot"):
-        got[f"corpus: {roster} roster reviews"] = sum(n_rev[a] for a, r, _ in ARMS if r == roster)
-    got["corpus: total reviews"] = sum(n_rev.values())
-    # Section 6's count, which is not the total: the presentation study spans both rosters and both corpora, but
-    # not the declined arm's baseline ratings, which carry the grade distribution and the ordering test and enter
-    # no transform contrast. Written as the total minus that arm rather than as a second sum over eight names, so
-    # that an arm added later joins this count the way it joins the total instead of being left out of it.
-    got["corpus: presentation study reviews"] = got["corpus: total reviews"] - n_rev["rejected"]
+        got[f"corpus: {roster} roster reviews"] = (sum(n_rev[a] for a, r, _ in ARMS if r == roster)
+                                                   - (shared if roster == "5-model" else 0))
+    got["corpus: total reviews"] = sum(n_rev.values()) - shared
+    got["corpus: presentation study reviews"] = got["corpus: total reviews"]
     got["frame: ICLR 2026 submissions"] = len(json.load(open(f"{B}/frame/iclr2026_frame.json")))
     # The self-review is outside the total on purpose: it supports no claim, and §1 counts the study corpus.
     # Asserted rather than left implicit, because the count above is a sum over a directory listing and a
@@ -1727,6 +1732,9 @@ def main():
         h = [x for x, a in zip(human, armof) if a == want]
         w = [x for x, a in zip(words, armof) if a == want]
         got[f"{tag}: rho with rating"], got[f"{tag}: p"] = spearman_p(c, h)
+        # Section 5's table prints each arm's correlation with its own interval, so a reader can see that the
+        # higher-rated arm's interval clears zero while the lower-rated arm's spans it.
+        got[f"{tag}: CI low"], got[f"{tag}: CI high"] = boot_ci(spearman, c, h, paired=True)
         got[f"{tag}: partial rho, length held"], got[f"{tag}: partial p"] = partial_spearman(c, h, w)
         # The truncation that makes the two arms different kinds of evidence, and the reason the appendix reads
         # the null and the positive asymmetrically rather than as one uniform result.
@@ -1745,6 +1753,23 @@ def main():
         got[f"{tag}: lowest rating"] = min(h)
         got[f"{tag}: highest rating"] = max(h)
     got["pooled rating sd, 32"] = st.pstdev(human)
+    # How much of the pooled rank correlation is separation between the arms and how much is order inside them.
+    # The numerator of Spearman's rho over all 32 papers, a sum of rank cross-deviations, splits exactly into a
+    # between-arm term (each arm's mean ranks against the grand mean, weighted by arm size) and the within-arm
+    # remainder; both are computed on the pooled ranks, so the two shares add to 100.
+    prx, pry = _ranks(comp), _ranks(human)
+    gmx, gmy = st.mean(prx), st.mean(pry)
+    cross = sum((a - gmx) * (b - gmy) for a, b in zip(prx, pry))
+    between = 0.0
+    for want in ("low", "high"):
+        ax = [a for a, g in zip(prx, armof) if g == want]
+        ay = [b for b, g in zip(pry, armof) if g == want]
+        between += len(ax) * (st.mean(ax) - gmx) * (st.mean(ay) - gmy)
+    got["pooled rank covariance: % between arms"] = 100 * between / cross
+    got["pooled rank covariance: % within arms"] = 100 * (cross - between) / cross
+    # Appendix D prints the split to one decimal place, section 5 to whole per cent.
+    got["pooled rank covariance: % between arms, one place"] = got["pooled rank covariance: % between arms"]
+    got["pooled rank covariance: % within arms, one place"] = got["pooled rank covariance: % within arms"]
 
     # The length confound. Recomputable because the release ships each declined paper's word count under its
     # own label, which is the same reason its ratings ship: they are public at the venue, so withholding the
@@ -1801,6 +1826,15 @@ def main():
     # challenge asks about. The control that does reach the queue is the hour window below.
     got["panel-to-panel lag, median seconds"] = st.median(lag)
     hours = [clock[k]["scored_h"] for k in keys]
+    # Scoring order tracks the sample file's target ratings across the two arms. Inside the higher-rated arm it
+    # does not track the composite, so the arm's own correlation with the rating is read with the hour held
+    # fixed as well, which is the check section 5 cites for that arm.
+    hc = [c for c, g in zip(comp, armof) if g == "high"]
+    hr = [x for x, g in zip(human, armof) if g == "high"]
+    hh = [x for x, g in zip(hours, armof) if g == "high"]
+    got["high-rated arm: rho, composite vs scoring hour"] = spearman(hc, hh)
+    got["high-rated arm: partial rho, scoring hour held"], got["high-rated arm: partial p, scoring hour held"] = (
+        partial_spearman(hc, hr, hh))
     got["scoring queue span, minutes"] = 60 * (max(hours) - min(hours))
 
     # Scoring order. The pooled correlation is a selection artefact of the sample file's order; the control is
@@ -1836,6 +1870,7 @@ def main():
     got["declined arm rating IQ width"] = pctl(human, 0.75) - pctl(human, 0.25)
     got["declined arm rating span"] = max(human) - min(human)
     got["published arm rating span"] = max(pubrat) - min(pubrat)
+    got["published arm: lowest rating"], got["published arm: highest rating"] = min(pubrat), max(pubrat)
     got["arm mean rating gap"] = (st.mean([x for x, a in zip(human, armof) if a == "high"])
                                  - st.mean([x for x, a in zip(human, armof) if a == "low"]))
     # The population the two arms came out of, and what the draw declined to take from it. Appendix C's account
@@ -2042,6 +2077,9 @@ def main():
         # down and printed beside it; substituting it here would let the instrument's precision set the
         # threshold it is judged against.
         got[f"{short} |median| / own band"] = abs(st.median(vals)) / got["re-run band, median |dz| over 16"]
+        # The criterion's composite conjunct names a mean of absolute changes, which no table prints, so the
+        # sentence that applies it has a row of its own.
+        got[f"{short} mean |dcomposite|"] = st.mean(abs(x) for x in vals)
         # The body table's interval. T1's crosses zero, in bold, in the headline table, so it is the entry a
         # reviewer who verifies one thing will verify. The two bounds are wide-tolerance for the reason
         # boot_median_ci gives -- a different seed moves a percentile of 4,000 resamples of a median -- and
@@ -2158,6 +2196,21 @@ def main():
         got[f"{short}: grade paired cell agreement %"] = 100 * st.mean(agree)
         got[f"{short}: grade step / own re-run step"] = (st.mean(steps)
                                                         / got["5-model: grade re-run mean abs step"])
+        # The criterion's grade conjunct, at the grain it names: one comparison per paper, the variant panel's
+        # modal grade against the modal grade over both baseline panels' slots pooled. A mode of the two
+        # per-panel modes has no tie-break when they disagree, so the slots are pooled first.
+        kept = []
+        for paper, e in dm_pairs(dm, variant).items():
+            if not e["variant"] or len(e["base"]) != 2:
+                continue
+            mb = modal({f"{i}|{s}": g for i, n in enumerate(e["base"])
+                        for s, g in GR[(paper, "baseline", n)].items()})
+            mv = modal(GR[(paper, variant, e["variant"][0])])
+            if mb and mv:
+                kept.append(mv == mb)
+        got[f"{short}: modal grade kept, papers"] = sum(kept)
+        got[f"{short}: modal grade kept, of"] = len(kept)
+        got[f"{short}: modal grade kept, share"] = sum(kept) / len(kept)
     # The scale factor above and the pairing here both assume one variant panel per paper. If an arm ever gets a
     # second, this row moves off 1 and the two of them are wrong together, so it is checked rather than assumed.
     got["day-matched variant panels, largest arm"] = max(vpanels)
@@ -2599,7 +2652,6 @@ def main():
     # would be the rate of a corpus nobody scored. The total is a row as well, since the appendix states it.
     SHORT = {"accepted 16, five slots, untouched": "accepted 16, five slots",
              "declined 32, five slots, untouched": "declined 32, five slots",
-             "declined 32, five slots, ranking study": "declined 32, ranking study",
              "accepted 16, eight slots, untouched": "accepted 16, eight slots"}
     for pop, short in SHORT.items():
         rows = pops[pop]["reviews"]
@@ -2619,7 +2671,7 @@ def main():
     # a noisy estimate of it. Averaging halves that noise -- and noise in the outcome biases an association
     # towards zero, which is the direction that would make the null on the sixteen uninformative.
     READS = (("declined 32, both sittings", "declined 32, as-submitted PDF",
-              ("declined 32, five slots, untouched", "declined 32, five slots, ranking study")),
+              ("declined 32, five slots, untouched",)),
              ("accepted 16, both rosters", "accepted 16, preprint text",
               ("accepted 16, five slots, untouched", "accepted 16, eight slots, untouched")))
     for tag, dpop, members in READS:
@@ -2914,41 +2966,17 @@ def main():
     # measurement under two roundings, so the coarse one is an alias of the fine one and not a second reading.
     got["T1 non-allotted: pooled p at two places"] = got["T1 non-allotted: pooled p"]
 
-    # --- appendix E: the arm read with the pre-registered strength floor enforced -------------------------
-    # The floor is a minimum edit count per transform, fixed before any variant was scored, and three of the
-    # 144 paper-variant cells came in under it. Two carry no reading, which is why two arms are a paper short
-    # of the third. The remaining one is in the relocation arm as reported, so the appendix's claim about it
-    # is a comparison: the same axes and the same nulls over the same papers less that one.
-    #
-    # Recomputed here rather than read out of floor_check.json, for the reason the whole of this block exists:
-    # a null nothing in the bundle recomputes is a null a reader takes on trust, and this one is the reason to
-    # believe the arm does not turn on a cell that should not have been in it. The papers it drops are derived
-    # from the manifest's own edit counts, so a corpus whose doses moved would move this reading with it
-    # instead of asserting the old one.
+    # --- appendix E: the pre-declared strength floor --------------------------------------------------------
+    # The floor is a minimum edit count per transform. Every paper-variant cell under it is withheld, so no
+    # reading in the bundle comes from a variant below its floor; asserted from the manifest's own edit counts.
     MIN_EDITS = {"T1_endmatter": 3, "T2_concede": 3, "T3_lengthen": 15}
     under = [(p, v) for p, d in man.items() for v, r in d.items()
              if v in MIN_EDITS and r["edits"] < MIN_EDITS[v]]
     got["floor: paper-variant cells"] = len(man) * len(MIN_EDITS)
     got["floor: cells under the floor"] = len(under)
     read_under = sorted((p, v) for p, v in under if p in five_delta[v])
-    got["floor: cells under the floor with a reading"] = len(read_under)
-    got["floor: cells under the floor withheld"] = len(under) - len(read_under)
-    # One arm, and the block below reads that arm. Asserted rather than assumed: a second arm with a
-    # below-floor reading would make the three rows underneath describe the wrong comparison while agreeing
-    # with the paper, which is the failure mode this file is for.
-    assert {v for _, v in read_under} == {"T1_endmatter"}, sorted({v for _, v in read_under})
-    drop = {p for p, _ in read_under}
-    lic = licensed(metrics)["T1_endmatter"]
-    for axname, cols in (("composite", metrics),
-                         ("allotted", [c for c in metrics if c in lic]),
-                         ("non-allotted", [c for c in metrics if c not in lic])):
-        d, pool = dm_matched(dm, cols, "T1_endmatter")
-        # Dropped from the re-run pool as well as from the arm. The pool is what the null is scaled from, and
-        # a comparison that narrows the treated papers while keeping the reference over all of them differs
-        # from the reported reading in two ways at once.
-        null_test(f"floor-enforced T1 {axname}",
-                  {q: x for q, x in d.items() if q not in drop},
-                  {q: x for q, x in pool.items() if q not in drop}, 200_000)
+    assert not read_under, f"below-floor variants carry a reading: {read_under}"
+    got["floor: cells under the floor withheld"] = len(under)
 
     # --- the sign tests, derived from counts checked above ------------------------------------------------
     # Each of these p-values is quoted beside its split, and until now only the split was recomputed: a count
