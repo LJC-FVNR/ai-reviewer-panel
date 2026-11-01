@@ -183,7 +183,8 @@ def main():
     # where a reader has to decide by hue which row it belongs to.
     ys = {t: (len(ORDER) - 1 - i) * ROW_GAP for i, t in enumerate(ORDER)}
     ax.set_yticks([])
-    ax.set_ylim(-0.85, (len(ORDER) - 1) * ROW_GAP + 0.80)
+    # The floor clears the label hung under the bottom row by a line of its own type.
+    ax.set_ylim(-1.00, (len(ORDER) - 1) * ROW_GAP + 0.80)
     # Set from the data, because nothing drawn so far is data: the dots go on after the scale settles, and an
     # axis left to autoscale on a rule at zero and three strings would fit the labels around a range that
     # excludes every channel it is labelling.
@@ -213,10 +214,11 @@ def main():
     # panel. Centred, each label costs half its width on each side and the panel keeps its data.
     # One above its row and one below, because the two the arm hangs on sit on the SAME row: side by side
     # they printed as `structure compliance -0.223calibration honesty +0.131`, which is one string a reader
-    # cannot parse and two numbers they cannot attach.
+        # cannot parse and two numbers they cannot attach. T3's label goes below its own row: above it, it sat
+    # at the height of T2's lower label, between the two rows, and either label read as either row's.
     named = [("T2_concede", "calibration_honesty", +1),
              ("T2_concede", "structure_compliance", -1),
-             ("T3_lengthen", "clarity", +1)]
+             ("T3_lengthen", "clarity", -1)]
     labels = []
     for t, m, side in named:
         v = D[t][m]

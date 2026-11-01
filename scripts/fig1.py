@@ -212,7 +212,7 @@ def main():
     q1 = d["q1"]
     lo, hi = q1["spearman_ci"]
     axB.text(0.035, 0.975,
-             f"across arms  ρ = {sgn(q1['spearman'])}  {rng(lo, hi)}",
+             f"both groups  ρ = {sgn(q1['spearman'])}  {rng(lo, hi)}",
              transform=axB.transAxes, ha="left", va="top", fontsize=PT_ANN,
              color="#14181c", zorder=4)
     # The within-arm figures are the honest qualifier: the pooled rho is earned partly by the gap
